@@ -47,10 +47,10 @@ export const SignUpCard = () => {
   };
 
   return (
-    <Card className="size-full md:w-[487px] border-none shadow-none">
-      <CardHeader className="flex items-center justify-center text-center p-7">
-        <CardTitle className="text-2xl">Sign Up</CardTitle>
-        <CardDescription>
+    <Card className="w-full max-w-[420px] border-none shadow-none">
+      <CardHeader className="flex items-center justify-center text-center pb-6">
+        <CardTitle className="text-2xl font-bold">Sign Up</CardTitle>
+        <CardDescription className="mt-2 text-sm">
           By signing up, you agree to our{" "}
           <Link href="/privacy">
             <span className="text-blue-700">Privacy Policy</span>
@@ -62,10 +62,10 @@ export const SignUpCard = () => {
           .
         </CardDescription>
       </CardHeader>
-      <div className="px-7">
+      <div className="px-6">
         <DottedSeparator />
       </div>
-      <CardContent className="p-7">
+      <CardContent className="p-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
