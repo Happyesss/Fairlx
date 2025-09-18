@@ -1,460 +1,438 @@
-"use client";
+"use client"
 
-import { useState, useMemo } from "react";
-import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, differenceInDays, parseISO, startOfDay, isSameDay, isWeekend } from "date-fns";
-import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, FlagIcon, UserIcon, ProjectorIcon } from "lucide-react";
+import { useState, useMemo } from "react"
+import {
+  format,
+  addDays,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  differenceInDays,
+  parseISO,
+  startOfDay,
+  isSameDay,
+  isWeekend,
+} from "date-fns"
+import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, ProjectorIcon, CheckSquare, Square } from "lucide-react"
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-import { Task, TaskStatus, PopulatedTask } from "../types";
-import { MemberAvatar } from "@/features/members/components/member-avatar";
-import { ProjectAvatar } from "@/features/projects/components/project-avatar";
-import { cn } from "@/lib/utils";
+import { TaskStatus, type PopulatedTask } from "../types"
+import { MemberAvatar } from "./member-avatar"
+import { cn } from "@/lib/utils"
 
 interface EnhancedTimelineProps {
-  data: PopulatedTask[];
+  data: PopulatedTask[]
 }
 
-type ViewType = "week" | "month" | "quarter";
+type ViewType = "week" | "month" | "quarter"
 
 const statusConfig = {
-  [TaskStatus.BACKLOG]: { 
-    color: "bg-pink-500", 
-    lightColor: "bg-pink-100", 
-    borderColor: "border-pink-200",
-    textColor: "text-pink-700"
+  [TaskStatus.BACKLOG]: {
+    color: "bg-orange-500",
+    lightColor: "bg-orange-100",
+    borderColor: "border-orange-200",
+    textColor: "text-orange-700",
   },
-  [TaskStatus.TODO]: { 
-    color: "bg-red-500", 
-    lightColor: "bg-red-100", 
-    borderColor: "border-red-200",
-    textColor: "text-red-700"
+  [TaskStatus.TODO]: {
+    color: "bg-orange-500",
+    lightColor: "bg-orange-100",
+    borderColor: "border-orange-200",
+    textColor: "text-orange-700",
   },
-  [TaskStatus.IN_PROGRESS]: { 
-    color: "bg-yellow-500", 
-    lightColor: "bg-yellow-100", 
-    borderColor: "border-yellow-200",
-    textColor: "text-yellow-700"
-  },
-  [TaskStatus.IN_REVIEW]: { 
-    color: "bg-blue-500", 
-    lightColor: "bg-blue-100", 
+  [TaskStatus.IN_PROGRESS]: {
+    color: "bg-blue-500",
+    lightColor: "bg-blue-100",
     borderColor: "border-blue-200",
-    textColor: "text-blue-700"
+    textColor: "text-blue-700",
   },
-  [TaskStatus.DONE]: { 
-    color: "bg-emerald-500", 
-    lightColor: "bg-emerald-100", 
-    borderColor: "border-emerald-200",
-    textColor: "text-emerald-700"
+  [TaskStatus.IN_REVIEW]: {
+    color: "bg-blue-500",
+    lightColor: "bg-blue-100",
+    borderColor: "border-blue-200",
+    textColor: "text-blue-700",
   },
-};
+  [TaskStatus.DONE]: {
+    color: "bg-green-500",
+    lightColor: "bg-green-100",
+    borderColor: "border-green-200",
+    textColor: "text-green-700",
+  },
+}
+
+const getTaskTypeIcon = (status: TaskStatus) => {
+  if (status === TaskStatus.DONE) {
+    return <CheckSquare className="h-4 w-4 text-green-600" />
+  }
+  return <Square className="h-4 w-4 text-blue-600" />
+}
 
 export const EnhancedTimeline = ({ data }: EnhancedTimelineProps) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewType, setViewType] = useState<ViewType>("month");
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [viewType, setViewType] = useState<ViewType>("month")
+  const [selectedTask, setSelectedTask] = useState<string | null>(null)
 
-  // Calculate date range based on view type
   const { startDate, endDate } = useMemo(() => {
-    const start = startOfWeek(currentDate);
-    let end: Date;
+    const start = startOfWeek(currentDate)
+    let end: Date
 
     switch (viewType) {
       case "week":
-        end = endOfWeek(currentDate);
-        break;
+        end = endOfWeek(currentDate)
+        break
       case "month":
-        end = addDays(start, 30);
-        break;
+        end = addDays(start, 120) // Show 4 months instead of 1
+        break
       case "quarter":
-        end = addDays(start, 90);
-        break;
+        end = addDays(start, 90)
+        break
       default:
-        end = endOfWeek(currentDate);
+        end = endOfWeek(currentDate)
     }
 
-    return { startDate: start, endDate: end };
-  }, [currentDate, viewType]);
+    return { startDate: start, endDate: end }
+  }, [currentDate, viewType])
+
+  const monthHeaders = useMemo(() => {
+    if (viewType !== "month") return []
+
+    const months = []
+    const current = new Date(startDate)
+    const end = new Date(endDate)
+
+    while (current <= end) {
+      const monthStart = new Date(current.getFullYear(), current.getMonth(), 1)
+      const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0)
+      const daysInMonth = monthEnd.getDate()
+
+      months.push({
+        label: format(monthStart, "MMM"),
+        width: daysInMonth * 40, // 40px per day
+        month: monthStart,
+      })
+
+      current.setMonth(current.getMonth() + 1)
+    }
+
+    return months
+  }, [startDate, endDate, viewType])
 
   const timelineDays = useMemo(() => {
     if (viewType === "quarter") {
-      // For quarter view, show weeks
-      const weeks = [];
-      let current = startDate;
+      const weeks = []
+      let current = startDate
       while (current <= endDate) {
         weeks.push({
           date: current,
           label: format(current, "MMM dd"),
           isWeekStart: true,
           isWeekend: false,
-          isToday: isSameDay(current, new Date())
-        });
-        current = addDays(current, 7);
+          isToday: isSameDay(current, new Date()),
+        })
+        current = addDays(current, 7)
       }
-      return weeks;
+      return weeks
     } else {
-      // For week and month view, show days
-      return eachDayOfInterval({ start: startDate, end: endDate }).map(date => ({
+      return eachDayOfInterval({ start: startDate, end: endDate }).map((date) => ({
         date,
         label: format(date, viewType === "week" ? "EEE\ndd" : "dd"),
         shortLabel: format(date, "dd"),
         isWeekStart: date.getDay() === 0,
         isWeekend: isWeekend(date),
-        isToday: isSameDay(date, new Date())
-      }));
+        isToday: isSameDay(date, new Date()),
+      }))
     }
-  }, [startDate, endDate, viewType]);
+  }, [startDate, endDate, viewType])
 
   const processedTasks = useMemo(() => {
-    return data.map(task => {
-      const taskStart = startOfDay(parseISO(task.dueDate));
-      const taskEnd = task.endDate ? startOfDay(parseISO(task.endDate)) : taskStart;
-      
-      // Calculate position and width
-      const startOffset = Math.max(0, differenceInDays(taskStart, startDate));
-      const endOffset = Math.min(timelineDays.length - 1, differenceInDays(taskEnd, startDate));
-      const duration = Math.max(1, endOffset - startOffset + 1);
-      
-      // Only show tasks that intersect with current view
-      const isVisible = taskStart <= endDate && taskEnd >= startDate;
+    return data
+      .map((task) => {
+        const taskStart = startOfDay(parseISO(task.dueDate))
+        const taskEnd = task.endDate ? startOfDay(parseISO(task.endDate)) : taskStart
 
-      return {
-        ...task,
-        startOffset,
-        duration,
-        endOffset,
-        isVisible,
-        taskStart,
-        taskEnd,
-        isMilestone: taskStart.getTime() === taskEnd.getTime()
-      };
-    }).filter(task => task.isVisible);
-  }, [data, startDate, endDate, timelineDays.length]);
+        const startOffset = Math.max(0, differenceInDays(taskStart, startDate))
+        const endOffset = Math.min(timelineDays.length - 1, differenceInDays(taskEnd, startDate))
+        const duration = Math.max(1, endOffset - startOffset + 1)
 
-  // Group tasks by project for better organization
-  const tasksByProject = useMemo(() => {
-    const grouped = processedTasks.reduce((acc, task) => {
-      const projectId = task.projectId || 'no-project';
-      const projectName = 'Project'; // We'll need to fetch project data separately
-      
-      if (!acc[projectId]) {
-        acc[projectId] = {
-          projectId,
-          projectName,
-          tasks: []
-        };
-      }
-      acc[projectId].tasks.push(task);
-      return acc;
-    }, {} as Record<string, { projectId: string; projectName: string; tasks: any[] }>);
+        const isVisible = taskStart <= endDate && taskEnd >= startDate
 
-    return Object.values(grouped);
-  }, [processedTasks]);
+        return {
+          ...task,
+          startOffset,
+          duration,
+          endOffset,
+          isVisible,
+          taskStart,
+          taskEnd,
+          isMilestone: taskStart.getTime() === taskEnd.getTime(),
+        }
+      })
+      .filter((task) => task.isVisible)
+  }, [data, startDate, endDate, timelineDays.length])
 
   const navigate = (direction: "prev" | "next") => {
-    const amount = viewType === "week" ? 7 : viewType === "month" ? 30 : 90;
-    const newDate = direction === "prev" 
-      ? addDays(currentDate, -amount)
-      : addDays(currentDate, amount);
-    setCurrentDate(newDate);
-  };
+    const amount = viewType === "week" ? 7 : viewType === "month" ? 30 : 90
+    const newDate = direction === "prev" ? addDays(currentDate, -amount) : addDays(currentDate, amount)
+    setCurrentDate(newDate)
+  }
 
   const goToToday = () => {
-    setCurrentDate(new Date());
-  };
+    setCurrentDate(new Date())
+  }
 
-  const dayWidth = viewType === "quarter" ? 28 : viewType === "month" ? 40 : 80;
+  const dayWidth = viewType === "quarter" ? 28 : viewType === "month" ? 40 : 80
 
   return (
     <TooltipProvider>
-      <Card className="h-full">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
-            <CardTitle className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5" />
-              Enhanced Timeline
-            </CardTitle>
-            
-            <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
-              {/* View Type Selector */}
-              <div className="flex border rounded-lg p-1 bg-muted">
+      <Card className="h-full bg-white">
+        <CardHeader className="pb-0 border-b bg-gray-50">
+          <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0 pb-4">
+            <div className="flex items-center gap-4">
+              <div className="flex border rounded-lg p-1 bg-white shadow-sm">
                 {(["week", "month", "quarter"] as ViewType[]).map((view) => (
                   <Button
                     key={view}
-                    variant={viewType === view ? "secondary" : "ghost"}
+                    variant={viewType === view ? "primary" : "ghost"}
                     size="sm"
                     onClick={() => setViewType(view)}
-                    className="capitalize"
+                    className={cn(
+                      "capitalize text-sm px-3",
+                      viewType === view ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100",
+                    )}
                   >
                     {view}
                   </Button>
                 ))}
               </div>
 
-              {/* Navigation Controls */}
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("prev")}
-                >
-                  <ChevronLeftIcon className="h-4 w-4" />
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToToday}
-                  className="px-4 font-medium"
-                >
-                  Today
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("next")}
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Button>
+              <div className="text-sm font-medium text-gray-700">
+                {format(startDate, "MMM d")} - {format(endDate, "MMM d, yyyy")}
               </div>
             </div>
-          </div>
 
-          <div className="text-sm text-muted-foreground">
-            {format(startDate, "MMM dd, yyyy")} - {format(endDate, "MMM dd, yyyy")}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("prev")}
+                className="h-8 w-8 p-0 border-gray-300 hover:bg-gray-50"
+              >
+                <ChevronLeftIcon className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToToday}
+                className="h-8 px-3 border-gray-300 text-sm font-medium hover:bg-gray-50 bg-transparent"
+              >
+                Today
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("next")}
+                className="h-8 w-8 p-0 border-gray-300 hover:bg-gray-50"
+              >
+                <ChevronRightIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
 
         <CardContent className="p-0">
           <div className="border-t">
-            {/* Timeline Header */}
-            <div className="flex bg-muted/30 sticky top-0 z-10">
-              <div className="w-80 p-4 border-r bg-background">
-                <div className="font-medium text-sm flex items-center gap-2">
-                  <ProjectorIcon className="h-4 w-4" />
-                  Projects & Tasks
+            <div className="flex bg-gray-50 sticky top-0 z-10 border-b">
+              <div className="w-80 p-4 border-r bg-white">
+                <div className="font-semibold text-sm flex items-center gap-2 text-gray-800">
+                  <ProjectorIcon className="h-4 w-4 text-blue-600" />
+                  Items
                 </div>
               </div>
               <ScrollArea className="flex-1">
                 <div className="flex min-w-max">
-                  {timelineDays.map((day) => (
-                    <div
-                      key={day.date.toISOString()}
-                      className={cn(
-                        "flex-shrink-0 p-2 text-center border-r border-border/50 relative",
-                        day.isWeekend && "bg-muted/20",
-                        day.isToday && "bg-primary/5 border-primary/30",
-                        day.isWeekStart && "border-l-2 border-primary/20"
-                      )}
-                      style={{ width: `${dayWidth}px` }}
-                    >
-                      <div className={cn(
-                        "text-xs font-medium whitespace-pre-line",
-                        day.isToday && "text-primary font-bold"
-                      )}>
-                        {day.label}
-                      </div>
-                      {viewType !== "quarter" && (
-                        <div className={cn(
-                          "text-xs text-muted-foreground mt-1",
-                          day.isToday && "text-primary/80"
-                        )}>
-                          {format(day.date, "EEE")}
+                  {viewType === "month" && (
+                    <div className="flex">
+                      {monthHeaders.map((month, index) => (
+                        <div
+                          key={month.month.toISOString()}
+                          className="px-4 py-3 text-center font-semibold text-gray-700 bg-gray-100 border-r"
+                          style={{ width: `${month.width}px` }}
+                        >
+                          {month.label}
                         </div>
-                      )}
-                      {day.isToday && (
-                        <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full" />
-                      )}
+                      ))}
                     </div>
-                  ))}
+                  )}
+                  {viewType !== "month" &&
+                    timelineDays.map((day) => (
+                      <div
+                        key={day.date.toISOString()}
+                        className={cn(
+                          "flex-shrink-0 p-2 text-center border-r border-gray-200 relative bg-gray-50",
+                          day.isWeekend && "bg-gray-100",
+                          day.isToday && "bg-blue-50 border-blue-200",
+                          day.isWeekStart && "border-l border-gray-300",
+                        )}
+                        style={{ width: `${dayWidth}px` }}
+                      >
+                        <div
+                          className={cn(
+                            "text-sm font-semibold whitespace-pre-line text-gray-700",
+                            day.isToday && "text-blue-600",
+                          )}
+                        >
+                          {format(day.date, "d")}
+                        </div>
+                        {viewType !== "quarter" && (
+                          <div className={cn("text-xs text-gray-500 mt-1 font-medium", day.isToday && "text-blue-500")}>
+                            {format(day.date, "EEE")}
+                          </div>
+                        )}
+                        {day.isToday && (
+                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-1 bg-blue-500 rounded-full" />
+                        )}
+                      </div>
+                    ))}
                 </div>
               </ScrollArea>
             </div>
 
-            {/* Timeline Content */}
-            <ScrollArea className="h-[700px]">
-              <div className="space-y-1">
-                {tasksByProject.length === 0 ? (
-                  <div className="flex items-center justify-center h-32 text-muted-foreground">
+            <ScrollArea className="h-[calc(100vh-180px)]">
+              <div className="min-h-0 flex-1">
+                {processedTasks.length === 0 ? (
+                  <div className="flex items-center justify-center h-32 text-gray-500">
                     <div className="text-center">
                       <CalendarIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <div>No tasks in the selected time range</div>
                     </div>
                   </div>
                 ) : (
-                  tasksByProject.map((projectGroup) => (
-                    <div key={projectGroup.projectId} className="border-b border-border/30">
-                      {/* Project Header */}
-                      <div className="flex bg-muted/20 sticky top-16 z-5">
-                        <div className="w-80 p-3 border-r bg-background">
-                          <div className="flex items-center gap-2">
-                            <ProjectorIcon className="h-4 w-4" />
-                            <span className="font-medium text-sm">{projectGroup.projectName}</span>
-                            <Badge variant="secondary" className="text-xs">
-                              {projectGroup.tasks.length}
-                            </Badge>
+                  processedTasks.map((task, index) => (
+                    <div
+                      key={task.$id}
+                      className={cn(
+                        "flex hover:bg-blue-50/30 transition-colors relative group border-b border-gray-100",
+                        selectedTask === task.$id && "bg-blue-50/50",
+                      )}
+                      style={{ height: "48px" }}
+                    >
+                      <div className="w-80 px-4 border-r bg-white flex items-center">
+                        <div className="flex items-center gap-3 w-full">
+                          <ChevronRightIcon className="h-3 w-3 text-gray-400 flex-shrink-0" />
+
+                          <div className="flex-shrink-0">{getTaskTypeIcon(task.status as TaskStatus)}</div>
+
+                          <Badge
+                            variant="outline"
+                            className="text-xs font-mono text-gray-600 bg-gray-50 border-gray-200 px-1.5 py-0.5"
+                          >
+                            TBT-{Math.floor(Math.random() * 100) + 10}
+                          </Badge>
+
+                          <div className="min-w-0 flex-grow">
+                            <div className="font-medium text-sm text-gray-900 truncate" title={task.name}>
+                              {task.name}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex min-w-max">
-                            {timelineDays.map((day) => (
-                              <div
-                                key={day.date.toISOString()}
-                                className={cn(
-                                  "border-r border-border/30",
-                                  day.isWeekend && "bg-muted/10",
-                                  day.isToday && "bg-primary/5"
-                                )}
-                                style={{ width: `${dayWidth}px`, height: "40px" }}
-                              />
-                            ))}
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {task.assignee && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <MemberAvatar name={task.assignee.name} className="h-6 w-6 border border-gray-200" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{task.assignee.name}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Project Tasks */}
-                      {projectGroup.tasks.map((task, index) => (
-                        <div 
-                          key={task.$id} 
-                          className={cn(
-                            "flex hover:bg-muted/30 transition-colors relative",
-                            selectedTask === task.$id && "bg-primary/5"
-                          )}
-                        >
-                          {/* Task Info Column */}
-                          <div className="w-80 p-4 border-r bg-background">
-                            <div className="space-y-2">
-                              <div className="font-medium text-sm truncate" title={task.name}>
-                                {task.isMilestone && <FlagIcon className="inline h-3 w-3 mr-1 text-orange-500" />}
-                                {task.name}
-                              </div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Badge 
-                                  variant="secondary" 
-                                  className={cn(
-                                    "text-xs px-2 py-0.5",
-                                    Object.values(TaskStatus).includes(task.status as TaskStatus) 
-                                      ? statusConfig[task.status as TaskStatus]?.borderColor
-                                      : "border-gray-200"
-                                  )}
-                                >
-                                  {task.status}
-                                </Badge>
-                                {task.isMilestone && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Milestone
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {task.assignee && (
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <MemberAvatar 
-                                        name={task.assignee.name} 
-                                        className="h-5 w-5" 
-                                      />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{task.assignee.name}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                                <div className="text-xs text-muted-foreground">
-                                  {format(task.taskStart, "MMM dd")}
-                                  {!task.isMilestone && ` - ${format(task.taskEnd, "MMM dd")}`}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                      <div className="flex-1 relative bg-white">
+                        <div className="flex min-w-max relative h-full">
+                          {timelineDays.map((day) => (
+                            <div
+                              key={day.date.toISOString()}
+                              className={cn(
+                                "flex-shrink-0 border-r border-gray-100 relative",
+                                day.isWeekend && "bg-gray-50/50",
+                                day.isToday && "bg-blue-50/30 border-blue-200",
+                                day.isWeekStart && "border-l border-gray-200",
+                              )}
+                              style={{
+                                width: `${dayWidth}px`,
+                                height: "48px",
+                              }}
+                            />
+                          ))}
 
-                          {/* Gantt Chart Column */}
-                          <div className="flex-1 relative">
-                            <div className="flex min-w-max relative">
-                              {timelineDays.map((day, dayIndex) => (
-                                <div
-                                  key={day.date.toISOString()}
-                                  className={cn(
-                                    "flex-shrink-0 border-r border-border/30 relative",
-                                    day.isWeekend && "bg-muted/10",
-                                    day.isToday && "bg-primary/5 border-l border-primary/30",
-                                    day.isWeekStart && "border-l-2 border-primary/10"
-                                  )}
-                                  style={{ 
-                                    width: `${dayWidth}px`,
-                                    height: "80px" 
-                                  }}
-                                />
-                              ))}
-
-                              {/* Task Bar or Milestone */}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className="absolute top-1/2 transform -translate-y-1/2 cursor-pointer"
+                                style={{
+                                  left: `${task.startOffset * dayWidth + 4}px`,
+                                  width: !task.isMilestone ? `${dayWidth - 8}px` : `${task.duration * dayWidth - 8}px`,
+                                }}
+                                onClick={() => setSelectedTask(selectedTask === task.$id ? null : task.$id)}
+                              >
+                                {!task.isMilestone ? (
+                                  <div className="flex justify-center items-center h-full">
+                                    <div
+                                      className={cn(
+                                        "w-3 h-3 transform rotate-45 border-2 border-white shadow-sm",
+                                        statusConfig[task.status as TaskStatus].color,
+                                        "hover:scale-110 transition-transform",
+                                      )}
+                                    />
+                                  </div>
+                                ) : (
                                   <div
-                                    className="absolute top-1/2 transform -translate-y-1/2 cursor-pointer"
+                                    className={cn(
+                                      "h-7 rounded-md flex items-center px-3 text-white text-xs font-medium overflow-hidden transition-all group-hover:shadow-lg relative border border-white/20",
+                                      statusConfig[task.status as TaskStatus].color,
+                                      selectedTask === task.$id && "ring-2 ring-blue-400 ring-offset-1",
+                                    )}
                                     style={{
-                                      left: `${task.startOffset * dayWidth}px`,
-                                      width: task.isMilestone ? `${dayWidth}px` : `${task.duration * dayWidth}px`,
+                                      minWidth: `${dayWidth - 10}px`,
                                     }}
-                                    onClick={() => setSelectedTask(selectedTask === task.$id ? null : task.$id)}
                                   >
-                                    {task.isMilestone ? (
-                                      // Milestone diamond
-                                      <div className="flex justify-center">
-                                        <div
-                                          className={cn(
-                                            "w-4 h-4 transform rotate-45 border-2",
-                                            Object.values(TaskStatus).includes(task.status as TaskStatus) 
-                                              ? statusConfig[task.status as TaskStatus]?.color
-                                              : "bg-gray-500",
-                                            "hover:scale-110 transition-transform"
-                                          )}
-                                        />
-                                      </div>
-                                    ) : (
-                                      // Task bar
-                                      <div
-                                        className={cn(
-                                          "h-6 rounded-md flex items-center px-2 text-white text-xs font-medium overflow-hidden shadow-sm hover:shadow-md transition-shadow",
-                                          Object.values(TaskStatus).includes(task.status as TaskStatus) 
-                                            ? statusConfig[task.status as TaskStatus]?.color
-                                            : "bg-gray-500",
-                                          selectedTask === task.$id && "ring-2 ring-primary ring-offset-1"
-                                        )}
-                                        style={{
-                                          minWidth: `${dayWidth}px`,
-                                        }}
-                                      >
-                                        <span className="truncate">{task.name}</span>
-                                      </div>
-                                    )}
+                                    <div className="flex items-center justify-between w-full gap-2">
+                                      <span className="truncate font-medium">{task.name}</span>
+                                      {task.assignee && (
+                                        <div className="flex-shrink-0 rounded-full overflow-hidden border border-white/30">
+                                          <MemberAvatar name={task.assignee.name} className="h-5 w-5" />
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <div className="space-y-1">
-                                    <p className="font-medium">{task.name}</p>
-                                    <p className="text-xs">
-                                      {task.isMilestone ? 'Milestone: ' : 'Duration: '}
-                                      {format(task.taskStart, "MMM dd, yyyy")}
-                                      {!task.isMilestone && ` - ${format(task.taskEnd, "MMM dd, yyyy")}`}
-                                    </p>
-                                    <p className="text-xs">Status: {task.status}</p>
-                                    {task.assignee && (
-                                      <p className="text-xs">Assignee: {task.assignee.name}</p>
-                                    )}
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </div>
+                                )}
+                              </div>
+                            </TooltipTrigger>
+                            {/* TOOL TIP */}
+                            <TooltipContent className="bg-gray-900 text-white border-gray-700">
+                              <div className="space-y-1">
+                                <p className="font-medium">{task.name}</p>
+                                <p className="text-xs opacity-90">
+                                  {task.isMilestone ? "Milestone: " : "Duration: "}
+                                  {format(task.taskStart, "MMM dd, yyyy")}
+                                  {task.isMilestone && ` - ${format(task.taskEnd, "MMM dd, yyyy")}`}
+                                </p>
+                                <p className="text-xs opacity-90">Status: {task.status}</p>
+                                {task.assignee && <p className="text-xs opacity-90">Assignee: {task.assignee.name}</p>}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
-                      ))}
+                      </div>
                     </div>
                   ))
                 )}
@@ -464,5 +442,5 @@ export const EnhancedTimeline = ({ data }: EnhancedTimelineProps) => {
         </CardContent>
       </Card>
     </TooltipProvider>
-  );
-};
+  )
+}

@@ -85,12 +85,12 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
     return data.map(task => {
       const taskStart = startOfDay(parseISO(task.dueDate));
       const taskEnd = task.endDate ? startOfDay(parseISO(task.endDate)) : taskStart;
-      
+
       // Calculate position and width
       const startOffset = Math.max(0, differenceInDays(taskStart, startDate));
       const endOffset = Math.min(timelineDays.length - 1, differenceInDays(taskEnd, startDate));
       const duration = Math.max(1, endOffset - startOffset + 1);
-      
+
       // Only show tasks that intersect with current view
       const isVisible = taskStart <= endDate && taskEnd >= startDate;
 
@@ -108,7 +108,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
 
   const navigate = (direction: "prev" | "next") => {
     const amount = viewType === "week" ? 7 : viewType === "month" ? 30 : 90;
-    const newDate = direction === "prev" 
+    const newDate = direction === "prev"
       ? addDays(currentDate, -amount)
       : addDays(currentDate, amount);
     setCurrentDate(newDate);
@@ -120,6 +120,8 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
 
   const dayWidth = viewType === "quarter" ? 28 : viewType === "month" ? 40 : 80;
 
+  console.log(data, processedTasks);
+
   return (
     <Card className="h-full">
       <CardHeader className="pb-4">
@@ -128,7 +130,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
             <CalendarIcon className="h-5 w-5" />
             Timeline & Gantt Chart
           </CardTitle>
-          
+
           <div className="flex flex-col space-y-2 lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
             {/* View Type Selector */}
             <div className="flex border rounded-lg p-1 bg-muted">
@@ -154,7 +156,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
               >
                 <ChevronLeftIcon className="h-4 w-4" />
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -163,7 +165,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
               >
                 Today
               </Button>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -235,8 +237,8 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
                 </div>
               ) : (
                 processedTasks.map((task) => (
-                  <div 
-                    key={task.$id} 
+                  <div
+                    key={task.$id}
                     className="flex hover:bg-muted/30 transition-colors relative"
                   >
                     {/* Task Info Column */}
@@ -258,9 +260,9 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
                         </div>
                         <div className="flex items-center gap-2">
                           {task.assignee && (
-                            <MemberAvatar 
-                              name={task.assignee.name} 
-                              className="h-5 w-5" 
+                            <MemberAvatar
+                              name={task.assignee.name}
+                              className="h-5 w-5"
                             />
                           )}
                           <div className="text-xs text-muted-foreground">
@@ -283,9 +285,9 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
                               day.isToday && "bg-primary/5 border-l border-primary/30",
                               day.isWeekStart && "border-l-2 border-primary/10"
                             )}
-                            style={{ 
+                            style={{
                               width: `${dayWidth}px`,
-                              height: "80px" 
+                              height: "80px"
                             }}
                           />
                         ))}
@@ -305,7 +307,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
                               <div
                                 className={cn(
                                   "w-4 h-4 transform rotate-45 border-2",
-                                  Object.values(TaskStatus).includes(task.status as TaskStatus) 
+                                  Object.values(TaskStatus).includes(task.status as TaskStatus)
                                     ? statusConfig[task.status as TaskStatus]?.color
                                     : "bg-gray-500",
                                   "hover:scale-110 transition-transform"
@@ -317,7 +319,7 @@ export const SimpleTimeline = ({ data }: SimpleTimelineProps) => {
                             <div
                               className={cn(
                                 "h-6 rounded-md flex items-center px-2 text-white text-xs font-medium overflow-hidden shadow-sm hover:shadow-md transition-shadow",
-                                Object.values(TaskStatus).includes(task.status as TaskStatus) 
+                                Object.values(TaskStatus).includes(task.status as TaskStatus)
                                   ? statusConfig[task.status as TaskStatus]?.color
                                   : "bg-gray-500"
                               )}

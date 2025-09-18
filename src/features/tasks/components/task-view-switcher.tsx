@@ -2,7 +2,7 @@
 
 import { LoaderIcon, PlusIcon } from "lucide-react";
 import { useQueryState } from "nuqs";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { useProjectId } from "@/features/projects/hooks/use-project-id";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
@@ -28,6 +28,7 @@ import { useCreateTaskModal } from "../hooks/use-create-task-modal";
 import { useTaskFilters } from "../hooks/use-task-filters";
 import { TaskStatus } from "../types";
 import { useBulkUpdateTasks } from "../api/use-bulk-update-tasks";
+import { EnhancedTimeline } from "./enhanced-timeline";
 
 interface TaskViewSwitcherProps {
   hideProjectFilter?: boolean;
@@ -38,23 +39,25 @@ export const TaskViewSwitcher = ({
   hideProjectFilter,
   showMyTasksOnly = false,
 }: TaskViewSwitcherProps) => {
-  
-  
+
+
+
   const [{ status, assigneeId, projectId, dueDate }] = useTaskFilters();
   const [view, setView] = useQueryState("task-view", { defaultValue: "table" });
+  const [timelineView, setTimelineView] = useState<'simple' | 'enhanced'>('enhanced');
   const { mutate: bulkUpdate } = useBulkUpdateTasks();
 
   const workspaceId = useWorkspaceId();
   const paramProjectId = useProjectId();
-  
+
   // Get current user data
   const { data: currentUser } = useCurrent();
   const { member: currentMember, isAdmin } = useCurrentMember({ workspaceId });
   const { data: members } = useGetMembers({ workspaceId });
-  
+
   // Determine the effective assigneeId - if showMyTasksOnly is true, use current member's ID
   const effectiveAssigneeId = showMyTasksOnly && currentMember ? currentMember.$id : assigneeId;
-  
+
   const { data: tasks, isLoading: isLoadingTasks } = useGetTasks({
     workspaceId,
     projectId: paramProjectId || projectId,
@@ -63,7 +66,9 @@ export const TaskViewSwitcher = ({
     dueDate,
   });
 
-  
+
+
+
 
   const onKanbanChange = useCallback(
     (tasks: { $id: string; status: TaskStatus | string; position: number }[]) => {
@@ -73,7 +78,7 @@ export const TaskViewSwitcher = ({
   );
 
   const { open } = useCreateTaskModal();
-  
+
 
   return (
     <Tabs
@@ -128,7 +133,32 @@ export const TaskViewSwitcher = ({
               <DataCalendar data={tasks?.documents ?? []} />
             </TabsContent>
             <TabsContent value="timeline" className="mt-0 h-full pb-4">
-              <SimpleTimeline data={tasks?.documents ?? []} />
+              <div className="flex items-center gap-2 mb-4">
+                <Button
+                  size="sm"
+                  variant={timelineView === 'simple' ? 'primary' : 'secondary'}
+                  onClick={() => setTimelineView('simple')}
+                  className="transition-all"
+                >
+                  Simple View
+                </Button>
+                <Button
+                  size="sm"
+                  variant={timelineView === 'enhanced' ? 'primary' : 'secondary'}
+                  onClick={() => setTimelineView('enhanced')}
+                  className="transition-all"
+                >
+                  Enhanced View
+                </Button>
+              </div>
+              {timelineView === 'simple' ? (
+                <SimpleTimeline data={tasks?.documents ?? []} />
+              ) : (
+                // <SimpleTimeline data={tasks?.documents ?? []} />
+                <div className="h-screen bg-gray-50 overflow-auto">
+                  <EnhancedTimeline data={tasks?.documents ?? []} />
+                </div>
+              )}
             </TabsContent>
           </>
         )}
