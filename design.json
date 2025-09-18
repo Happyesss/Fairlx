@@ -1,0 +1,134 @@
+{
+    "design_system": {
+      "style": {
+        "theme": "dark_mode",
+        "background": {
+          "primary": "#0f0f0f",
+          "secondary": "#1c1c1c",
+          "card": "#2a2a2a",
+          "highlight_card": "#3a3a3a"
+        },
+        "typography": {
+          "font_family": "sans-serif",
+          "font_weights": {
+            "regular": 400,
+            "medium": 500,
+            "bold": 700
+          },
+          "font_sizes": {
+            "small": 12,
+            "base": 14,
+            "medium": 16,
+            "large": 18,
+            "xl": 20
+          }
+        },
+        "colors": {
+          "text_primary": "#ffffff",
+          "text_secondary": "#bbbbbb",
+          "accent_high": "#ffb347",
+          "accent_medium": "#d9a441",
+          "accent_low": "#4caf50",
+          "neutral_border": "#333333",
+          "chart_accent_1": "#f36d6d",
+          "chart_accent_2": "#f3b76d",
+          "chart_accent_3": "#6df3b7"
+        },
+        "effects": {
+          "shadow": "0px 4px 8px rgba(0, 0, 0, 0.3)",
+          "radius": "12px",
+          "hover_opacity": 0.9
+        }
+      },
+      "layout": {
+        "grid": {
+          "columns": 12,
+          "gutter": 16,
+          "margin": 24
+        },
+        "navigation": {
+          "placement": "left_sidebar",
+          "width": 240,
+          "sections": [
+            "logo/profile",
+            "menu_links",
+            "settings_toggle",
+            "cta_button"
+          ]
+        },
+        "header": {
+          "placement": "top_right",
+          "components": [
+            "search_bar",
+            "profile_dropdown",
+            "settings_icons"
+          ]
+        },
+        "dashboard": {
+          "structure": [
+            {
+              "type": "task_card",
+              "priority_variants": ["high", "medium", "low"],
+              "layout": "horizontal",
+              "includes": ["title", "subtitle", "avatars", "actions"]
+            },
+            {
+              "type": "project_card",
+              "state": ["ongoing", "pending"],
+              "layout": "horizontal_progress",
+              "includes": ["title", "progress_bar", "avatars", "cta"]
+            },
+            {
+              "type": "progress_overview",
+              "layout": "circular_chart",
+              "includes": ["completion_percent", "stats", "legend"]
+            },
+            {
+              "type": "chat_strip",
+              "layout": "horizontal_avatar_list"
+            },
+            {
+              "type": "activity_feed",
+              "layout": "vertical_list",
+              "includes": ["author", "role", "timestamp", "message", "engagement"]
+            }
+          ]
+        }
+      },
+      "components": {
+        "button": {
+          "variants": ["primary", "secondary", "icon_only"],
+          "shape": "rounded",
+          "radius": "10px",
+          "padding": "8px 16px"
+        },
+        "input": {
+          "style": "filled_dark",
+          "radius": "8px",
+          "padding": "8px 12px"
+        },
+        "card": {
+          "radius": "16px",
+          "padding": "16px",
+          "shadow": "subtle",
+          "variants": ["default", "highlighted", "compact"]
+        },
+        "avatar": {
+          "sizes": ["sm", "md", "lg"],
+          "style": "circular",
+          "overlap": true
+        },
+        "progress_bar": {
+          "style": "linear",
+          "height": "6px",
+          "radius": "6px"
+        },
+        "chart": {
+          "style": "circular_ring",
+          "thickness": "12px",
+          "accent_colors": "chart_accent_palette"
+        }
+      }
+    }
+  }
+  

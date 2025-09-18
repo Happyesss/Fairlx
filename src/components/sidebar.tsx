@@ -8,18 +8,18 @@ import { Projects } from "./projects";
 
 export const Sidebar = () => {
   return (
-    <aside className="h-full bg-neutral-100 p-4 w-full">
+    <aside className="h-full bg-neutral-950 border-r border-neutral-900 p-4 w-full text-neutral-300">
       <div className="flex items-center gap-2">
         <Link href="/">
           <Image src="/logo.png" alt="logo" width={50} height={39} />
         </Link>
-        <p className="font-bold text-lg">Scrumty</p>
+        <p className="font-bold text-lg text-neutral-100">Scrumty</p>
       </div>
-      <DottedSeparator className="my-4" />
+      <DottedSeparator className="my-4 opacity-20" />
       <WorkspaceSwitcher />
-      <DottedSeparator className="my-4" />
+      <DottedSeparator className="my-4 opacity-20" />
       <Navigation />
-      <DottedSeparator className="my-4" />
+      <DottedSeparator className="my-4 opacity-20" />
       <Projects />
     </aside>
   );

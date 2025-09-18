@@ -1,6 +1,12 @@
 "use client";
 
-import { Analytics } from "@/components/analytics";
+// removed analytics strip
+import { OverallProgressCard } from "@/components/dashboard/overall-progress-card";
+import { ProjectsOverviewCard } from "@/components/dashboard/projects-overview-card";
+import { TeamActivityCard } from "@/components/dashboard/team-activity-card";
+import { ProjectTasksCard } from "@/components/dashboard/project-tasks-card";
+import { PerformanceAnalytics } from "@/components/dashboard/performance-analytics";
+import { WobbleCard } from "@/components/ui/wobble-card";
 import { DottedSeparator } from "@/components/dotted-separator";
 import { PageError } from "@/components/page-error";
 import { PageLoader } from "@/components/page-loader";
@@ -52,13 +58,58 @@ export const WorkspaceIdClient = () => {
     return <PageError message="Failed to load workspace data." />;
   }
 
+  const completion = Math.min(
+    100,
+    Math.round((analytics.completedTaskCount / Math.max(1, analytics.taskCount)) * 100)
+  );
+
   return (
-    <div className="h-full flex flex-col space-y-4">
-      <Analytics data={analytics} />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <TaskList data={tasks.documents} total={tasks.total} />
-        <ProjectList data={projects.documents} total={projects.total} />
-        <MemberList data={members.documents} total={members.total} />
+    <div className="h-full">
+      <div className="grid grid-cols-1 md:grid-cols-6 xl:grid-cols-12 gap-3 auto-rows-auto">
+        {/* Overall Progress - wider on xl */}
+        <WobbleCard containerClassName="md:col-span-3 xl:col-span-7" className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-50 dark:bg-neutral-950">
+          <OverallProgressCard
+            completedPercent={completion}
+            totalProjects={projects.total}
+            upcoming={Math.max(0, analytics.incompleteTaskCount - analytics.overdueTaskCount)}
+          />
+        </WobbleCard>
+
+        {/* Projects Overview - complements progress */}
+        <WobbleCard containerClassName="md:col-span-3 xl:col-span-5" className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+          <ProjectsOverviewCard
+            ongoing={projects.documents.slice(0,2).map(p => ({ id: p.$id, title: p.name, progress: 54 }))}
+            pending={projects.documents.slice(2,4).map(p => ({ id: p.$id, title: p.name, progress: 0 }))}
+          />
+        </WobbleCard>
+
+        {/* Team Activity - wider on xl */}
+        <WobbleCard containerClassName="md:col-span-3 xl:col-span-7" className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+          <TeamActivityCard
+            items={[
+              { id: '1', author: 'Will Logso', role: 'Backend Developer', message: 'How can I buy only the design?', timestamp: '5 min ago' },
+              { id: '2', author: 'Sarah Hosten', role: 'Project Manager', message: 'Launched sprint retrospective notes.', timestamp: '1 hour ago' },
+            ]}
+          />
+        </WobbleCard>
+
+        {/* Project Tasks - complements team activity */}
+        <WobbleCard containerClassName="md:col-span-3 xl:col-span-5" className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+          <ProjectTasksCard tasks={tasks.documents} />
+        </WobbleCard>
+
+        {/* Performance chart full width on xl */}
+        <WobbleCard containerClassName="md:col-span-6 xl:col-span-12" className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+          <PerformanceAnalytics
+            data={[
+              { name: 'Mon', value: analytics.taskCount },
+              { name: 'Tue', value: analytics.assignedTaskCount },
+              { name: 'Wed', value: analytics.completedTaskCount },
+              { name: 'Thu', value: analytics.overdueTaskCount },
+              { name: 'Fri', value: analytics.incompleteTaskCount },
+            ]}
+          />
+        </WobbleCard>
       </div>
     </div>
   );
