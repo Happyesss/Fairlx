@@ -31,11 +31,51 @@ jobs:
         cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/fairlx:buildcache
         cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/fairlx:buildcache,mode=max
 
-    # Add your deployment step here based on your hosting provider
-    # Example for simple deployment notification
+    # Deploy to Digital Ocean
+    - name: Deploy to Digital Ocean
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.DO_HOST }}
+        username: ${{ secrets.DO_USERNAME }}
+        password: ${{ secrets.DO_PASSWORD }}
+        port: ${{ secrets.DO_PORT }}
+        script: |
+          # Stop and remove existing container if it exists
+          docker stop fairlx-app || true
+          docker rm fairlx-app || true
+          
+          # Remove old image to save space
+          docker rmi ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest || true
+          
+          # Pull the latest image
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest
+          
+          # Run the new container
+          docker run -d \
+            --name fairlx-app \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e NEXT_TELEMETRY_DISABLED=1 \
+            ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest
+          
+          # Clean up unused Docker images
+          docker image prune -f
+          
+          # Wait a moment for the container to start
+          sleep 10
+          
+          # Check if the container is running
+          if docker ps | grep -q fairlx-app; then
+            echo "Deployment successful! Container is running."
+          else
+            echo "Deployment failed! Container is not running."
+            docker logs fairlx-app
+            exit 1
+          fi
+
     - name: Deployment Status
       run: |
-        echo "Deployment successful!"
-        echo "Image tags:"
-        echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest"
-        echo "  - ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:${{ github.sha }}"
+        echo "Deployment to Digital Ocean completed successfully!"
+        echo "Application URL: http://${{ secrets.DO_HOST }}:3000"
+        echo "Docker image: ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest"
