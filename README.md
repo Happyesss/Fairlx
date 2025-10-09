@@ -81,6 +81,18 @@
 
 ## 🚀 Getting Started
 
+### CI/CD Setup
+
+This project uses GitHub Actions for CI/CD. Before you begin:
+
+1. Set up required secrets in GitHub repository settings:
+   - `DOCKERHUB_USERNAME`: Your Docker Hub username
+   - `DOCKERHUB_TOKEN`: Docker Hub access token
+
+For detailed CI/CD setup instructions, see:
+- [CI/CD Setup Guide](./docs/CICD_SETUP.md)
+- [Secrets Setup Guide](./docs/SECRETS_SETUP.md)
+
 ### Prerequisites
 
 - **Node.js** 18+ and **npm** (or **Bun** for faster package management)
