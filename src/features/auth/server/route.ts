@@ -55,11 +55,13 @@ const app = new Hono()
       }
 
       // Email is verified, set the cookie
+      const isProduction = process.env.NODE_ENV === "production";
+
       setCookie(c, AUTH_COOKIE, session.secret, {
         path: "/",
         httpOnly: true,
-        secure: true,
-        sameSite: "strict",
+        secure: isProduction,
+        sameSite: isProduction ? "strict" : "lax",
         maxAge: 60 * 60 * 24 * 30,
       });
 
