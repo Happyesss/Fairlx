@@ -17,7 +17,7 @@ export const Navigation = () => {
           <Link href="/" className="flex items-center gap-2 group">
             <div className="relative">
               <Image 
-                src="/logo.png" 
+                src="/Logo.png" 
                 alt="Fairlx" 
                 width={32} 
                 height={32} 

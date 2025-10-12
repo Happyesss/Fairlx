@@ -1,0 +1,101 @@
+name: CD
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/fairlx:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/fairlx:buildcache,mode=max
+
+    # Deploy to Digital Ocean
+    - name: Deploy to Digital Ocean
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.DO_HOST }}
+        username: ${{ secrets.DO_USERNAME }}
+        password: ${{ secrets.DO_PASSWORD }}
+        port: ${{ secrets.DO_PORT }}
+        script: |
+          # Stop and remove existing container if it exists
+          docker stop fairlx-app || true
+          docker rm fairlx-app || true
+          
+          # Remove old image to save space
+          docker rmi ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest || true
+          
+          # Pull the latest image
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest
+          
+          # Run the new container
+          docker run -d \
+            --name fairlx-app \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e NEXT_TELEMETRY_DISABLED=1 \
+            -e NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}" \
+            -e NEXT_PUBLIC_APPWRITE_ENDPOINT="${{ secrets.NEXT_PUBLIC_APPWRITE_ENDPOINT }}" \
+            -e NEXT_PUBLIC_APPWRITE_PROJECT="${{ secrets.NEXT_PUBLIC_APPWRITE_PROJECT }}" \
+            -e NEXT_PUBLIC_APPWRITE_DATABASE_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_DATABASE_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_WORKSPACES_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_WORKSPACES_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_MEMBERS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_MEMBERS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_PROJECTS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_PROJECTS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_TASKS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_TASKS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_TIME_LOGS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_TIME_LOGS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_CUSTOM_COLUMNS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_CUSTOM_COLUMNS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_DEFAULT_COLUMN_SETTINGS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_DEFAULT_COLUMN_SETTINGS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_IMAGES_BUCKET_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_IMAGES_BUCKET_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_ATTACHMENTS_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_ATTACHMENTS_ID }}" \
+            -e NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET_ID="${{ secrets.NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET_ID }}" \
+            -e NEXT_APPWRITE_KEY="${{ secrets.NEXT_APPWRITE_KEY }}" \
+            ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest
+          
+          # Clean up unused Docker images
+          docker image prune -f
+          
+          # Wait a moment for the container to start
+          sleep 10
+          
+          # Check if the container is running
+          if docker ps | grep -q fairlx-app; then
+            echo "Deployment successful! Container is running."
+          else
+            echo "Deployment failed! Container is not running."
+            docker logs fairlx-app
+            exit 1
+          fi
+
+    - name: Deployment Status
+      run: |
+        echo "Deployment to Digital Ocean completed successfully!"
+        echo "Application URL: http://${{ secrets.DO_HOST }}:3000"
+        echo "Docker image: ${{ secrets.DOCKERHUB_USERNAME }}/fairlx:latest"
