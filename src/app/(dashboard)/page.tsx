@@ -1,17 +1,30 @@
 import { getCurrent } from "@/features/auth/queries";
 import { getWorkspaces } from "@/features/workspaces/queries";
 import { redirect } from "next/navigation";
+import { ForceClientPlaceholder } from "@/components/force-client-placeholder";
 
-export default async function DashboardHome() {
+const DashboardRedirect = async () => {
   const user = await getCurrent();
 
-  if (!user) redirect("/sign-in");
+  if (!user) {
+    redirect("/sign-in");
+  }
 
   const workspaces = await getWorkspaces();
 
   if (workspaces.total === 0) {
     redirect("/workspaces/create");
-  } else {
-    redirect(`/workspaces/${workspaces.documents[0].$id}`);
   }
+
+  redirect(`/workspaces/${workspaces.documents[0].$id}`);
+  return null;
+};
+
+export default function DashboardHome() {
+  return (
+    <>
+      <DashboardRedirect />
+      <ForceClientPlaceholder />
+    </>
+  );
 }

@@ -9,9 +9,7 @@ const nextConfig = {
   },
   
   // Enable experimental features for better SSR support
-  experimental: {
-    serverComponentsExternalPackages: ['node-appwrite'],
-  },
+  serverExternalPackages: ['node-appwrite'],
 
   // Add headers for CORS and font handling
   async headers() {
