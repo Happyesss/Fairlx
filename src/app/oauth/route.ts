@@ -26,5 +26,5 @@ export async function GET(request: NextRequest) {
     secure: true,
   });
 
-  return NextResponse.redirect(`${request.nextUrl.origin}/`);
+  return NextResponse.redirect(`${request.nextUrl.origin}/dashboard`);
 }
