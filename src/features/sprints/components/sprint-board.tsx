@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,6 +18,7 @@ interface SprintBoardProps {
 }
 
 export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
+  const router = useRouter();
   const [createSprintOpen, setCreateSprintOpen] = useState(false);
 
   const { data: sprintsData, isLoading: sprintsLoading } = useGetSprints({
@@ -44,13 +46,26 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Sprint Board</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your sprints and work items
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="h-8 w-8 p-0 hover:bg-gray-100"
+          >
+            <ArrowLeft className="size-4 text-gray-600" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Sprint Board</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your sprints and work items
+            </p>
+          </div>
         </div>
-        <Button onClick={() => setCreateSprintOpen(true)}>
+        <Button
+          onClick={() => setCreateSprintOpen(true)}
+          className=" text-white border bg-blue-600 border-gray-300 hover:bg-blue-700"
+        >
           <Plus className="size-4 mr-2" />
           New Sprint
         </Button>
@@ -58,20 +73,20 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
 
       {/* Tabs for different views */}
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="active">
+        <TabsList className="bg-gray-100 p-1">
+          <TabsTrigger value="active" className="text-xs">
             Active ({activeSprints.length})
           </TabsTrigger>
-          <TabsTrigger value="planned">
+          <TabsTrigger value="planned" className="text-xs">
             Planned ({plannedSprints.length})
           </TabsTrigger>
-          <TabsTrigger value="completed">
+          <TabsTrigger value="completed" className="text-xs">
             Completed ({completedSprints.length})
           </TabsTrigger>
         </TabsList>
 
         {/* Active Sprints */}
-        <TabsContent value="active" className="space-y-4">
+        <TabsContent value="active" className="space-y-3">
           {activeSprints.length > 0 ? (
             activeSprints.map((sprint) => (
               <SprintCard
@@ -82,8 +97,8 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
               />
             ))
           ) : (
-            <div className="text-center py-12 border rounded-lg bg-muted/50">
-              <p className="text-muted-foreground">
+            <div className="text-center py-12 border border-gray-200 rounded-lg bg-white">
+              <p className="text-gray-500 text-sm">
                 No active sprints. Create one to get started.
               </p>
             </div>
@@ -91,7 +106,7 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
         </TabsContent>
 
         {/* Planned Sprints */}
-        <TabsContent value="planned" className="space-y-4">
+        <TabsContent value="planned" className="space-y-3">
           {plannedSprints.length > 0 ? (
             plannedSprints.map((sprint) => (
               <SprintCard
@@ -102,8 +117,8 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
               />
             ))
           ) : (
-            <div className="text-center py-12 border rounded-lg bg-muted/50">
-              <p className="text-muted-foreground">
+            <div className="text-center py-12 border border-gray-200 rounded-lg bg-white">
+              <p className="text-gray-500 text-sm">
                 No planned sprints. Create one to start planning.
               </p>
             </div>
@@ -111,7 +126,7 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
         </TabsContent>
 
         {/* Completed Sprints */}
-        <TabsContent value="completed" className="space-y-4">
+        <TabsContent value="completed" className="space-y-3">
           {completedSprints.length > 0 ? (
             completedSprints.map((sprint) => (
               <SprintCard
@@ -122,8 +137,8 @@ export const SprintBoard = ({ workspaceId, projectId }: SprintBoardProps) => {
               />
             ))
           ) : (
-            <div className="text-center py-12 border rounded-lg bg-muted/50">
-              <p className="text-muted-foreground">
+            <div className="text-center py-12 border border-gray-200 rounded-lg bg-white">
+              <p className="text-gray-500 text-sm">
                 No completed sprints yet.
               </p>
             </div>

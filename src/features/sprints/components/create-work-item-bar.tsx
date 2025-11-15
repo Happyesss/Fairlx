@@ -101,16 +101,14 @@ export const CreateWorkItemBar = ({
 
   return (
     <>
-      <div className="flex items-center ">
-        <Button
-          size="sm"
-          onClick={() => setIsOpen(true)}
-          className="flex-1 justify-start border text-xs font-medium"
-        >
-          <Plus className="size-3 mr-0" />
-          Add work item
-        </Button>
-      </div>
+      <Button
+        size="sm"
+        onClick={() => setIsOpen(true)}
+        className="px-3 py-1 bg-white text-white border border-gray-300 text-xs font-medium h-6"
+      >
+        <Plus className="size-3 mr-1" />
+        Add work item
+      </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-[600px]">
