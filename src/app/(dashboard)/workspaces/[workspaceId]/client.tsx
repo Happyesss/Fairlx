@@ -16,6 +16,7 @@ import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal
 import type { Task } from "@/features/tasks/types"
 import { useGetWorkspaceAnalytics } from "@/features/workspaces/api/use-get-workspace-analytics"
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id"
+import { useCurrentMember } from "@/features/members/hooks/use-current-member"
 
 import { formatDistanceToNow } from "date-fns"
 import {
@@ -691,6 +692,7 @@ interface TaskListProps {
 export const TaskList = ({ data, total }: TaskListProps) => {
   const workspaceId = useWorkspaceId()
   const { open: createTask } = useCreateTaskModal()
+  const { isAdmin } = useCurrentMember({ workspaceId })
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -699,14 +701,16 @@ export const TaskList = ({ data, total }: TaskListProps) => {
           <h2 className="text-sm font-semibold text-foreground">Tasks</h2>
           <p className="text-xs text-muted-foreground">{total} total</p>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={createTask}
-          className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
-        >
-          <PlusIcon className="size-3.5" />
-        </Button>
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={createTask}
+            className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
+          >
+            <PlusIcon className="size-3.5" />
+          </Button>
+        )}
       </div>
 
       <div className="bg-card border border-border rounded-lg p-3 space-y-2 flex-1 overflow-y-auto">
@@ -755,6 +759,7 @@ interface ProjectListProps {
 export const ProjectList = ({ data, total }: ProjectListProps) => {
   const workspaceId = useWorkspaceId()
   const { open: createProject } = useCreateProjectModal()
+  const { isAdmin } = useCurrentMember({ workspaceId })
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -763,14 +768,16 @@ export const ProjectList = ({ data, total }: ProjectListProps) => {
           <h2 className="text-sm font-semibold text-foreground">Projects</h2>
           <p className="text-xs text-muted-foreground">{total} total</p>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={createProject}
-          className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
-        >
-          <PlusIcon className="size-3.5" />
-        </Button>
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={createProject}
+            className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
+          >
+            <PlusIcon className="size-3.5" />
+          </Button>
+        )}
       </div>
 
       <div className="bg-card border border-border rounded-lg p-3">
@@ -809,7 +816,7 @@ export const ProjectList = ({ data, total }: ProjectListProps) => {
           </Button>
         )}
       </div>
-    </div>
+    </div >
   )
 }
 

@@ -61,7 +61,27 @@ const app = new Hono()
         queryFilters
       );
 
-      return c.json({ data: teams });
+      // Enrich teams with member counts
+      const teamsWithMemberCounts = await Promise.all(
+        teams.documents.map(async (team) => {
+          const teamMembers = await databases.listDocuments(
+            DATABASE_ID,
+            TEAM_MEMBERS_ID,
+            [Query.equal("teamId", team.$id), Query.equal("isActive", true)]
+          );
+          return {
+            ...team,
+            memberCount: teamMembers.total,
+          };
+        })
+      );
+
+      return c.json({ 
+        data: {
+          ...teams,
+          documents: teamsWithMemberCounts,
+        }
+      });
     }
   )
 

@@ -14,9 +14,9 @@ interface SafeEnhancedDataKanbanProps {
   members?: Array<{ $id: string; name: string }>;
 }
 
-export const SafeEnhancedDataKanban = ({ 
-  data = [], 
-  onChange, 
+export const SafeEnhancedDataKanban = ({
+  data = [],
+  onChange,
   isAdmin = false,
   members = []
 }: SafeEnhancedDataKanbanProps) => {
@@ -25,7 +25,9 @@ export const SafeEnhancedDataKanban = ({
       <DataKanban
         data={data || []}
         onChange={onChange}
-        isAdmin={isAdmin}
+        canCreateTasks={isAdmin}
+        canEditTasks={isAdmin}
+        canDeleteTasks={isAdmin}
         members={members}
       />
     </>

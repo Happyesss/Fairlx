@@ -6,6 +6,7 @@ import { useGetWorkspaces } from "@/features/workspaces/api/use-get-workspaces";
 import { WorkspaceAvatar } from "@/features/workspaces/components/workspace-avatar";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useCreateWorkspaceModal } from "@/features/workspaces/hooks/use-create-workspace-modal";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 
 import {
   Select,
@@ -21,6 +22,7 @@ export const WorkspaceSwitcher = () => {
   const router = useRouter();
   const { data: workspaces } = useGetWorkspaces();
   const { open } = useCreateWorkspaceModal();
+  const { isAdmin } = useCurrentMember({ workspaceId });
 
   const onSelect = (id: string) => {
     router.push(`/workspaces/${id}`);
@@ -29,11 +31,13 @@ export const WorkspaceSwitcher = () => {
   return (
     <div className="flex flex-col px-3 pt-5 pb-8   border-t-[1.5px] border-neutral-200">
       <div className="flex items-center justify-between pb-4 ">
-      <p className="text-[13px] tracking-normal font-medium  pl-2 text-primary">Workspaces</p>
-        <RiAddCircleFill
-          onClick={open}
-          className="size-5 text-neutral-500 cursor-pointer hover:opacity-75 transition"
-        />
+        <p className="text-[13px] tracking-normal font-medium  pl-2 text-primary">Workspaces</p>
+        {isAdmin && (
+          <RiAddCircleFill
+            onClick={open}
+            className="size-5 text-neutral-500 cursor-pointer hover:opacity-75 transition"
+          />
+        )}
       </div>
 
       <Select onValueChange={onSelect} value={workspaceId}>

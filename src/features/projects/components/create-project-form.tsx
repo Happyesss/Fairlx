@@ -12,6 +12,7 @@ import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 
 import { cn } from "@/lib/utils";
 import { DottedSeparator } from "@/components/dotted-separator";
+import { DatePicker } from "@/components/date-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 import { createProjectSchema } from "../schemas";
 import { useCreateProject } from "../api/use-create-project";
@@ -43,6 +45,8 @@ export const CreateProjectForm = ({ onCancel }: CreateProjectFormProps) => {
     resolver: zodResolver(createProjectSchema.omit({ workspaceId: true })),
     defaultValues: {
       name: "",
+      description: "",
+      deadline: "",
     },
   });
 
@@ -94,6 +98,45 @@ export const CreateProjectForm = ({ onCancel }: CreateProjectFormProps) => {
                     <FormControl>
                       <Input placeholder="Enter project name" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Enter project description" 
+                        className="resize-none"
+                        rows={3}
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="deadline"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Project Deadline (Optional)</FormLabel>
+                    <div className="pt-1">
+                      <DatePicker
+                        value={field.value ? new Date(field.value) : undefined}
+                        onChange={(date) => {
+                          field.onChange(date ? date.toISOString() : "");
+                        }}
+                        size="default"
+                        className="h-10"
+                        placeholder="Select deadline"
+                      />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

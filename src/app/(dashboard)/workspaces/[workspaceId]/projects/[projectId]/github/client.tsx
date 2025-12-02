@@ -17,7 +17,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-import { 
+import {
   ConnectRepository,
   CodebaseQA,
   CommitHistory
@@ -145,7 +145,7 @@ export const GitHubIntegrationClient = () => {
             {/* Line from AI Processing to Insights */}
             <div className="absolute top-1/2 left-[73%] w-[13%] h-0.5 bg-gradient-to-r from-purple-500/50 to-green-500/50 -translate-y-1/2" />
           </div>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8 items-center">
             {/* Step 1: GitHub Source */}
             <div className="relative flex justify-center lg:justify-end">
@@ -379,7 +379,7 @@ export const GitHubIntegrationClient = () => {
                 </SheetDescription>
               </SheetHeader>
 
-            
+
 
               <div className="space-y-6 p-6">
                 <div className="space-y-5">
@@ -424,11 +424,11 @@ export const GitHubIntegrationClient = () => {
                   </div>
                 </div>
 
-               
+
               </div>
-               <div className="pt-6 px-6 border-t ">
-                  <ConnectRepository projectId={projectId} isUpdate />
-                </div>
+              <div className="pt-6 px-6 border-t ">
+                <ConnectRepository projectId={projectId} isUpdate />
+              </div>
             </SheetContent>
           </Sheet>
 

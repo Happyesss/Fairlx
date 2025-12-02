@@ -78,6 +78,7 @@ export const EditProjectForm = ({
     const finalValues = {
       ...values,
       image: values.image instanceof File ? values.image : "",
+      deadline: values.deadline ?? undefined, // Convert null to undefined
     };
 
     mutate({ form: finalValues, param: { projectId: initialValues.$id } });

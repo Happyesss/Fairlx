@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import { DATABASE_ID, MEMBERS_ID, PROJECTS_ID, TASKS_ID, TIME_LOGS_ID } from "@/config";
+import { DATABASE_ID, MEMBERS_ID, PROJECTS_ID, TASKS_ID, TIME_LOGS_ID, COMMENTS_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { notifyTaskAssignees, notifyWorkspaceAdmins } from "@/lib/notifications";
@@ -168,6 +168,32 @@ const app = new Hono()
         allAssigneeIds.size > 0 ? [Query.equal("$id", Array.from(allAssigneeIds))] : []
       );
 
+      // Get comment counts for all tasks
+      const taskIds = tasks.documents.map((task) => task.$id);
+      const commentCounts: Record<string, number> = {};
+      
+      if (taskIds.length > 0) {
+        try {
+          // Fetch comments for all tasks and count them
+          const comments = await databases.listDocuments(
+            DATABASE_ID,
+            COMMENTS_ID,
+            [
+              Query.equal("taskId", taskIds),
+              Query.limit(5000), // Get enough to count all comments
+            ]
+          );
+          
+          // Count comments per task
+          comments.documents.forEach((comment) => {
+            const taskId = comment.taskId as string;
+            commentCounts[taskId] = (commentCounts[taskId] || 0) + 1;
+          });
+        } catch {
+          // Comments collection might not exist yet, ignore errors
+        }
+      }
+
       const assignees = (await Promise.all(
         members.documents.map(async (member) => {
           try {
@@ -207,6 +233,7 @@ const app = new Hono()
           project,
           assignee, // Keep for backward compatibility
           assignees: taskAssignees, // New field for multiple assignees
+          commentCount: commentCounts[task.$id] || 0,
         };
       });
 

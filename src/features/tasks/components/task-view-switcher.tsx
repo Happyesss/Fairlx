@@ -12,7 +12,7 @@ import { useGetMembers } from "@/features/members/api/use-get-members";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { columns } from "./columns";
+import { createColumns } from "./columns";
 import { DataCalendar } from "./data-calendar";
 import { DataFilters } from "./data-filters";
 import { DataTable } from "./data-table";
@@ -22,6 +22,7 @@ import { DataDashboard } from "./data-dashboard";
 import { TimelineView } from "@/features/timeline/components/timeline-view";
 import { MyBacklogView } from "@/features/personal-backlog/components/my-backlog-view";
 import { MySpaceDashboard } from "./my-space-dashboard";
+import EnhancedBacklogScreen from "@/features/sprints/components/enhanced-backlog-screen";
 
 import { useGetTasks } from "../api/use-get-tasks";
 import { useCreateTaskModal } from "../hooks/use-create-task-modal";
@@ -152,12 +153,38 @@ export const TaskViewSwitcher = ({
                   My Backlog
                 </TabsTrigger>
               </>
+            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="table">
+              Table
+            </TabsTrigger>
+            <TabsTrigger className="h-8 w-full text-xs  lg:w-auto" value="kanban">
+              Kanban
+            </TabsTrigger>
+            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="calendar">
+              Calendar
+            </TabsTrigger>
+            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
+              Timeline
+            </TabsTrigger>
+            {paramProjectId && (
+              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
+                Backlog
+              </TabsTrigger>
+            )}
+            {showMyTasksOnly && (
+              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="my-backlog">
+                My Backlog
+              </TabsTrigger>
             )}
           </TabsList>
-          <Button onClick={open} size="xs" className="w-full font-medium px-3 py-2 tracking-tight !bg-[#2663ec] lg:w-auto">
-            <PlusIcon className="size-3 " />
-            Add Task
-          </Button>
+          {isAdmin && (
+            <Button onClick={open} size="xs" className="w-full font-medium px-3 py-2 tracking-tight !bg-[#2663ec] lg:w-auto">
+              <PlusIcon className="size-3 " />
+              Add Task
+            </Button>
+          )}
         </div>
 
 
@@ -179,13 +206,18 @@ export const TaskViewSwitcher = ({
               <DataDashboard tasks={filteredTasks?.documents} isLoading={isLoadingTasks} />
             </TabsContent>
             <TabsContent value="table" className="mt-0 p-4">
-              <DataTable columns={columns} data={filteredTasks?.documents ?? []} />
+              <DataTable
+                columns={createColumns(isAdmin, isAdmin)}
+                data={filteredTasks?.documents ?? []}
+              />
             </TabsContent>
             <TabsContent value="kanban" className="mt-0 p-4">
               <EnhancedDataKanban
                 data={filteredTasks?.documents ?? []}
                 onChange={onKanbanChange}
-                isAdmin={isAdmin}
+                canCreateTasks={isAdmin}
+                canEditTasks={isAdmin}
+                canDeleteTasks={isAdmin}
                 members={members?.documents ?? []}
                 projectId={paramProjectId || projectId || undefined}
               />
@@ -199,8 +231,13 @@ export const TaskViewSwitcher = ({
                 projectId={paramProjectId || projectId || undefined}
               />
             </TabsContent>
-            {showMyTasksOnly && (
+            {paramProjectId && (
               <TabsContent value="backlog" className="mt-0 h-full">
+                <EnhancedBacklogScreen workspaceId={workspaceId} projectId={paramProjectId} />
+              </TabsContent>
+            )}
+            {showMyTasksOnly && (
+              <TabsContent value="my-backlog" className="mt-0 h-full">
                 <MyBacklogView workspaceId={workspaceId} />
               </TabsContent>
             )}

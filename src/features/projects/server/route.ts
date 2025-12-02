@@ -25,7 +25,7 @@ const app = new Hono()
       const storage = c.get("storage");
       const user = c.get("user");
 
-      const { name, image, workspaceId } = c.req.valid("form");
+      const { name, description, deadline, image, workspaceId } = c.req.valid("form");
 
       const member = await getMember({
         databases,
@@ -62,6 +62,8 @@ const app = new Hono()
         ID.unique(),
         {
           name,
+          description: description || undefined,
+          deadline: deadline || undefined,
           imageUrl: uploadedImageUrl,
           workspaceId,
         }
@@ -169,7 +171,7 @@ const app = new Hono()
       const user = c.get("user");
 
       const { projectId } = c.req.param();
-      const { name, image } = c.req.valid("form");
+      const { name, description, deadline, image } = c.req.valid("form");
 
       const existingProject = await databases.getDocument<Project>(
         DATABASE_ID,
@@ -208,8 +210,21 @@ const app = new Hono()
         uploadedImageUrl = image;
       }
 
-      const updateData = { name, imageUrl: uploadedImageUrl };
-      (updateData as Record<string, unknown>).lastModifiedBy = user.$id;
+      const updateData: Record<string, unknown> = { 
+        name, 
+        imageUrl: uploadedImageUrl,
+        lastModifiedBy: user.$id,
+      };
+      
+      // Only update description if it was provided (even if empty string to clear it)
+      if (description !== undefined) {
+        updateData.description = description || null;
+      }
+
+      // Only update deadline if it was provided (null to clear it)
+      if (deadline !== undefined) {
+        updateData.deadline = deadline || null;
+      }
 
       const project = await databases.updateDocument(
         DATABASE_ID,

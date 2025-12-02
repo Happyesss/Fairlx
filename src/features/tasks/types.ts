@@ -31,6 +31,7 @@ export type Task = Models.Document & {
   priority?: TaskPriority;
   labels?: string[];
   flagged?: boolean;
+  commentCount?: number; // Number of comments on this task
 };
 
 export type TaskAssignee = {

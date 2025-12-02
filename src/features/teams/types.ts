@@ -136,6 +136,7 @@ export type Team = Models.Document & {
   visibility: TeamVisibility;
   createdBy: string;
   lastModifiedBy?: string;
+  memberCount?: number; // Added when listing teams
 };
 
 // Team Member type (from Appwrite)

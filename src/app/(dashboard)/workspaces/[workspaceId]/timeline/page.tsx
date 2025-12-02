@@ -43,12 +43,12 @@ export default async function TimelinePage({
   }
 
   // Debug: Log the data to help troubleshoot
-  console.log("Timeline Data Debug:", {
-    sprintsCount: timelineData.sprints.total,
-    workItemsCount: timelineData.workItems.total,
-    firstSprint: timelineData.sprints.documents[0]?.name,
-    firstWorkItem: timelineData.workItems.documents[0]?.title,
-  });
+  // console.log("Timeline Data Debug:", {
+  //   sprintsCount: timelineData.sprints.total,
+  //   workItemsCount: timelineData.workItems.total,
+  //   firstSprint: timelineData.sprints.documents[0]?.name,
+  //   firstWorkItem: timelineData.workItems.documents[0]?.title,
+  // });
 
   // Process data on the server (heavy computation)
   const processedData = processTimelineData(
@@ -56,11 +56,11 @@ export default async function TimelinePage({
     TimelineZoomLevel.WEEKS
   );
 
-  console.log("Processed Data Debug:", {
-    sprintGroupsCount: processedData.sprintGroups.length,
-    flatItemsCount: processedData.flatItems.length,
-    epicsCount: processedData.epics.length,
-  });
+  // console.log("Processed Data Debug:", {
+  //   sprintGroupsCount: processedData.sprintGroups.length,
+  //   flatItemsCount: processedData.flatItems.length,
+  //   epicsCount: processedData.epics.length,
+  // });
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -68,6 +68,8 @@ export default async function TimelinePage({
         initialData={processedData}
         sprints={timelineData.sprints.documents}
         workItems={timelineData.workItems.documents}
+        workspaceId={workspaceId}
+        projectId={projectId || ""}
       />
     </Suspense>
   );

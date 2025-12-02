@@ -20,9 +20,18 @@ interface TaskActionsProps {
   projectId: string;
   children: React.ReactNode;
   flagged?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
-export const TaskActions = ({ id, projectId, children, flagged = false }: TaskActionsProps) => {
+export const TaskActions = ({
+  id,
+  projectId,
+  children,
+  flagged = false,
+  canEdit = true,
+  canDelete = true,
+}: TaskActionsProps) => {
   const router = useRouter();
   const workspaceId = useWorkspaceId();
 
@@ -78,15 +87,17 @@ export const TaskActions = ({ id, projectId, children, flagged = false }: TaskAc
             <ExternalLink className="size-4 mr-2 stroke-2" />
             Open Project
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              open(id);
-            }}
-            className="font-medium p-[10px]"
-          >
-            <PencilIcon className="size-4 mr-2 stroke-2" />
-            Edit Task
-          </DropdownMenuItem>
+          {canEdit && (
+            <DropdownMenuItem
+              onClick={() => {
+                open(id);
+              }}
+              className="font-medium p-[10px]"
+            >
+              <PencilIcon className="size-4 mr-2 stroke-2" />
+              Edit Task
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={onToggleFlag}
             disabled={isUpdatingTask}
@@ -95,14 +106,16 @@ export const TaskActions = ({ id, projectId, children, flagged = false }: TaskAc
             <FlagIcon className={`size-4 mr-2 stroke-2 ${flagged ? 'fill-red-500 text-red-500' : ''}`} />
             {flagged ? 'Unflag Task' : 'Flag Task'}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={onDelete}
-            disabled={isDeletingTask}
-            className="text-amber-700 focus:text-amber-700 font-medium p-[10px]"
-          >
-            <TrashIcon className="size-4 mr-2 stroke-2" />
-            Delete Task
-          </DropdownMenuItem>
+          {canDelete && (
+            <DropdownMenuItem
+              onClick={onDelete}
+              disabled={isDeletingTask}
+              className="text-amber-700 focus:text-amber-700 font-medium p-[10px]"
+            >
+              <TrashIcon className="size-4 mr-2 stroke-2" />
+              Delete Task
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
