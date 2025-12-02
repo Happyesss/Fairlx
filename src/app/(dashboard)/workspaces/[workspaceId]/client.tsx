@@ -193,7 +193,7 @@ export const WorkspaceIdClient = () => {
     <div className="h-full flex flex-col space-y-4 p-6 bg-background">
       {/* Header with Filter */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">Workspace Dashboard</h1>
         <div className="relative">
           <Button
             variant="outline"
@@ -299,48 +299,48 @@ export const WorkspaceIdClient = () => {
                       </div>
                     </div>
                   ) : (
-                <div className="space-y-1">
-                  {filterCategories
-                    .find((f) => f.id === activeFilterCategory)
-                    ?.subcategories.map((sub) => {
-                      const isStatus = activeFilterCategory === "filter-2"
-                      const isPriority = activeFilterCategory === "filter-3"
-                      const isDue = activeFilterCategory === "filter-4"
-                      const isWorkType = activeFilterCategory === "filter-5"
+                    <div className="space-y-1">
+                      {filterCategories
+                        .find((f) => f.id === activeFilterCategory)
+                        ?.subcategories.map((sub) => {
+                          const isStatus = activeFilterCategory === "filter-2"
+                          const isPriority = activeFilterCategory === "filter-3"
+                          const isDue = activeFilterCategory === "filter-4"
+                          const isWorkType = activeFilterCategory === "filter-5"
 
-                      const checked = isStatus
-                        ? selectedStatuses.includes(sub.id)
-                        : isPriority
-                        ? selectedPriorities.includes(sub.id)
-                        : isDue
-                        ? selectedDueDates.includes(sub.id)
-                        : isWorkType
-                        ? selectedWorkTypes.includes(sub.id)
-                        : false
+                          const checked = isStatus
+                            ? selectedStatuses.includes(sub.id)
+                            : isPriority
+                              ? selectedPriorities.includes(sub.id)
+                              : isDue
+                                ? selectedDueDates.includes(sub.id)
+                                : isWorkType
+                                  ? selectedWorkTypes.includes(sub.id)
+                                  : false
 
-                      const onToggle = () => {
-                        if (isStatus) return toggleFromSet(sub.id, setSelectedStatuses)
-                        if (isPriority) return toggleFromSet(sub.id, setSelectedPriorities)
-                        if (isDue) return toggleFromSet(sub.id, setSelectedDueDates)
-                        if (isWorkType) return toggleFromSet(sub.id, setSelectedWorkTypes)
-                      }
+                          const onToggle = () => {
+                            if (isStatus) return toggleFromSet(sub.id, setSelectedStatuses)
+                            if (isPriority) return toggleFromSet(sub.id, setSelectedPriorities)
+                            if (isDue) return toggleFromSet(sub.id, setSelectedDueDates)
+                            if (isWorkType) return toggleFromSet(sub.id, setSelectedWorkTypes)
+                          }
 
-                      return (
-                        <label
-                          key={sub.id}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg cursor-pointer transition-all duration-200 active:scale-95"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={onToggle}
-                            className="rounded border-border cursor-pointer transition-all duration-200"
-                          />
-                          <span className="text-sm text-foreground">{sub.name}</span>
-                        </label>
-                      )
-                    })}
-                </div>
+                          return (
+                            <label
+                              key={sub.id}
+                              className="flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg cursor-pointer transition-all duration-200 active:scale-95"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={onToggle}
+                                className="rounded border-border cursor-pointer transition-all duration-200"
+                              />
+                              <span className="text-sm text-foreground">{sub.name}</span>
+                            </label>
+                          )
+                        })}
+                    </div>
                   )}
                 </div>
               )}
@@ -438,52 +438,52 @@ export const WorkspaceIdClient = () => {
           <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
             <h3 className="text-sm font-semibold text-foreground mb-2">Recent Activity</h3>
             <p className="text-xs text-muted-foreground mb-3">Stay up to date with what&apos;s happening.</p>
-          <div className="space-y-2">
-            {(() => {
-              const selectedAssigneeNames = filterCategories
-                .find((f) => f.id === "filter-1")?.subcategories
-                .filter((a) => selectedAssignees.includes(a.id))
-                .map((a) => a.name) || []
+            <div className="space-y-2">
+              {(() => {
+                const selectedAssigneeNames = filterCategories
+                  .find((f) => f.id === "filter-1")?.subcategories
+                  .filter((a) => selectedAssignees.includes(a.id))
+                  .map((a) => a.name) || []
 
-              const statusIdsToNames: Record<string, string> = {
-                "status-open": "OPEN",
-                "status-progress": "IN PROGRESS",
-                "status-completed": "COMPLETED",
-                "status-blocked": "BLOCKED",
-              }
+                const statusIdsToNames: Record<string, string> = {
+                  "status-open": "OPEN",
+                  "status-progress": "IN PROGRESS",
+                  "status-completed": "COMPLETED",
+                  "status-blocked": "BLOCKED",
+                }
 
-              const filtered = recentActivityData.filter((activity) => {
-                const statusOk =
-                  selectedStatuses.length === 0 ||
-                  selectedStatuses.some((id) => statusIdsToNames[id]?.toLowerCase() === activity.status.toLowerCase())
-                const assigneeOk =
-                  selectedAssigneeNames.length === 0 || selectedAssigneeNames.includes(activity.user)
-                return statusOk && assigneeOk
-              })
+                const filtered = recentActivityData.filter((activity) => {
+                  const statusOk =
+                    selectedStatuses.length === 0 ||
+                    selectedStatuses.some((id) => statusIdsToNames[id]?.toLowerCase() === activity.status.toLowerCase())
+                  const assigneeOk =
+                    selectedAssigneeNames.length === 0 || selectedAssigneeNames.includes(activity.user)
+                  return statusOk && assigneeOk
+                })
 
-              return filtered.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex gap-2 pb-2 border-b border-border last:border-0 hover:bg-muted/50 p-1.5 -mx-1.5 rounded transition-all duration-200 cursor-pointer"
-                >
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                    {activity.user.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground">
-                      <span className="font-semibold">{activity.user}</span> {activity.action}
-                    </p>
-                    <p className="text-xs text-blue-600 font-medium mt-0.5">{activity.item}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-                        {activity.status}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{activity.time}</span>
+                return filtered.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="flex gap-2 pb-2 border-b border-border last:border-0 hover:bg-muted/50 p-1.5 -mx-1.5 rounded transition-all duration-200 cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                      {activity.user.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground">
+                        <span className="font-semibold">{activity.user}</span> {activity.action}
+                      </p>
+                      <p className="text-xs text-blue-600 font-medium mt-0.5">{activity.item}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                          {activity.status}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{activity.time}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            })()}
+                ))
+              })()}
             </div>
           </div>
 
@@ -527,22 +527,21 @@ export const WorkspaceIdClient = () => {
                 })
 
                 return filtered.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-2 p-2 bg-muted rounded-lg hover:shadow-md transition-all duration-200 cursor-pointer hover:bg-muted/80"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground">{item.task}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.dueIn}</p>
-                  </div>
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap transition-all duration-200 flex-shrink-0 font-medium ${
-                      item.priority === "high" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                    }`}
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-2 p-2 bg-muted rounded-lg hover:shadow-md transition-all duration-200 cursor-pointer hover:bg-muted/80"
                   >
-                    {item.priority}
-                  </span>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground">{item.task}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.dueIn}</p>
+                    </div>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap transition-all duration-200 flex-shrink-0 font-medium ${item.priority === "high" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
+                        }`}
+                    >
+                      {item.priority}
+                    </span>
+                  </div>
                 ))
               })()}
             </div>
@@ -604,28 +603,28 @@ export const WorkspaceIdClient = () => {
               const totalWorkloadTasks = visibleMembers.reduce((sum, m) => sum + m.tasksTotal, 0) || 1
               return visibleMembers.map((member) => {
                 const progress = Math.round((member.tasksTotal / totalWorkloadTasks) * 100)
-              return (
-                <div
-                  key={member.id}
-                  className="bg-muted/50 rounded-lg p-2 hover:bg-muted transition-all duration-200"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-semibold text-foreground truncate">{member.name}</p>
-                    <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full flex-shrink-0 bg-blue-500">
-                      {progress}%
-                    </span>
+                return (
+                  <div
+                    key={member.id}
+                    className="bg-muted/50 rounded-lg p-2 hover:bg-muted transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-foreground truncate">{member.name}</p>
+                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full flex-shrink-0 bg-blue-500">
+                        {progress}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center mt-1">
+                      {member.tasksTotal}/{totalWorkloadTasks} tasks
+                    </p>
                   </div>
-                  <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center mt-1">
-                    {member.tasksTotal}/{totalWorkloadTasks} tasks
-                  </p>
-                </div>
-              )
+                )
               })
             })()}
           </div>
@@ -653,26 +652,26 @@ export const WorkspaceIdClient = () => {
             return filtered.map((workType) => {
               const IconComponent = workType.icon
               return (
-              <div
-                key={workType.id}
-                className="bg-muted/30 rounded-lg p-2.5 hover:bg-muted/50 transition-all duration-200 border border-border/30"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded-md text-white flex-shrink-0 bg-blue-500">
-                    <IconComponent className="size-3.5" />
+                <div
+                  key={workType.id}
+                  className="bg-muted/30 rounded-lg p-2.5 hover:bg-muted/50 transition-all duration-200 border border-border/30"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="p-1.5 rounded-md text-white flex-shrink-0 bg-blue-500">
+                      <IconComponent className="size-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground">{workType.name}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground">{workType.name}</p>
+                  <div className="w-full bg-background rounded-full h-1.5 overflow-hidden mb-1">
+                    <div
+                      className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
+                      style={{ width: `${workType.count}%` }}
+                    />
                   </div>
+                  <p className="text-xs font-bold text-foreground text-center">{workType.count}%</p>
                 </div>
-                <div className="w-full bg-background rounded-full h-1.5 overflow-hidden mb-1">
-                  <div
-                    className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
-                    style={{ width: `${workType.count}%` }}
-                  />
-                </div>
-                <p className="text-xs font-bold text-foreground text-center">{workType.count}%</p>
-              </div>
               )
             })
           })()}

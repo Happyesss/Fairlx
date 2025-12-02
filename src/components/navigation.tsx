@@ -23,7 +23,7 @@ const routes = [
     activeIcon: GoHomeFill,
   },
   {
-    label: "My Tasks",
+    label: "My Space",
     href: "/tasks",
     icon: GoCheckCircle,
     activeIcon: GoCheckCircleFill,
@@ -82,7 +82,7 @@ export const Navigation = () => {
       <ul className="flex flex-col ">
         {routes.map((item) => {
           // For timeline, pass workspaceId and projectId (if available) as search params for SSR
-          const fullHref = item.href === "/timeline" 
+          const fullHref = item.href === "/timeline"
             ? `/workspaces/${workspaceId}${item.href}?workspaceId=${workspaceId}${projectId ? `&projectId=${projectId}` : ""}`
             : `/workspaces/${workspaceId}${item.href}`;
           const isActive = pathname === `/workspaces/${workspaceId}${item.href}`;
