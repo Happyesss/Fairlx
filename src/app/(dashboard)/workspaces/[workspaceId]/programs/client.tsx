@@ -35,6 +35,7 @@ import { CreateProgramModal } from "@/features/programs/components/create-progra
 import { EditProgramModal } from "@/features/programs/components/edit-program-modal";
 import { ProgramStatus } from "@/features/programs/types";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { cn } from "@/lib/utils";
 
 const getStatusColor = (status: ProgramStatus) => {
@@ -90,6 +91,7 @@ export const ProgramsClient = () => {
   const { open: openEdit } = useEditProgramModal();
   const [, setProgramId] = useProgramId();
   const { mutate: deleteProgram } = useDeleteProgram();
+  const { isAdmin } = useCurrentMember({ workspaceId });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -153,7 +155,7 @@ export const ProgramsClient = () => {
               Strategic initiatives that drive your organization forward
             </p>
           </div>
-          {!isLoading && programs && programs.documents.length > 0 && (
+          {isAdmin && (!isLoading && programs && programs.documents.length > 0) && (
             <Button onClick={openCreate} size="default" className="gap-2">
               <Plus className="size-4" />
               Create Program
@@ -300,10 +302,12 @@ export const ProgramsClient = () => {
             <p className="text-muted-foreground text-center max-w-sm mb-6">
               Create your first program to organize strategic initiatives across your workspace
             </p>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="size-4" />
-              Create Your First Program
-            </Button>
+            {isAdmin && (
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="size-4" />
+                Create Your First Program
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : filteredPrograms.length === 0 ? (
@@ -364,18 +368,22 @@ export const ProgramsClient = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleEdit(program.$id)}>
-                          <Pencil className="size-4 mr-2" />
-                          Edit Program
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(program.$id)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="size-4 mr-2" />
-                          Delete Program
-                        </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem onClick={() => handleEdit(program.$id)}>
+                            <Pencil className="size-4 mr-2" />
+                            Edit Program
+                          </DropdownMenuItem>
+                        )}
+                        {isAdmin && <DropdownMenuSeparator />}
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(program.$id)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="size-4 mr-2" />
+                            Delete Program
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -482,18 +490,22 @@ export const ProgramsClient = () => {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEdit(program.$id)}>
-                            <Pencil className="size-4 mr-2" />
-                            Edit Program
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(program.$id)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="size-4 mr-2" />
-                            Delete Program
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem onClick={() => handleEdit(program.$id)}>
+                              <Pencil className="size-4 mr-2" />
+                              Edit Program
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && <DropdownMenuSeparator />}
+                          {isAdmin && (
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(program.$id)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="size-4 mr-2" />
+                              Delete Program
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

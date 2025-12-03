@@ -117,6 +117,9 @@ export function TimelineView({ workspaceId, projectId }: TimelineViewProps) {
         initialData={processedData}
         sprints={sprintsData.documents}
         workItems={workItemsData.documents}
+        workspaceId={workspaceId}
+        projectId={projectId}
+        showHeader={false}
       />
     </div>
   );

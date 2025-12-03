@@ -15,9 +15,10 @@ import { Task } from "../types";
 interface TaskBreadcrumbsProps {
   project: Project;
   task: Task;
+  canDelete?: boolean;
 }
 
-export const TaskBreadcrumbs = ({ project, task }: TaskBreadcrumbsProps) => {
+export const TaskBreadcrumbs = ({ project, task, canDelete = true }: TaskBreadcrumbsProps) => {
   const workspaceId = useWorkspaceId();
   const router = useRouter();
 
@@ -57,16 +58,18 @@ export const TaskBreadcrumbs = ({ project, task }: TaskBreadcrumbsProps) => {
       </Link>
       <ChevronRightIcon className="size-4 lg:size-5 text-muted-foreground" />
       <p className="text-sm lg:text-lg font-semibold">{task.name}</p>
-      <Button
-        onClick={handleDeleteTask}
-        disabled={isPending}
-        className="ml-auto"
-        variant="destructive"
-        size="sm"
-      >
-        <TrashIcon className="size-4 lg:mr-2" />
-        <span className="hidden lg:block">Delete Task</span>
-      </Button>
+      {canDelete && (
+        <Button
+          onClick={handleDeleteTask}
+          disabled={isPending}
+          className="ml-auto"
+          variant="destructive"
+          size="sm"
+        >
+          <TrashIcon className="size-4 lg:mr-2" />
+          <span className="hidden lg:block">Delete Task</span>
+        </Button>
+      )}
     </div>
   );
 };

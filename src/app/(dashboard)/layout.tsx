@@ -11,6 +11,7 @@ import { CreateTeamModal } from "@/features/teams/components/create-team-modal";
 import { EditTeamModal } from "@/features/teams/components/edit-team-modal";
 import { CreateProgramModal } from "@/features/programs/components/create-program-modal";
 import { EditProgramModal } from "@/features/programs/components/edit-program-modal";
+import { ProjectAIChatWrapper } from "@/features/project-docs/components";
 
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
@@ -53,6 +54,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           </div>
         </div>
       </div>
+
+      {/* Project AI Chat - floating button, only shows on project pages */}
+      <ProjectAIChatWrapper />
     </div>
   );
 };

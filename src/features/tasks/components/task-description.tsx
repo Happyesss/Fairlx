@@ -10,9 +10,10 @@ import { Task } from "../types";
 
 interface TaskDescriptionProps {
   task: Task;
+  canEdit?: boolean;
 }
 
-export const TaskDescription = ({ task }: TaskDescriptionProps) => {
+export const TaskDescription = ({ task, canEdit = true }: TaskDescriptionProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(task.description);
 
@@ -33,18 +34,20 @@ export const TaskDescription = ({ task }: TaskDescriptionProps) => {
     <div className="p-4 border rounded-lg">
       <div className="flex items-center justify-between">
         <p className="text-lg font-semibold">Overview</p>
-        <Button
-          onClick={() => setIsEditing((prev) => !prev)}
-          size="sm"
-          variant="secondary"
-        >
-          {isEditing ? (
-            <XIcon className="size-4 mr-2" />
-          ) : (
-            <PencilIcon className="size-4 mr-2" />
-          )}
-          {isEditing ? "Cancel" : "Edit"}
-        </Button>
+        {canEdit && (
+          <Button
+            onClick={() => setIsEditing((prev) => !prev)}
+            size="sm"
+            variant="secondary"
+          >
+            {isEditing ? (
+              <XIcon className="size-4 mr-2" />
+            ) : (
+              <PencilIcon className="size-4 mr-2" />
+            )}
+            {isEditing ? "Cancel" : "Edit"}
+          </Button>
+        )}
       </div>
       <DottedSeparator className="my-4" />
       {isEditing ? (

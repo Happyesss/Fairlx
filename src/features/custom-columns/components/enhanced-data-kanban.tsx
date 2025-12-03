@@ -47,26 +47,30 @@ interface EnhancedDataKanbanProps {
   onChange: (
     tasks: { $id: string; status: TaskStatus | string; position: number }[]
   ) => void;
-  isAdmin?: boolean;
+  canCreateTasks?: boolean;
+  canEditTasks?: boolean;
+  canDeleteTasks?: boolean;
   members?: Array<{ $id: string; name: string }>;
   projectId?: string; // Add optional projectId prop
 }
 
-export const EnhancedDataKanban = ({ 
+export const EnhancedDataKanban = ({
   data = [], // Default to empty array
-  onChange, 
-  isAdmin = false,
+  onChange,
+  canCreateTasks = true,
+  canEditTasks = true,
+  canDeleteTasks = true,
   members = [],
   projectId
 }: EnhancedDataKanbanProps) => {
   const workspaceId = useWorkspaceId();
-  
 
-  const { data: customColumns, isLoading: isLoadingColumns, error: columnsError } = useGetCustomColumns({ 
-    workspaceId, 
-    projectId: projectId || "" 
+
+  const { data: customColumns, isLoading: isLoadingColumns, error: columnsError } = useGetCustomColumns({
+    workspaceId,
+    projectId: projectId || ""
   });
-  
+
 
   const { open: openCreateTask } = useCreateTaskModal();
   const { getEnabledColumns } = useDefaultColumns(workspaceId, projectId);
@@ -82,20 +86,20 @@ export const EnhancedDataKanban = ({
   // Combine enabled default boards with custom columns (safe when loading)
   const allColumns = useMemo(() => {
     const columns: ColumnData[] = [
-      ...getEnabledColumns.map(col => ({ 
-        id: col.id, 
-        type: "default" as const, 
+      ...getEnabledColumns.map(col => ({
+        id: col.id,
+        type: "default" as const,
         status: col.id,
         position: col.position || 0
       })),
-      ...(customColumns?.documents || []).map(col => ({ 
-        id: col.$id, 
-        type: "custom" as const, 
+      ...(customColumns?.documents || []).map(col => ({
+        id: col.$id,
+        type: "custom" as const,
         customColumn: col as CustomColumn,
         position: col.position
       }))
     ];
-    
+
     // Sort by position
     return columns.sort((a, b) => a.position - b.position);
   }, [getEnabledColumns, customColumns?.documents]);
@@ -105,6 +109,7 @@ export const EnhancedDataKanban = ({
 
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
+  const [sortDirections, setSortDirections] = useState<Record<string, 'asc' | 'desc'>>({});
 
   const { mutate: bulkUpdateTasks } = useBulkUpdateTasks();
 
@@ -116,7 +121,7 @@ export const EnhancedDataKanban = ({
   // Update tasks when data changes or columns change
   useEffect(() => {
     const newTasks: TasksState = {};
-    
+
     // Initialize all enabled columns
     orderedColumns.forEach(col => {
       newTasks[col.id] = [];
@@ -132,22 +137,22 @@ export const EnhancedDataKanban = ({
     if (Array.isArray(data) && data.length > 0) {
       data.forEach((task) => {
         const taskStatus = task.status;
-        
+
         // Check if task belongs to an enabled column
         if (newTasks[taskStatus]) {
           newTasks[taskStatus].push(task);
+        } else {
+          // Task is in a disabled/non-existent column, move to ASSIGNED if available
+          if (newTasks[TaskStatus.ASSIGNED]) {
+            newTasks[TaskStatus.ASSIGNED].push(task);
           } else {
-            // Task is in a disabled/non-existent column, move to ASSIGNED if available
-            if (newTasks[TaskStatus.ASSIGNED]) {
-              newTasks[TaskStatus.ASSIGNED].push(task);
-            } else {
-              // If ASSIGNED is also disabled, move to first available enabled column
-              const firstEnabledColumn = Object.keys(newTasks)[0];
-              if (firstEnabledColumn) {
-                newTasks[firstEnabledColumn].push(task);
-              }
+            // If ASSIGNED is also disabled, move to first available enabled column
+            const firstEnabledColumn = Object.keys(newTasks)[0];
+            if (firstEnabledColumn) {
+              newTasks[firstEnabledColumn].push(task);
             }
           }
+        }
       });
     }
 
@@ -175,13 +180,13 @@ export const EnhancedDataKanban = ({
     setSelectedTasks(prev => {
       const newSet = new Set(prev);
       const columnTasks = tasks[columnId];
-      
+
       if (selected) {
         columnTasks.forEach(task => newSet.add(task.$id));
       } else {
         columnTasks.forEach(task => newSet.delete(task.$id));
       }
-      
+
       return newSet;
     });
   }, [tasks]);
@@ -230,6 +235,64 @@ export const EnhancedDataKanban = ({
 
     setSelectedTasks(new Set());
   }, [selectedTasks, bulkUpdateTasks]);
+
+  const handleSortByPriority = useCallback((columnId: string) => {
+    // Toggle sort direction
+    const newDirection = sortDirections[columnId] === 'asc' ? 'desc' : 'asc';
+    setSortDirections(prev => ({ ...prev, [columnId]: newDirection }));
+
+    setTasks(prev => {
+      const newTasks = { ...prev };
+      const priorityOrder = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      newTasks[columnId] = [...newTasks[columnId]].sort((a, b) => {
+        const aPriority = a.priority ? priorityOrder[a.priority as keyof typeof priorityOrder] ?? 4 : 4;
+        const bPriority = b.priority ? priorityOrder[b.priority as keyof typeof priorityOrder] ?? 4 : 4;
+        const comparison = aPriority - bPriority;
+        return newDirection === 'asc' ? comparison : -comparison;
+      });
+
+      // Update positions after sorting
+      const updates = newTasks[columnId].map((task, index) => ({
+        $id: task.$id,
+        status: columnId,
+        position: Math.min((index + 1) * 1000, 1_000_000),
+      }));
+
+      // Persist the new positions
+      onChange(updates);
+
+      return newTasks;
+    });
+  }, [onChange, sortDirections]);
+
+  const handleSortByDueDate = useCallback((columnId: string) => {
+    // Toggle sort direction
+    const newDirection = sortDirections[columnId] === 'asc' ? 'desc' : 'asc';
+    setSortDirections(prev => ({ ...prev, [columnId]: newDirection }));
+
+    setTasks(prev => {
+      const newTasks = { ...prev };
+      newTasks[columnId] = [...newTasks[columnId]].sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        const comparison = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return newDirection === 'asc' ? comparison : -comparison;
+      });
+
+      // Update positions after sorting
+      const updates = newTasks[columnId].map((task, index) => ({
+        $id: task.$id,
+        status: columnId,
+        position: Math.min((index + 1) * 1000, 1_000_000),
+      }));
+
+      // Persist the new positions
+      onChange(updates);
+
+      return newTasks;
+    });
+  }, [onChange, sortDirections]);
 
   const onDragEnd = useCallback(
     (result: DropResult) => {
@@ -288,7 +351,7 @@ export const EnhancedDataKanban = ({
         const [movedTask] = sourceColumn.splice(source.index, 1);
 
         if (!movedTask) {
-            console.warn("No task found at the source index");
+          console.warn("No task found at the source index");
           return prevTasks;
         }
 
@@ -370,7 +433,7 @@ export const EnhancedDataKanban = ({
       <>
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
-            {isAdmin && (
+            {canDeleteTasks && (
               <Button
                 variant={selectionMode ? "secondary" : "outline"}
                 size="sm"
@@ -397,7 +460,7 @@ export const EnhancedDataKanban = ({
               >
                 {orderedColumns.map((column, index) => {
                   const columnTasks = tasks[column.id] || [];
-                  const selectedInColumn = columnTasks.filter(task => 
+                  const selectedInColumn = columnTasks.filter(task =>
                     selectedTasks.has(task.$id)
                   ).length;
 
@@ -412,9 +475,8 @@ export const EnhancedDataKanban = ({
                         <div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          className={`flex-1 bg-gray-50 rounded-xl min-w-[280px] border shadow-sm max-w-[360px] ${
-                            snapshot.isDragging ? 'shadow-lg' : ''
-                          }`}
+                          className={`flex-1 bg-gray-50 rounded-xl min-w-[280px] border shadow-sm max-w-[360px] ${snapshot.isDragging ? 'shadow-lg' : ''
+                            }`}
                         >
                           <div
                             {...provided.dragHandleProps}
@@ -427,6 +489,10 @@ export const EnhancedDataKanban = ({
                                 selectedCount={selectedInColumn}
                                 onSelectAll={(status, selected) => handleSelectAll(column.id, selected)}
                                 showSelection={selectionMode}
+                                canCreateTasks={canCreateTasks}
+                                onSortByPriority={() => handleSortByPriority(column.id)}
+                                onSortByDueDate={() => handleSortByDueDate(column.id)}
+                                sortDirection={sortDirections[column.id] || 'asc'}
                               />
                             ) : (
                               <CustomColumnHeader
@@ -435,10 +501,13 @@ export const EnhancedDataKanban = ({
                                 selectedCount={selectedInColumn}
                                 onSelectAll={handleSelectAll}
                                 showSelection={selectionMode}
+                                onSortByPriority={() => handleSortByPriority(column.id)}
+                                onSortByDueDate={() => handleSortByDueDate(column.id)}
+                                sortDirection={sortDirections[column.id] || 'asc'}
                               />
                             )}
                           </div>
-                          
+
                           <Droppable droppableId={column.id} type="task">
                             {(provided) => (
                               <div
@@ -459,11 +528,13 @@ export const EnhancedDataKanban = ({
                                         {...provided.dragHandleProps}
                                         ref={provided.innerRef}
                                       >
-                                        <KanbanCard 
-                                          task={task} 
+                                        <KanbanCard
+                                          task={task}
                                           isSelected={selectedTasks.has(task.$id)}
                                           onSelect={handleTaskSelect}
                                           showSelection={selectionMode}
+                                          canEdit={canEditTasks}
+                                          canDelete={canDeleteTasks}
                                         />
                                       </div>
                                     )}
@@ -471,14 +542,16 @@ export const EnhancedDataKanban = ({
                                 ))}
                                 {provided.placeholder}
                                 {/* Add Task Button */}
-                                <Button
-                                  onClick={openCreateTask}
-                                  variant="ghost"
-                                  className="w-full text-xs bg-white border border-gray-200 shadow-sm justify-start text-gray-500  mt-2"
-                                >
-                                  <PlusIcon className="h-4 w-4 " />
-                                  Add Task
-                                </Button>
+                                {canCreateTasks && (
+                                  <Button
+                                    onClick={openCreateTask}
+                                    variant="ghost"
+                                    className="w-full text-xs bg-white border border-gray-200 shadow-sm justify-start text-gray-500  mt-2"
+                                  >
+                                    <PlusIcon className="h-4 w-4 " />
+                                    Add Task
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </Droppable>
@@ -498,7 +571,7 @@ export const EnhancedDataKanban = ({
           onClearSelection={handleClearSelection}
           onStatusChange={handleBulkStatusChange}
           onAssigneeChange={handleBulkAssigneeChange}
-          isAdmin={isAdmin}
+          isAdmin={canDeleteTasks}
           assignees={members}
           projectId={projectId}
         />

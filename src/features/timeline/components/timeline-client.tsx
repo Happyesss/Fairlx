@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useCallback, useTransition } from "react";
+import React, { useMemo, useRef, useCallback, useTransition, useState } from "react";
 import { useTimelineState } from "@/features/timeline/hooks/use-timeline-store";
 import { useUpdateTimelineItem } from "@/features/timeline/api/use-update-timeline-item";
 import { TimelineHeader } from "@/features/timeline/components/timeline-header";
@@ -21,6 +21,7 @@ import {
   TimelineSprintGroup,
 } from "@/features/timeline/types";
 import { PopulatedWorkItem, PopulatedSprint } from "@/features/sprints/types";
+import { CreateEpicDialog } from "@/features/sprints/components/create-epic-dialog";
 
 interface TimelineClientProps {
   initialData: {
@@ -34,6 +35,9 @@ interface TimelineClientProps {
   };
   sprints: PopulatedSprint[];
   workItems: PopulatedWorkItem[];
+  workspaceId: string;
+  projectId: string;
+  showHeader?: boolean;
 }
 
 /**
@@ -44,9 +48,13 @@ export function TimelineClient({
   initialData,
   sprints,
   workItems,
+  workspaceId,
+  projectId,
+  showHeader = true,
 }: TimelineClientProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
+  const [isCreateEpicDialogOpen, setIsCreateEpicDialogOpen] = useState(false);
 
   // State management
   const timelineState = useTimelineState();
@@ -172,7 +180,17 @@ export function TimelineClient({
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Header */}
+      {/* Page Title Header */}
+      {showHeader && (
+        <div className="border-b bg-white px-6 py-4">
+          <h1 className="text-2xl font-semibold tracking-tight">Timeline</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Visualize your project timeline and track progress
+          </p>
+        </div>
+      )}
+
+      {/* Timeline Header with Filters */}
       <TimelineHeader
         filters={filters}
         onFiltersChange={setFilters}
@@ -185,6 +203,7 @@ export function TimelineClient({
         epics={initialData.epics}
         labels={initialData.labels}
         allItems={flatItems}
+        onCreateEpic={() => setIsCreateEpicDialogOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -229,6 +248,14 @@ export function TimelineClient({
           <div className="text-sm text-muted-foreground">Updating...</div>
         </div>
       )}
+
+      {/* Create Epic Dialog */}
+      <CreateEpicDialog
+        workspaceId={workspaceId}
+        projectId={projectId}
+        open={isCreateEpicDialogOpen}
+        onCloseAction={() => setIsCreateEpicDialogOpen(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, ChevronDown, Download, ChevronRight } from "lucide-react";
+import { Search, ChevronDown, Download, ChevronRight, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,7 @@ interface TimelineHeaderProps {
   epics: TimelineItem[];
   labels: string[];
   allItems?: TimelineItem[];
+  onCreateEpic?: () => void;
 }
 
 export function TimelineHeader({
@@ -45,6 +46,7 @@ export function TimelineHeader({
   epics,
   labels,
   allItems = [],
+  onCreateEpic,
 }: TimelineHeaderProps) {
   const handleExportCSV = () => {
     if (allItems.length === 0) {
@@ -154,6 +156,15 @@ export function TimelineHeader({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCreateEpic}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Epic
+          </Button>
         </div>
       </div>
 

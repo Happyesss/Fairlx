@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useGetTeamMembers } from "@/features/teams/api/use-get-team-members";
 import { useGetTeamProjects } from "@/features/teams/api/use-get-team-projects";
 import { FirstTeamInfoDialog } from "@/features/teams/components/first-team-info-dialog";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import {
   Tooltip,
   TooltipContent,
@@ -93,6 +94,7 @@ export const TeamsClient = () => {
   const { open: openEdit } = useEditTeamModal();
   const [, setTeamId] = useTeamId();
   const { mutate: deleteTeam } = useDeleteTeam();
+  const { isAdmin } = useCurrentMember({ workspaceId });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<string>("all");
@@ -104,7 +106,7 @@ export const TeamsClient = () => {
   useEffect(() => {
     if (teams?.documents) {
       const currentCount = teams.documents.length;
-      
+
       // Show modal if there are no teams
       if (currentCount === 0) {
         setShowFirstTeamInfo(true);
@@ -117,7 +119,7 @@ export const TeamsClient = () => {
           localStorage.setItem('hasSeenFirstTeamInfo', 'true');
         }
       }
-      
+
       setPreviousTeamCount(currentCount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,12 +134,12 @@ export const TeamsClient = () => {
   // Filter and search teams
   const filteredTeams = useMemo(() => {
     if (!teams?.documents) return [];
-    
+
     return teams.documents.filter((team) => {
       const matchesSearch = team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           team.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        team.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesVisibility = visibilityFilter === "all" || team.visibility === visibilityFilter;
-      
+
       return matchesSearch && matchesVisibility;
     });
   }, [teams, searchQuery, visibilityFilter]);
@@ -145,7 +147,7 @@ export const TeamsClient = () => {
   // Team statistics
   const stats = useMemo(() => {
     if (!teams?.documents) return { total: 0, all: 0, program: 0, teamOnly: 0 };
-    
+
     return {
       total: teams.documents.length,
       all: teams.documents.filter(t => t.visibility === TeamVisibility.ALL).length,
@@ -171,11 +173,11 @@ export const TeamsClient = () => {
       <DeleteDialog />
       <CreateTeamModal />
       <EditTeamModal />
-      <FirstTeamInfoDialog 
-        open={showFirstTeamInfo} 
-        onOpenChange={setShowFirstTeamInfo} 
+      <FirstTeamInfoDialog
+        open={showFirstTeamInfo}
+        onOpenChange={setShowFirstTeamInfo}
       />
-      
+
       {/* Compact Header */}
       <div className="space-y-4 mb-4">
         <div className="flex items-center justify-between gap-4">
@@ -185,7 +187,7 @@ export const TeamsClient = () => {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button 
+                    <button
                       className="size-5 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
                       onClick={() => setShowFirstTeamInfo(true)}
                     >
@@ -194,7 +196,7 @@ export const TeamsClient = () => {
                   </TooltipTrigger>
                   <TooltipContent side="right" className="max-w-xs">
                     <p className="text-xs">
-                      <strong>Team-based Project Assignment:</strong> Workspace admins can assign projects to specific teams. 
+                      <strong>Team-based Project Assignment:</strong> Workspace admins can assign projects to specific teams.
                       Teams will only see their assigned projects. Click to learn more.
                     </p>
                   </TooltipContent>
@@ -205,10 +207,12 @@ export const TeamsClient = () => {
               Manage your workspace teams and collaborate effectively
             </p>
           </div>
-          <Button onClick={openCreate} size="sm" className="gap-1.5 h-9">
-            <Plus className="size-3.5" />
-            Create Team
-          </Button>
+          {isAdmin && (
+            <Button onClick={openCreate} size="sm" className="gap-1.5 h-9">
+              <Plus className="size-3.5" />
+              Create Team
+            </Button>
+          )}
         </div>
 
         {/* Compact Statistics Cards */}
@@ -348,10 +352,12 @@ export const TeamsClient = () => {
             <p className="text-muted-foreground text-center max-w-sm mb-6">
               Create your first team to start organizing your workspace and collaborating with members
             </p>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="size-4" />
-              Create Your First Team
-            </Button>
+            {isAdmin && (
+              <Button onClick={openCreate} className="gap-2">
+                <Plus className="size-4" />
+                Create Your First Team
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : filteredTeams.length === 0 ? (
@@ -371,10 +377,10 @@ export const TeamsClient = () => {
         )}>
           {filteredTeams.map((team) => {
             const VisibilityIcon = getVisibilityIcon(team.visibility);
-            
+
             return viewMode === "grid" ? (
-              <Card 
-                key={team.$id} 
+              <Card
+                key={team.$id}
                 role="link"
                 tabIndex={0}
                 onClick={() => router.push(`/workspaces/${workspaceId}/teams/${team.$id}`)}
@@ -410,8 +416,8 @@ export const TeamsClient = () => {
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="icon"
                           className="size-7 shrink-0"
                           onClick={(e) => e.stopPropagation()}
@@ -422,23 +428,27 @@ export const TeamsClient = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel className="text-xs">Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleEdit(team.$id)} className="text-xs">
-                          <Pencil className="size-3.5 mr-2" />
-                          Edit Team
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(team.$id)}
-                          className="text-destructive focus:text-destructive text-xs"
-                        >
-                          <Trash2 className="size-3.5 mr-2" />
-                          Delete Team
-                        </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem onClick={() => handleEdit(team.$id)} className="text-xs">
+                            <Pencil className="size-3.5 mr-2" />
+                            Edit Team
+                          </DropdownMenuItem>
+                        )}
+                        {isAdmin && <DropdownMenuSeparator />}
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(team.$id)}
+                            className="text-destructive focus:text-destructive text-xs"
+                          >
+                            <Trash2 className="size-3.5 mr-2" />
+                            Delete Team
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent className="pb-3 px-4">
                   <p className="text-xs text-muted-foreground line-clamp-2 min-h-[2rem]">
                     {team.description || "No description provided"}
@@ -448,14 +458,14 @@ export const TeamsClient = () => {
                 <CardFooter className="pt-3 px-4 pb-3 border-t bg-muted/5">
                   <div className="flex items-center justify-between w-full">
                     <TeamProjectName teamId={team.$id} />
-                    <TeamMemberAvatarsFooter teamId={team.$id} memberCount={team.statistics?.memberCount || 0} />
+                    <TeamMemberAvatarsFooter teamId={team.$id} memberCount={team.memberCount || 0} />
                   </div>
                 </CardFooter>
               </Card>
             ) : (
               // List View
-              <Card 
-                key={team.$id} 
+              <Card
+                key={team.$id}
                 role="link"
                 tabIndex={0}
                 onClick={() => router.push(`/workspaces/${workspaceId}/teams/${team.$id}`)}
@@ -478,7 +488,7 @@ export const TeamsClient = () => {
                         </AvatarFallback>
                       )}
                     </Avatar>
-                    
+
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
@@ -493,7 +503,7 @@ export const TeamsClient = () => {
                         </Badge>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -516,18 +526,22 @@ export const TeamsClient = () => {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
-                            <Pencil className="size-4 mr-2" />
-                            Edit Team
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(team.$id)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="size-4 mr-2" />
-                            Delete Team
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
+                              <Pencil className="size-4 mr-2" />
+                              Edit Team
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && <DropdownMenuSeparator />}
+                          {isAdmin && (
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(team.$id)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="size-4 mr-2" />
+                              Delete Team
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -550,22 +564,22 @@ interface TeamProjectNameProps {
 const TeamProjectName = ({ teamId }: TeamProjectNameProps) => {
   const { data: projectsData, isLoading } = useGetTeamProjects({ teamId });
   const projects = (projectsData as { documents: { $id: string; name: string; imageUrl?: string }[]; total: number } | undefined)?.documents || [];
-  
+
   if (isLoading) {
     return (
       <div className="h-4 w-20 bg-muted animate-pulse rounded" />
     );
   }
-  
+
   if (projects.length === 0) {
     return (
       <span className="text-xs text-muted-foreground">No projects</span>
     );
   }
-  
+
   const firstProject = projects[0];
   const additionalCount = projects.length - 1;
-  
+
   return (
     <div className="flex items-center gap-1">
       <span className="text-xs font-medium text-foreground truncate max-w-[100px]">
@@ -589,18 +603,18 @@ interface TeamMemberAvatarsFooterProps {
 const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFooterProps) => {
   const { data: teamMembersData, isLoading } = useGetTeamMembers({ teamId });
   const members = teamMembersData?.documents || [];
-  
+
   // Sort members: team lead first, then others
   const sortedMembers = [...members].sort((a, b) => {
     if (a.role === TeamMemberRole.LEAD) return -1;
     if (b.role === TeamMemberRole.LEAD) return 1;
     return 0;
   });
-  
+
   const displayMembers = sortedMembers.slice(0, 3);
   const actualCount = members.length || memberCount;
   const remainingCount = actualCount - displayMembers.length;
-  
+
   // Show loading state
   if (isLoading) {
     return (
@@ -611,7 +625,7 @@ const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFoote
       </div>
     );
   }
-  
+
   if (members.length === 0) {
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -620,13 +634,13 @@ const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFoote
       </div>
     );
   }
-  
+
   return (
     <TooltipProvider>
       <div className="flex -space-x-2">
         {displayMembers.map((member) => {
           const isLead = member.role === TeamMemberRole.LEAD;
-          
+
           return (
             <Tooltip key={member.$id}>
               <TooltipTrigger asChild>

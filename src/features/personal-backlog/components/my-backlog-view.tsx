@@ -20,6 +20,7 @@ import { EditBacklogItemDialog } from "./edit-backlog-item-dialog";
 import { BacklogPriorityBadge } from "./backlog-priority-badge";
 import { BacklogLabelBadge } from "./backlog-label-badge";
 import { BacklogTypeBadge } from "./backlog-type-badge";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 
 const boards: BacklogItemStatus[] = [
   BacklogItemStatus.TODO,
@@ -61,6 +62,7 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
     "Are you sure you want to delete this backlog item?",
     "destructive"
   );
+  const { isAdmin } = useCurrentMember({ workspaceId });
 
   // State management similar to main kanban board
   const [items, setItems] = useState<ItemsState>(() => {
@@ -236,18 +238,22 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
               className="flex-1 !h-10 text-xs"
               disabled={isCreating}
             />
-            <Button onClick={handleCreateItem} disabled={isCreating || !newItemTitle.trim()} className="text-xs font-medium !py-5.5" variant="outline">
-              {isCreating ? <Loader2 className="size-4 animate-spin" /> : <PlusIcon className="!size-3 !font-light" />}
-              Quick Add
-            </Button>
-            <Button onClick={() => {
-              setCreateDialogStatus(BacklogItemStatus.TODO);
-              setCreateDialogOpen(true);
-              
-            }} className="text-xs font-medium !py-5.5 tracking-normal bg-primary">
-              <PlusIcon className="!size-3 mr-0" />
-              New Item
-            </Button>
+            {isAdmin && (
+              <>
+                <Button onClick={handleCreateItem} disabled={isCreating || !newItemTitle.trim()} className="text-xs font-medium !py-5.5" variant="outline">
+                  {isCreating ? <Loader2 className="size-4 animate-spin" /> : <PlusIcon className="!size-3 !font-light" />}
+                  Quick Add
+                </Button>
+                <Button onClick={() => {
+                  setCreateDialogStatus(BacklogItemStatus.TODO);
+                  setCreateDialogOpen(true);
+
+                }} className="text-xs font-medium !py-5.5 tracking-normal bg-primary">
+                  <PlusIcon className="!size-3 mr-0" />
+                  New Item
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Filters */}
@@ -331,15 +337,15 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex overflow-x-auto gap-4 pb-4">
               {boards.map((status) => {
-                const statusIcon = 
+                const statusIcon =
                   status === BacklogItemStatus.TODO ? <CircleDashedIcon className="size-[18px] text-pink-400" /> :
-                  status === BacklogItemStatus.IN_PROGRESS ? <CircleDotDashedIcon className="size-[18px] text-yellow-400" /> :
-                  <CircleCheckIcon className="size-[18px] text-emerald-400" />;
+                    status === BacklogItemStatus.IN_PROGRESS ? <CircleDotDashedIcon className="size-[18px] text-yellow-400" /> :
+                      <CircleCheckIcon className="size-[18px] text-emerald-400" />;
 
-                const statusTitle = 
+                const statusTitle =
                   status === BacklogItemStatus.TODO ? "To Do" :
-                  status === BacklogItemStatus.IN_PROGRESS ? "In Progress" :
-                  "Done";
+                    status === BacklogItemStatus.IN_PROGRESS ? "In Progress" :
+                      "Done";
 
                 return (
                   <div
@@ -353,18 +359,19 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
                         <h2 className="text-sm font-semibold text-gray-700">{statusTitle}</h2>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          onClick={() => {
-                            setCreateDialogStatus(status as BacklogItemStatus);
-                            setCreateDialogOpen(true);
-                          }}
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 hover:bg-gray-100"
-                        >
-                          <PlusIcon className="h-4 w-4 text-gray-500" />
-                        </Button>
-                       
+                        {isAdmin && (
+                          <Button
+                            onClick={() => {
+                              setCreateDialogStatus(status as BacklogItemStatus);
+                              setCreateDialogOpen(true);
+                            }}
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 hover:bg-gray-100"
+                          >
+                            <PlusIcon className="h-4 w-4 text-gray-500" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -383,11 +390,10 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
                                 >
-                                  <div 
+                                  <div
                                     onClick={() => setEditingItem(item)}
-                                    className={`bg-white mb-2.5 rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
-                                      snapshot.isDragging ? "shadow-lg rotate-2 opacity-90" : ""
-                                    }`}
+                                    className={`bg-white mb-2.5 rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${snapshot.isDragging ? "shadow-lg rotate-2 opacity-90" : ""
+                                      }`}
                                   >
                                     <div className="flex p-4 flex-col items-start justify-between gap-x-2">
                                       {/* Top Section - Priority, Type, Labels and Actions */}
@@ -461,12 +467,12 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
                                         <CalendarIcon className="size-[14px] inline-block mr-1 text-gray-500" />
                                         {item.dueDate
                                           ? new Date(item.dueDate)
-                                              .toLocaleDateString("en-GB", {
-                                                day: "2-digit",
-                                                month: "short",
-                                                year: "numeric",
-                                              })
-                                              .replace(/ /g, "-")
+                                            .toLocaleDateString("en-GB", {
+                                              day: "2-digit",
+                                              month: "short",
+                                              year: "numeric",
+                                            })
+                                            .replace(/ /g, "-")
                                           : "No Date"}
                                       </p>
 
@@ -488,18 +494,20 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
                           ))}
                           {provided.placeholder}
                           {/* Add Item Button */}
-                       
 
-                           <Button
-                            onClick={() => {
-                              setCreateDialogStatus(status as BacklogItemStatus);
-                              setCreateDialogOpen(true);
-                            }}                                            
-                                 variant="ghost"
-                                className="w-full text-xs bg-white border border-gray-200 shadow-sm justify-start text-gray-500  mt-2" >
+
+                          {isAdmin && (
+                            <Button
+                              onClick={() => {
+                                setCreateDialogStatus(status as BacklogItemStatus);
+                                setCreateDialogOpen(true);
+                              }}
+                              variant="ghost"
+                              className="w-full text-xs bg-white border border-gray-200 shadow-sm justify-start text-gray-500  mt-2" >
                               <PlusIcon className="h-4 w-4 " />
-                                                 Add Task
-                           </Button>
+                              Add Task
+                            </Button>
+                          )}
                         </div>
                       )}
                     </Droppable>
@@ -517,7 +525,7 @@ export const MyBacklogView = ({ workspaceId }: MyBacklogViewProps) => {
           workspaceId={workspaceId}
           defaultStatus={createDialogStatus}
         />
-        
+
         {editingItem && (
           <EditBacklogItemDialog
             open={!!editingItem}

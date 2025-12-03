@@ -19,7 +19,8 @@ export type NotificationType =
   | "task_priority_changed"
   | "task_due_date_changed"
   | "task_attachment_added"
-  | "task_attachment_deleted";
+  | "task_attachment_deleted"
+  | "task_comment";
 
 interface CreateNotificationParams {
   databases: Databases;

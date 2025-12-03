@@ -11,6 +11,7 @@ import {
 } from "react-icons/go";
 
 import { usePathname } from "next/navigation";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useProjectId } from "@/features/projects/hooks/use-project-id";
@@ -76,11 +77,19 @@ export const Navigation = () => {
   const workspaceId = useWorkspaceId();
   const projectId = useProjectId();
   const pathname = usePathname();
+  const { isAdmin } = useCurrentMember({ workspaceId });
+
+  // Filter routes based on permissions
+  const visibleRoutes = routes.filter(route => {
+    // Hide Settings for non-admins
+    if (route.label === "Settings" && !isAdmin) return false;
+    return true;
+  });
 
   return (
     <div className="p-3 border-b-[1.5px] border-neutral-200 flex-shrink-0">
       <ul className="flex flex-col ">
-        {routes.map((item) => {
+        {visibleRoutes.map((item) => {
           // For timeline, pass workspaceId and projectId (if available) as search params for SSR
           const fullHref = item.href === "/timeline"
             ? `/workspaces/${workspaceId}${item.href}?workspaceId=${workspaceId}${projectId ? `&projectId=${projectId}` : ""}`

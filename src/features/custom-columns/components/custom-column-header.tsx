@@ -11,9 +11,15 @@ import * as IoIcons from "react-icons/io5";
 import * as MdIcons from "react-icons/md";
 import * as RiIcons from "react-icons/ri";
 import * as TbIcons from "react-icons/tb";
-import { PlusIcon, MoreHorizontalIcon } from "lucide-react";
+import { PlusIcon, MoreHorizontalIcon, ArrowUpDown, Calendar } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useConfirm } from "@/hooks/use-confirm";
 
 import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal";
@@ -42,11 +48,17 @@ interface CustomColumnHeaderProps {
   onSelectAll?: (columnId: string, selected: boolean) => void;
   showSelection?: boolean;
   showDelete?: boolean;
+  onSortByPriority?: (columnId: string) => void;
+  onSortByDueDate?: (columnId: string) => void;
+  sortDirection?: 'asc' | 'desc';
 }
 
 export const CustomColumnHeader = ({
   customColumn,
   showDelete = false,
+  onSortByPriority,
+  onSortByDueDate,
+  sortDirection = 'asc',
 }: CustomColumnHeaderProps) => {
   const { open } = useCreateTaskModal();
   const { mutate: deleteCustomColumn } = useDeleteCustomColumn();
@@ -62,8 +74,8 @@ export const CustomColumnHeader = ({
     const ok = await confirm();
     if (!ok) return;
 
-    deleteCustomColumn({ 
-      param: { customColumnId: customColumn.$id } 
+    deleteCustomColumn({
+      param: { customColumnId: customColumn.$id }
     });
   };
 
@@ -73,8 +85,8 @@ export const CustomColumnHeader = ({
       <div className="px-3 py-2 flex items-center justify-between mb-2">
         <div className="flex items-center gap-x-2">
           {IconComponent && (
-            <IconComponent 
-              className="size-[18px]" 
+            <IconComponent
+              className="size-[18px]"
               style={{ color: customColumn.color }}
             />
           )}
@@ -84,9 +96,23 @@ export const CustomColumnHeader = ({
           <Button onClick={open} variant="ghost" size="icon" className="h-6 w-6 hover:bg-gray-100">
             <PlusIcon className="h-4 w-4 text-gray-500" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-gray-100">
-            <MoreHorizontalIcon className="h-4 w-4 text-gray-500" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-gray-100">
+                <MoreHorizontalIcon className="h-4 w-4 text-gray-500" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onSortByPriority?.(customColumn.$id)}>
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                Sort by Priority ({sortDirection === 'asc' ? 'Low→High' : 'High→Low'})
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onSortByDueDate?.(customColumn.$id)}>
+                <Calendar className="h-4 w-4 mr-2" />
+                Sort by Due Date ({sortDirection === 'asc' ? 'Earliest' : 'Latest'})
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {showDelete && (
             <Button
               onClick={handleDelete}

@@ -44,6 +44,7 @@ import { EditTeamModal } from "@/features/teams/components/edit-team-modal";
 import { useConfirm } from "@/hooks/use-confirm";
 import { TeamVisibility, TeamMemberRole } from "@/features/teams/types";
 import { useGetTeamMembers } from "@/features/teams/api/use-get-team-members";
+import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { cn } from "@/lib/utils";
 
 const getVisibilityColor = (visibility: TeamVisibility) => {
@@ -93,6 +94,7 @@ export const TeamsClient = () => {
   const { open: openEdit } = useEditTeamModal();
   const [, setTeamId] = useTeamId();
   const { mutate: deleteTeam } = useDeleteTeam();
+  const { isAdmin } = useCurrentMember({ workspaceId });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<string>("all");
@@ -107,12 +109,12 @@ export const TeamsClient = () => {
   // Filter and search teams
   const filteredTeams = useMemo(() => {
     if (!teams?.documents) return [];
-    
+
     return teams.documents.filter((team) => {
       const matchesSearch = team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           team.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        team.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesVisibility = visibilityFilter === "all" || team.visibility === visibilityFilter;
-      
+
       return matchesSearch && matchesVisibility;
     });
   }, [teams, searchQuery, visibilityFilter]);
@@ -120,7 +122,7 @@ export const TeamsClient = () => {
   // Team statistics
   const stats = useMemo(() => {
     if (!teams?.documents) return { total: 0, all: 0, program: 0, teamOnly: 0 };
-    
+
     return {
       total: teams.documents.length,
       all: teams.documents.filter(t => t.visibility === TeamVisibility.ALL).length,
@@ -146,7 +148,7 @@ export const TeamsClient = () => {
       <DeleteDialog />
       <CreateTeamModal />
       <EditTeamModal />
-      
+
       {/* Header with Stats */}
       <div className="space-y-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -158,10 +160,12 @@ export const TeamsClient = () => {
               Manage your workspace teams and collaborate effectively
             </p>
           </div>
-          <Button onClick={openCreate} size="default" className="gap-2 !bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700">
-            <Plus className="size-4" />
-            Create Team
-          </Button>
+          {isAdmin && (
+            <Button onClick={openCreate} size="default" className="gap-2 !bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700">
+              <Plus className="size-4" />
+              Create Team
+            </Button>
+          )}
         </div>
 
         {/* Statistics Cards */}
@@ -302,10 +306,12 @@ export const TeamsClient = () => {
             <p className="text-muted-foreground text-center max-w-md mb-6 text-sm">
               Create your first team to start organizing your workspace and collaborating with members effectively
             </p>
-            <Button onClick={openCreate} className="gap-2 !bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700">
-              <Plus className="size-4" />
-              Create Your First Team
-            </Button>
+            {isAdmin && (
+              <Button onClick={openCreate} className="gap-2 !bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700">
+                <Plus className="size-4" />
+                Create Your First Team
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : filteredTeams.length === 0 ? (
@@ -325,10 +331,10 @@ export const TeamsClient = () => {
         )}>
           {filteredTeams.map((team) => {
             const VisibilityIcon = getVisibilityIcon(team.visibility);
-            
+
             return viewMode === "grid" ? (
-              <Card 
-                key={team.$id} 
+              <Card
+                key={team.$id}
                 role="link"
                 tabIndex={0}
                 onClick={() => router.push(`/workspaces/${workspaceId}/teams/${team.$id}`)}
@@ -369,8 +375,8 @@ export const TeamsClient = () => {
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="icon"
                           className="size-8 -mt-1 -mr-2 hover:bg-muted"
                           onClick={(e) => e.stopPropagation()}
@@ -381,23 +387,27 @@ export const TeamsClient = () => {
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
-                          <Pencil className="size-4 mr-2" />
-                          Edit Team
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(team.$id)}
-                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                        >
-                          <Trash2 className="size-4 mr-2" />
-                          Delete Team
-                        </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
+                            <Pencil className="size-4 mr-2" />
+                            Edit Team
+                          </DropdownMenuItem>
+                        )}
+                        {isAdmin && <DropdownMenuSeparator />}
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(team.$id)}
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                          >
+                            <Trash2 className="size-4 mr-2" />
+                            Delete Team
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent className="pb-4">
                   <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
                     {team.description || "No description provided"}
@@ -407,14 +417,14 @@ export const TeamsClient = () => {
                 <CardFooter className="pt-4 border-t bg-gradient-to-br from-muted/30 to-transparent">
                   <div className="flex items-center justify-between w-full">
                     <TeamProjectName teamId={team.$id} />
-                    <TeamMemberAvatarsFooter teamId={team.$id} memberCount={team.statistics?.memberCount || 0} />
+                    <TeamMemberAvatarsFooter teamId={team.$id} memberCount={team.memberCount || 0} />
                   </div>
                 </CardFooter>
               </Card>
             ) : (
               // List View
-              <Card 
-                key={team.$id} 
+              <Card
+                key={team.$id}
                 className="group hover:shadow-md transition-all duration-200 overflow-hidden"
               >
                 <CardContent className="p-6">
@@ -430,7 +440,7 @@ export const TeamsClient = () => {
                         )}
                       </Avatar>
                     </div>
-                    
+
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
@@ -445,7 +455,7 @@ export const TeamsClient = () => {
                         </Badge>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       <Link href={`/workspaces/${workspaceId}/teams/${team.$id}`}>
                         <Button variant="outline" size="sm" className="gap-2">
@@ -462,18 +472,22 @@ export const TeamsClient = () => {
                         <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
-                            <Pencil className="size-4 mr-2" />
-                            Edit Team
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(team.$id)}
-                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                          >
-                            <Trash2 className="size-4 mr-2" />
-                            Delete Team
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem onClick={() => handleEdit(team.$id)}>
+                              <Pencil className="size-4 mr-2" />
+                              Edit Team
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && <DropdownMenuSeparator />}
+                          {isAdmin && (
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(team.$id)}
+                              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                            >
+                              <Trash2 className="size-4 mr-2" />
+                              Delete Team
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -496,22 +510,22 @@ interface TeamProjectNameProps {
 const TeamProjectName = ({ teamId }: TeamProjectNameProps) => {
   const { data: projectsData, isLoading } = useGetTeamProjects({ teamId });
   const projects = (projectsData as { documents: { $id: string; name: string; imageUrl?: string }[]; total: number } | undefined)?.documents || [];
-  
+
   if (isLoading) {
     return (
       <div className="h-4 w-20 bg-muted animate-pulse rounded" />
     );
   }
-  
+
   if (projects.length === 0) {
     return (
       <span className="text-xs text-muted-foreground">No projects</span>
     );
   }
-  
+
   const firstProject = projects[0];
   const additionalCount = projects.length - 1;
-  
+
   return (
     <div className="flex items-center gap-1">
       <span className="text-xs font-medium text-foreground truncate max-w-[100px]">
@@ -535,18 +549,18 @@ interface TeamMemberAvatarsFooterProps {
 const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFooterProps) => {
   const { data: teamMembersData, isLoading } = useGetTeamMembers({ teamId });
   const members = teamMembersData?.documents || [];
-  
+
   // Sort members: team lead first, then others
   const sortedMembers = [...members].sort((a, b) => {
     if (a.role === TeamMemberRole.LEAD) return -1;
     if (b.role === TeamMemberRole.LEAD) return 1;
     return 0;
   });
-  
+
   const displayMembers = sortedMembers.slice(0, 3);
   const actualCount = members.length || memberCount;
   const remainingCount = actualCount - displayMembers.length;
-  
+
   // Show loading state
   if (isLoading) {
     return (
@@ -557,7 +571,7 @@ const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFoote
       </div>
     );
   }
-  
+
   if (members.length === 0) {
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -566,13 +580,13 @@ const TeamMemberAvatarsFooter = ({ teamId, memberCount }: TeamMemberAvatarsFoote
       </div>
     );
   }
-  
+
   return (
     <TooltipProvider>
       <div className="flex -space-x-2">
         {displayMembers.map((member) => {
           const isLead = member.role === TeamMemberRole.LEAD;
-          
+
           return (
             <Tooltip key={member.$id}>
               <TooltipTrigger asChild>
