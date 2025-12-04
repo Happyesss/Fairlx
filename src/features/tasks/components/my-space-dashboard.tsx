@@ -257,7 +257,6 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
   }, [projectsData, tasksData])
 
   const userName = user?.name?.split(' ')[0] ?? "User"
-  const monthYear = getCurrentMonthYear()
 
   const { open: openCreateProjectModal } = useCreateProjectModal();
   const { open: openCreateWorkspaceModal } = useCreateWorkspaceModal();
@@ -268,8 +267,10 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
       {/* Content - Scrollable */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         <div className="space-y-4">
-          {/* Top Analytics - Ultra Compact in One Row */}
-          <div className="grid grid-cols-4 gap-3">
+
+
+          {/* Top Stats Row - Ultra Compact */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: "Total", value: analytics.totalTasks, icon: ListTodo, color: "bg-blue-50", iconColor: "text-blue-600" },
               { label: "Completed", value: analytics.completedTasks, icon: CheckCircle2, color: "bg-green-50", iconColor: "text-green-600" },
@@ -278,14 +279,14 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
             ].map((stat, idx) => {
               const Icon = stat.icon
               return (
-                <Card key={idx} className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
+                <Card key={idx} className="p-3 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[11px] text-gray-600 font-medium truncate">{stat.label}</p>
-                      <p className="text-base font-bold text-foreground mt-1">{stat.value}</p>
+                      <p className="text-xs text-gray-600 font-semibold truncate">{stat.label}</p>
+                      <p className="text-2xl font-bold text-foreground mt-1">{stat.value}</p>
                     </div>
-                    <div className={`p-2.5 rounded-lg flex-shrink-0 ${stat.color}`}>
-                      <Icon className={`h-4 w-4 ${stat.iconColor}`} />
+                    <div className={`p-2 rounded-lg flex-shrink-0 ${stat.color}`}>
+                      <Icon className={`h-5 w-5 ${stat.iconColor}`} />
                     </div>
                   </div>
                 </Card>
@@ -293,222 +294,204 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
             })}
           </div>
 
-          {/* Overall Progress */}
-          <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-semibold text-foreground">Progress</h3>
-                  <span className="text-xs font-bold text-blue-600">{Math.round(analytics.completionPercentage)}%</span>
-                </div>
-                <Progress value={analytics.completionPercentage} className="h-2 bg-gray-200" />
-              </div>
-              <span className="text-xs text-gray-600 whitespace-nowrap font-medium">{analytics.completedTasks}/{analytics.totalTasks}</span>
-            </div>
-          </Card>
-
-          {/* Main Grid - Balanced 2 Column Layout */}
+          {/* Recent Activity & My Tasks - One Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Left Column - Workspaces & Calendar */}
-            <div className="space-y-4">
-              {/* Calendar */}
-              <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-                <h3 className="text-xs font-semibold text-foreground mb-3">{monthYear}</h3>
-                <div className="grid grid-cols-7 gap-0.5">
-                  {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
-                    <div key={index} className="text-center text-[10px] font-semibold text-gray-600 h-5 flex items-center justify-center">
-                      {day}
+            {/* Recent Activity */}
+            <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-blue-600" />
+                  Recent Activity
+                </h2>
+                <button
+                  onClick={() => setExpandTeamActivity(!expandTeamActivity)}
+                  className="text-gray-600 hover:text-foreground transition-colors"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${expandTeamActivity ? "rotate-0" : "-rotate-90"}`} />
+                </button>
+              </div>
+              {expandTeamActivity ? (
+                <div>
+                  {isLoadingTasks ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
-                  ))}
-                  {calendarDays.map((day, idx) => (
+                  ) : teamActivity.length === 0 ? (
+                    <p className="text-sm text-gray-600 py-6 text-center">No recent activity</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {teamActivity.map((activity: any) => {
+                        const getActivityIcon = (type: string) => {
+                          switch (type) {
+                            case "task":
+                              return <ListTodo className="h-4 w-4" />
+                            case "pr":
+                              return <GitBranch className="h-4 w-4" />
+                            case "comment":
+                              return <MessageSquare className="h-4 w-4" />
+                            case "status":
+                              return <TrendingUp className="h-4 w-4" />
+                            default:
+                              return <Activity className="h-4 w-4" />
+                          }
+                        }
+
+                        return (
+                          <div key={activity.id} className="pb-3 border-b border-gray-100 last:border-0 last:pb-0 flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">
+                              {getActivityIcon(activity.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground">
+                                <span className="text-blue-600 font-semibold">{activity.user}</span> {activity.action}
+                              </p>
+                              <p className="text-xs text-gray-600 truncate mt-0.5">{activity.item}</p>
+                              <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </Card>
+
+            {/* My Tasks */}
+            <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <ListTodo className="h-4 w-4 text-blue-600" />
+                  My Tasks
+                </h2>
+
+              </div>
+              {isLoadingTasks ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (tasksData?.documents ?? []).length === 0 ? (
+                <div className="text-center py-12">
+                  <ListTodo className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">No tasks yet. Create one to get started!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {(tasksData?.documents ?? []).slice(0, 6).map((task: any) => (
                     <button
-                      key={idx}
-                      className={`text-center text-[10px] h-7 flex items-center justify-center rounded-md transition-all font-medium ${day === null
-                        ? ""
-                        : day === today
-                          ? "bg-blue-600 text-white hover:bg-blue-700"
-                          : "text-foreground hover:bg-gray-100 border border-gray-200 hover:border-gray-300"
-                        }`}
+                      key={task.$id}
+                      onClick={() => router.push(`/workspaces/${workspaceId}/tasks`)}
+                      className="p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left group"
                     >
-                      {day}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="text-sm font-semibold text-foreground group-hover:text-blue-600 transition-colors line-clamp-2 flex-1">{task.name}</p>
+                        <span
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap flex-shrink-0 ${task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CLOSED
+                            ? "bg-green-100 text-green-700"
+                            : task.status === TaskStatus.IN_PROGRESS
+                              ? "bg-blue-100 text-blue-700"
+                              : task.status === "BLOCKED"
+                                ? "bg-red-100 text-red-700"
+                                : task.status === "IN_REVIEW"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : "bg-gray-100 text-gray-700"
+                            }`}
+                        >
+                          {task.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={`font-semibold ${task.priority === "urgent"
+                          ? "text-red-600"
+                          : task.priority === "high"
+                            ? "text-orange-600"
+                            : task.priority === "medium"
+                              ? "text-yellow-600"
+                              : "text-green-600"
+                          }`}>
+                          {task.priority}
+                        </span>
+                        {task.dueDate && (
+                          <span className="text-gray-500">{new Date(task.dueDate).toLocaleDateString()}</span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
-              </Card>
-
-              {/* Workspaces */}
-              <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-foreground">Workspaces</h3>
-                  <Button onClick={openCreateWorkspaceModal} variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]">
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-                {isLoadingWorkspaces ? (
-                  <div className="flex items-center justify-center h-24">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : workspaces.length === 0 ? (
-                  <p className="text-xs text-gray-600 py-4">No workspaces yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {workspaces.map((workspace) => (
-                      <button
-                        key={workspace.id}
-                        onClick={() => router.push(`/workspaces/${workspace.id}`)}
-                        className="w-full p-2.5 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-left shadow-sm hover:shadow-md"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-foreground truncate">{workspace.name}</p>
-                            <p className="text-[10px] text-gray-500 mt-0.5">{workspace.members}M • {workspace.projects}P</p>
-                          </div>
-                          <ChevronRight className="h-3 w-3 text-gray-400 flex-shrink-0 ml-2" />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
-
-            {/* Right Column - Projects & Status */}
-            <div className="space-y-4">
-              {/* Task Status Pie Chart */}
-              <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-                <h3 className="text-xs font-semibold text-foreground mb-3">Task Analytics</h3>
-                {tasksByStatus.length > 0 ? (
-                  <>
-                    <div className="h-40">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={tasksByStatus}
-                            dataKey="value"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={35}
-                            outerRadius={55}
-                            paddingAngle={2}
-                            startAngle={90}
-                            endAngle={-270}
-                          >
-                            {tasksByStatus.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "#ffffff",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: "8px",
-                              padding: "6px 10px",
-                              fontSize: "11px",
-                            }}
-                            formatter={(value: any) => [`${value} tasks`, "Count"]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="space-y-1.5 border-t border-gray-200 pt-3 mt-3">
-                      {tasksByStatus.map((status) => (
-                        <div key={status.name} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: status.color }} />
-                            <span className="text-[11px] text-gray-700 font-medium">{status.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold text-foreground">{status.value}</span>
-                            <span className="text-[10px] text-gray-500">
-                              ({Math.round((status.value / analytics.totalTasks) * 100 || 0)}%)
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="h-48 flex items-center justify-center">
-                    <p className="text-xs text-gray-600">No tasks yet</p>
-                  </div>
-                )}
-              </Card>
-
-              {/* Projects */}
-              <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-foreground">Projects</h3>
-                  <Button onClick={openCreateProjectModal} variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]">
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
-                {isLoadingProjects ? (
-                  <div className="flex items-center justify-center h-24">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : projects.length === 0 ? (
-                  <p className="text-xs text-gray-600 py-4">No projects yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {projects.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => router.push(`/workspaces/${workspaceId}/projects/${project.id}`)}
-                        className="w-full p-2.5 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-left shadow-sm hover:shadow-md"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-foreground truncate">{project.name}</p>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <Progress value={project.progress} className="h-1 flex-1 bg-gray-200 [&>div]:bg-blue-600" />
-                              <span className="text-[10px] font-semibold text-foreground whitespace-nowrap">{project.progress}%</span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 mt-1">{project.tasks} tasks</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
+              )}
+            </Card>
           </div>
 
-          {/* Due Alerts & Team Activity - 2 Column */}
+          {/* Due Today Section - Full Width */}
+          <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2 mb-4">
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+              Due Today
+            </h3>
+            {isLoadingTasks ? (
+              <div className="flex items-center justify-center h-24">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : dueAlerts.length === 0 ? (
+              <p className="text-sm text-gray-600 py-6 text-center">No tasks due today 🎉</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {dueAlerts.map((alert: any) => (
+                  <button
+                    key={alert.id}
+                    onClick={() => router.push(`/workspaces/${workspaceId}/tasks`)}
+                    className="p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-all text-left"
+                  >
+                    <p className="text-sm font-medium text-foreground line-clamp-2">{alert.title}</p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-gray-500">{alert.dueDate}</span>
+                      <span
+                        className={`text-xs font-semibold px-2.5 py-1 rounded-md ${alert.priority === "high"
+                          ? "bg-red-100 text-red-700"
+                          : alert.priority === "medium"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-green-100 text-green-700"
+                          }`}
+                      >
+                        {alert.priority}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Main Grid - Projects & Workspaces */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Due Alerts */}
-            <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-              <h3 className="text-xs font-semibold text-foreground flex items-center gap-2 mb-3">
-                <AlertCircle className="h-3.5 w-3.5 text-red-600" />
-                Due Today
-              </h3>
-              {isLoadingTasks ? (
+            {/* Workspaces */}
+            <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-foreground">Workspaces</h3>
+                <Button onClick={openCreateWorkspaceModal} variant="ghost" size="sm" className="h-8 px-2 text-xs">
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {isLoadingWorkspaces ? (
                 <div className="flex items-center justify-center h-24">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : dueAlerts.length === 0 ? (
-                <p className="text-xs text-gray-600 py-4">No tasks due</p>
+              ) : workspaces.length === 0 ? (
+                <p className="text-xs text-gray-600 py-4">No workspaces yet</p>
               ) : (
                 <div className="space-y-2">
-                  {dueAlerts.map((alert) => (
+                  {workspaces.map((workspace) => (
                     <button
-                      key={alert.id}
-                      onClick={() => router.push(`/workspaces/${workspaceId}/tasks/${alert.id}`)}
-                      className="w-full p-2.5 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all text-left shadow-sm hover:shadow-md"
+                      key={workspace.id}
+                      onClick={() => router.push(`/workspaces/${workspace.id}`)}
+                      className="w-full p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
                     >
-                      <p className="text-xs font-medium text-foreground line-clamp-2">{alert.title}</p>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <span className="text-[10px] text-gray-500">{alert.dueDate}</span>
-                        <span
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${alert.priority === "high"
-                            ? "bg-red-100 text-red-700"
-                            : alert.priority === "medium"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-green-100 text-green-700"
-                            }`}
-                        >
-                          {alert.priority}
-                        </span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{workspace.name}</p>
+                          <p className="text-[11px] text-gray-500 mt-1">{workspace.members}M • {workspace.projects}P</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2" />
                       </div>
                     </button>
                   ))}
@@ -516,59 +499,40 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
               )}
             </Card>
 
-            {/* Team Activity */}
-            <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
-              <button
-                onClick={() => setExpandTeamActivity(!expandTeamActivity)}
-                className="w-full flex items-center justify-between hover:opacity-75 transition-opacity mb-3"
-              >
-                <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
-                  <Activity className="h-3.5 w-3.5" />
-                  Team Activity
-                </h3>
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expandTeamActivity ? "rotate-0" : "-rotate-90"}`} />
-              </button>
-              {expandTeamActivity && (
+            {/* Projects */}
+            <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-foreground">Projects</h3>
+                <Button onClick={openCreateProjectModal} variant="ghost" size="sm" className="h-8 px-2 text-xs">
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {isLoadingProjects ? (
+                <div className="flex items-center justify-center h-24">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : projects.length === 0 ? (
+                <p className="text-xs text-gray-600 py-4">No projects yet</p>
+              ) : (
                 <div className="space-y-2">
-                  {isLoadingTasks ? (
-                    <div className="flex items-center justify-center h-24">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : teamActivity.length === 0 ? (
-                    <p className="text-xs text-gray-600 py-4">No recent activity</p>
-                  ) : (
-                    teamActivity.map((activity) => {
-                      const getActivityIcon = (type: string) => {
-                        switch (type) {
-                          case "task":
-                            return <ListTodo className="h-3 w-3" />
-                          case "pr":
-                            return <GitBranch className="h-3 w-3" />
-                          case "comment":
-                            return <MessageSquare className="h-3 w-3" />
-                          case "status":
-                            return <TrendingUp className="h-3 w-3" />
-                          default:
-                            return <Activity className="h-3 w-3" />
-                        }
-                      }
-
-                      return (
-                        <div key={activity.id} className="pb-1.5 border-b border-gray-200 last:border-0 last:pb-0 flex items-start gap-2.5">
-                          <div className="p-1.5 rounded-md bg-gray-50 text-gray-600 flex-shrink-0 mt-0.5">
-                            {getActivityIcon(activity.type)}
+                  {projects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => router.push(`/workspaces/${workspaceId}/projects/${project.id}`)}
+                      className="w-full p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{project.name}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Progress value={project.progress} className="h-1.5 flex-1 bg-gray-200 [&>div]:bg-blue-600" />
+                            <span className="text-[11px] font-bold text-foreground whitespace-nowrap">{project.progress}%</span>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-medium text-foreground">
-                              <span className="text-blue-600">{activity.user}</span> {activity.action}
-                            </p>
-                            <p className="text-[10px] text-gray-600 truncate">{activity.item}</p>
-                            <p className="text-[10px] text-gray-500 mt-0.5">{activity.time}</p>
-                          </div>
+                          <p className="text-[11px] text-gray-500 mt-1.5">{project.tasks} tasks</p>
                         </div>
-                      )
-                    })
-                  )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </Card>
@@ -576,38 +540,35 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
 
           {/* Sprint Summary */}
           {activeSprint ? (
-            <Card className="p-4 border border-gray-200 bg-white/50 backdrop-blur-sm rounded-2xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-300">
+            <Card className="p-5 border border-gray-200 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Flame className="h-4 w-4 text-orange-600" />
-                  <h3 className="text-xs font-semibold text-foreground">{activeSprint.name}</h3>
+                  <h3 className="text-sm font-bold text-foreground">{activeSprint.name}</h3>
                 </div>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-4">
-                <div className="p-2.5 rounded-lg border border-blue-100 bg-blue-50">
-                  <p className="text-[10px] text-gray-600 font-medium">Total Tasks</p>
-                  <p className="text-lg font-bold text-blue-600 mt-1">{activeSprint.totalTasks}</p>
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+                <div className="p-3 rounded-lg border border-blue-100 bg-blue-50">
+                  <p className="text-[11px] text-gray-600 font-semibold">Total</p>
+                  <p className="text-xl font-bold text-blue-600 mt-1">{activeSprint.totalTasks}</p>
                 </div>
-                <div className="p-2.5 rounded-lg border border-green-100 bg-green-50">
-                  <p className="text-[10px] text-gray-600 font-medium">Completed</p>
-                  <p className="text-lg font-bold text-green-600 mt-1">{activeSprint.completedTasks}</p>
+                <div className="p-3 rounded-lg border border-green-100 bg-green-50">
+                  <p className="text-[11px] text-gray-600 font-semibold">Done</p>
+                  <p className="text-xl font-bold text-green-600 mt-1">{activeSprint.completedTasks}</p>
                 </div>
-                <div className="p-2.5 rounded-lg border border-amber-100 bg-amber-50">
-                  <p className="text-[10px] text-gray-600 font-medium">Pending</p>
-                  <p className="text-lg font-bold text-amber-600 mt-1">{activeSprint.pendingTasks}</p>
+                <div className="p-3 rounded-lg border border-amber-100 bg-amber-50">
+                  <p className="text-[11px] text-gray-600 font-semibold">Pending</p>
+                  <p className="text-xl font-bold text-amber-600 mt-1">{activeSprint.pendingTasks}</p>
                 </div>
-                <div className="p-2.5 rounded-lg border border-purple-100 bg-purple-50">
-                  <p className="text-[10px] text-gray-600 font-medium">Velocity</p>
-                  <p className="text-lg font-bold text-purple-600 mt-1">
-                    {activeSprint.totalTasks > 0
-                      ? Math.round((activeSprint.completedTasks / activeSprint.totalTasks) * 100)
-                      : 0}
-                    %
+                <div className="p-3 rounded-lg border border-purple-100 bg-purple-50">
+                  <p className="text-[11px] text-gray-600 font-semibold">Velocity</p>
+                  <p className="text-xl font-bold text-purple-600 mt-1">
+                    {activeSprint.totalTasks > 0 ? Math.round((activeSprint.completedTasks / activeSprint.totalTasks) * 100) : 0}%
                   </p>
                 </div>
-                <div className="p-2.5 rounded-lg border border-indigo-100 bg-indigo-50">
-                  <p className="text-[10px] text-gray-600 font-medium">Health</p>
-                  <p className="text-lg font-bold text-indigo-600 mt-1">
+                <div className="p-3 rounded-lg border border-indigo-100 bg-indigo-50">
+                  <p className="text-[11px] text-gray-600 font-semibold">Health</p>
+                  <p className="text-xl font-bold text-indigo-600 mt-1">
                     {activeSprint.totalTasks > 0
                       ? Math.round(((activeSprint.totalTasks - activeSprint.pendingTasks) / activeSprint.totalTasks) * 100)
                       : 0}
@@ -629,18 +590,6 @@ export const MySpaceDashboard = ({ className = "" }: MySpaceDashboardProps) => {
             </Card>
           ) : null}
 
-          {/* Add Task Button */}
-          {!isLoadingTasks && (
-            <div className="flex justify-end pt-1">
-              <Button
-                onClick={openCreateTaskModal}
-                className="!bg-[#2663ec] hover:!bg-blue-700 text-white font-medium px-5 py-1.5 text-sm rounded-xl shadow-sm hover:shadow-md transition-all"
-              >
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                Add Task
-              </Button>
-            </div>
-          )}
         </div>
       </div>
     </div>

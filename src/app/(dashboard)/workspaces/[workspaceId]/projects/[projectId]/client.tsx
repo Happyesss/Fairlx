@@ -28,11 +28,11 @@ export const ProjectIdClient = () => {
 
   const getDeadlineBadge = () => {
     if (!project.deadline) return null;
-    
+
     const deadlineDate = new Date(project.deadline);
     const isOverdue = isPast(deadlineDate);
     const daysRemaining = differenceInDays(deadlineDate, new Date());
-    
+
     if (isOverdue) {
       return (
         <Badge variant="destructive" className="text-xs">
@@ -41,7 +41,7 @@ export const ProjectIdClient = () => {
         </Badge>
       );
     }
-    
+
     if (daysRemaining <= 7) {
       return (
         <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
@@ -50,7 +50,7 @@ export const ProjectIdClient = () => {
         </Badge>
       );
     }
-    
+
     return (
       <Badge variant="outline" className="text-xs">
         <Calendar className="size-3 mr-1" />
@@ -69,6 +69,7 @@ export const ProjectIdClient = () => {
         <div className="flex  gap-x-2 flex-col items-start gap-y-1.5">
           <p className="text-2xl tracking-tight  font-semibold">{project.name} Dashboard</p>
           <p className="text-sm tracking-normal font-medium text-neutral-500">Track your project and goals with full AI Assistance</p>
+        </div>
         <div className="flex gap-x-2 flex-col items-start gap-y-1.5">
           <div className="flex items-center gap-3">
             <p className="text-2xl tracking-tight font-semibold">{project.name}</p>
@@ -77,17 +78,22 @@ export const ProjectIdClient = () => {
           <p className="text-sm tracking-normal font-medium text-neutral-500">
             {project.description || "Track your project and goals with full AI Assistance"}
           </p>
-
         </div>
 
         <div className="flex items-center gap-2">
           <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/backlog`} className="!text-sm">
             <button
               type="button"
-          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/sprints`} className="!text-sm">
-            <button 
-              type="button" 
+              className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <Layers className="size-4 mr-3" />
+              Backlog
+            </button>
+          </Link>
 
+          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/sprints`} className="!text-sm">
+            <button
+              type="button"
               className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <Layers className="size-4 mr-3" />
@@ -95,12 +101,9 @@ export const ProjectIdClient = () => {
             </button>
           </Link>
 
-          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/sprints`} className="!text-sm">
+          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/docs`} className="!text-sm">
             <button
               type="button"
-          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/docs`} className="!text-sm">
-            <button 
-              type="button" 
               className="inline-flex items-center rounded-md border border-input px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <FileText className="size-4 mr-3" />

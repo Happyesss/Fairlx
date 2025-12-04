@@ -15,9 +15,10 @@ const TasksPage = async () => {
     <div className="h-full flex flex-col">
       {/* Header - Outside Cards */}
       <div className="flex items-center justify-between mb-6 px-6 pt-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-foreground">My Space</h1>
-          <span className="text-xs text-gray-500">Welcome back, {userName}! 👋</span>
+        {/* Welcome Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-foreground">Welcome, {userName}! 👋</h1>
+          <p className="text-sm text-gray-600 mt-1">Here's your workspace overview</p>
         </div>
         <Link href="/profile">
           <button

@@ -117,7 +117,11 @@ export const TaskViewSwitcher = ({
       <div className="h-full flex flex-col overflow-auto ">
         <div className="flex flex-col gap-y-2  px-4 py-6 lg:flex-row justify-between items-center">
           <TabsList className="w-full lg:w-auto">
-
+            {!hasProjectId && !showMyTasksOnly && (
+              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="myspace">
+                My Space
+              </TabsTrigger>
+            )}
             {hasProjectId && (
               <>
                 <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
@@ -126,7 +130,7 @@ export const TaskViewSwitcher = ({
                 <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="table">
                   Table
                 </TabsTrigger>
-                <TabsTrigger className="h-8 w-full text-xs  lg:w-auto" value="kanban">
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="kanban">
                   Kanban
                 </TabsTrigger>
                 <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
@@ -135,7 +139,9 @@ export const TaskViewSwitcher = ({
                 <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="calendar">
                   Calendar
                 </TabsTrigger>
-
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
+                  Backlog
+                </TabsTrigger>
               </>
             )}
             {showMyTasksOnly && (
@@ -149,34 +155,10 @@ export const TaskViewSwitcher = ({
                 <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
                   Timeline
                 </TabsTrigger>
-                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="my-backlog">
                   My Backlog
                 </TabsTrigger>
               </>
-            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="table">
-              Table
-            </TabsTrigger>
-            <TabsTrigger className="h-8 w-full text-xs  lg:w-auto" value="kanban">
-              Kanban
-            </TabsTrigger>
-            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="calendar">
-              Calendar
-            </TabsTrigger>
-            <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
-              Timeline
-            </TabsTrigger>
-            {paramProjectId && (
-              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
-                Backlog
-              </TabsTrigger>
-            )}
-            {showMyTasksOnly && (
-              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="my-backlog">
-                My Backlog
-              </TabsTrigger>
             )}
           </TabsList>
           {isAdmin && (
