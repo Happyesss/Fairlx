@@ -125,7 +125,7 @@ export const ProjectActivityLogWidget = ({
             No activity yet
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
             {activities.map((activity) => (
               <div
                 key={activity.id}
@@ -141,7 +141,7 @@ export const ProjectActivityLogWidget = ({
                         <MemberAvatar
                           name={activity.userName}
                           imageUrl={activity.userImageUrl}
-                          className="size-5"
+                          className="size-6"
                           tooltipText={activity.userName}
                         />
                       )}

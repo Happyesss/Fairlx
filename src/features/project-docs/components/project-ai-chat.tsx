@@ -645,10 +645,10 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           <TooltipTrigger asChild>
             <Button
               onClick={() => setIsOpen(true)}
-              className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 z-50"
+              className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 z-50"
               size="icon"
             >
-              <Bot className="h-6 w-6 text-white" />
+              <Sparkles className="h-6 w-6 text-white" />
               {context && (context.summary.totalDocuments > 0 || context.summary.totalTasks > 0) && (
                 <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-green-500 border-2 border-white" />
               )}
@@ -672,10 +672,10 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-t-2xl">
+      <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-t-2xl">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg">
-            <Bot className="h-5 w-5 text-white" />
+          <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
+            <Sparkles className="h-5 w-5 text-white" />
           </div>
           <div>
             <h3 className="font-semibold text-sm">Project AI</h3>

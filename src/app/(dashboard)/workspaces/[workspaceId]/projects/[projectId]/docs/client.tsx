@@ -87,10 +87,10 @@ export const ProjectDocsClient = () => {
           </CardContent>
         </Card>
 
-        <Card className="border-green-200 bg-green-50/50 dark:bg-green-950/20">
+        <Card className="border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-green-600" />
+              <Sparkles className="h-4 w-4 text-indigo-600" />
               AI Integration
             </CardTitle>
           </CardHeader>

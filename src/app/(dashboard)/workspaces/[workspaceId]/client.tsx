@@ -2,18 +2,21 @@
 import { PageError } from "@/components/page-error"
 import { PageLoader } from "@/components/page-loader"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 
 import { useGetMembers } from "@/features/members/api/use-get-members"
 import { MemberAvatar } from "@/features/members/components/member-avatar"
 import type { Member } from "@/features/members/types"
 import { useGetProjects } from "@/features/projects/api/use-get-projects"
+import { useGetTeams } from "@/features/teams/api/use-get-teams"
 import { ProjectAvatar } from "@/features/projects/components/project-avatar"
 import { useCreateProjectModal } from "@/features/projects/hooks/use-create-project-modal"
 import type { Project } from "@/features/projects/types"
 import { useGetTasks } from "@/features/tasks/api/use-get-tasks"
 import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal"
 import type { Task } from "@/features/tasks/types"
+import { TaskStatus, TaskPriority } from "@/features/tasks/types"
 import { useGetWorkspaceAnalytics } from "@/features/workspaces/api/use-get-workspace-analytics"
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id"
 import { useCurrentMember } from "@/features/members/hooks/use-current-member"
@@ -23,174 +26,184 @@ import {
   CalendarIcon,
   PlusIcon,
   SettingsIcon,
-  AlertCircleIcon,
-  FilterIcon,
-  XIcon,
-  SearchIcon,
-  Zap,
-  Bug,
-  CheckSquare,
-  TrendingUp,
+  AlertCircle,
   Users,
+  UsersRound,
+  CheckCircle2,
+  Clock,
+  ListTodo,
+  Flag,
+  BarChart3,
   Layers,
+  FolderKanban,
+  ExternalLink,
+  TrendingUp,
 } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
-import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer } from "recharts"
+import { useMemo } from "react"
+import { 
+  PieChart as RechartsPieChart, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  BarChart as RechartsBarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip,
+  CartesianGrid,
+} from "recharts"
 
 export const WorkspaceIdClient = () => {
   const workspaceId = useWorkspaceId()
   const { data: analytics, isLoading: isLoadingAnalytics } = useGetWorkspaceAnalytics({ workspaceId })
-  const { data: tasks, isLoading: isLoadingTasks } = useGetTasks({
-    workspaceId,
-  })
-  const { data: projects, isLoading: isLoadingProjects } = useGetProjects({
-    workspaceId,
-  })
-  const { data: members, isLoading: isLoadingMembers } = useGetMembers({
-    workspaceId,
-  })
+  const { data: tasks, isLoading: isLoadingTasks } = useGetTasks({ workspaceId })
+  const { data: projects, isLoading: isLoadingProjects } = useGetProjects({ workspaceId })
+  const { data: members, isLoading: isLoadingMembers } = useGetMembers({ workspaceId })
+  const { data: teams, isLoading: isLoadingTeams } = useGetTeams({ workspaceId })
 
-  const isLoading = isLoadingAnalytics || isLoadingTasks || isLoadingProjects || isLoadingMembers
+  const isLoading = isLoadingAnalytics || isLoadingTasks || isLoadingProjects || isLoadingMembers || isLoadingTeams
 
-  const [showFilterModal, setShowFilterModal] = useState(false)
-  const [activeFilterCategory, setActiveFilterCategory] = useState<string | null>(null)
-  const [searchAssignee, setSearchAssignee] = useState("")
-  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([])
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
-  const [selectedPriorities, setSelectedPriorities] = useState<string[]>([])
-  const [selectedDueDates, setSelectedDueDates] = useState<string[]>([])
-  const [selectedWorkTypes, setSelectedWorkTypes] = useState<string[]>([])
+  // Calculate dynamic data from real tasks
+  const dynamicData = useMemo(() => {
+    if (!tasks?.documents || !members?.documents) {
+      return {
+        statusOverview: [],
+        priorityDistribution: [],
+        memberWorkload: [],
+        recentTasks: [],
+        dueSoonTasks: [],
+        completionRate: 0,
+        flaggedCount: 0,
+        contributionData: [],
+      }
+    }
+
+    const taskDocs = tasks.documents
+    const memberDocs = members.documents
+
+    // Status overview for pie chart
+    const statusCounts = {
+      completed: taskDocs.filter(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.CLOSED).length,
+      inProgress: taskDocs.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
+      assigned: taskDocs.filter(t => t.status === TaskStatus.ASSIGNED).length,
+    }
+
+    const statusOverview = [
+      { id: "completed", name: "Completed", value: statusCounts.completed, color: "#22c55e" },
+      { id: "in-progress", name: "In Progress", value: statusCounts.inProgress, color: "#2663ec" },
+      { id: "assigned", name: "Assigned", value: statusCounts.assigned, color: "#93c5fd" },
+    ]
+
+    // Completion rate
+    const completionRate = taskDocs.length > 0 
+      ? Math.round((statusCounts.completed / taskDocs.length) * 100) 
+      : 0
+
+    // Flagged count
+    const flaggedCount = taskDocs.filter(t => t.flagged === true).length
+
+    // Priority distribution for bar chart
+    const priorityDistribution = [
+      { name: "URGENT", count: taskDocs.filter(t => t.priority === TaskPriority.URGENT).length, fill: "#ef4444" },
+      { name: "HIGH", count: taskDocs.filter(t => t.priority === TaskPriority.HIGH).length, fill: "#f97316" },
+      { name: "MEDIUM", count: taskDocs.filter(t => t.priority === TaskPriority.MEDIUM).length, fill: "#f59e0b" },
+      { name: "LOW", count: taskDocs.filter(t => t.priority === TaskPriority.LOW).length, fill: "#22c55e" },
+    ]
+
+    // Member workload
+    const memberWorkload = memberDocs.map(member => {
+      const memberTasks = taskDocs.filter(t => 
+        t.assigneeId === member.$id || t.assigneeIds?.includes(member.$id)
+      )
+      const completedTasks = memberTasks.filter(t => 
+        t.status === TaskStatus.COMPLETED || t.status === TaskStatus.CLOSED
+      ).length
+
+      return {
+        id: member.$id,
+        name: member.name || member.email || "Unknown",
+        avatar: (member.name || member.email || "U").substring(0, 2).toUpperCase(),
+        imageUrl: member.profileImageUrl,
+        tasks: memberTasks.length,
+        completedTasks,
+      }
+    }).filter(m => m.tasks > 0).sort((a, b) => b.tasks - a.tasks).slice(0, 4)
+
+    // Contribution data - tasks completed per member (for GitHub-style graph)
+    const contributionData = memberDocs.map(member => {
+      const memberTasks = taskDocs.filter(t => 
+        t.assigneeId === member.$id || t.assigneeIds?.includes(member.$id)
+      )
+      const completedTasks = memberTasks.filter(t => 
+        t.status === TaskStatus.COMPLETED || t.status === TaskStatus.CLOSED
+      ).length
+
+      return {
+        id: member.$id,
+        name: member.name || member.email?.split('@')[0] || "Unknown",
+        imageUrl: member.profileImageUrl,
+        completed: completedTasks,
+        total: memberTasks.length,
+      }
+    }).filter(m => m.total > 0).sort((a, b) => b.completed - a.completed).slice(0, 6)
+
+    // Recent tasks
+    const recentTasks = [...taskDocs]
+      .sort((a, b) => new Date(b.$updatedAt).getTime() - new Date(a.$updatedAt).getTime())
+      .slice(0, 5)
+      .map(task => {
+        const member = memberDocs.find(m => m.$id === task.assigneeId)
+        return {
+          id: task.$id,
+          title: task.name,
+          status: task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CLOSED ? "Done" :
+                  task.status === TaskStatus.IN_PROGRESS ? "In Progress" : "To Do",
+          assignee: member?.name?.split(' ').map(n => n[0]).join('') || "N/A",
+          priority: task.priority || "MEDIUM",
+          projectName: task.project?.name,
+        }
+      })
+
+    // Due soon tasks
+    const now = new Date()
+    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const dueSoonTasks = taskDocs
+      .filter(task => {
+        if (!task.dueDate || task.status === TaskStatus.COMPLETED || task.status === TaskStatus.CLOSED) return false
+        const dueDate = new Date(task.dueDate)
+        return dueDate >= now && dueDate <= weekFromNow
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .slice(0, 6)
+      .map(t => ({
+        id: t.$id,
+        title: t.name,
+        dueDate: new Date(t.dueDate),
+      }))
+
+    return {
+      statusOverview,
+      priorityDistribution,
+      memberWorkload,
+      recentTasks,
+      dueSoonTasks,
+      completionRate,
+      flaggedCount,
+      contributionData,
+    }
+  }, [tasks, members])
 
   if (isLoading) {
     return <PageLoader />
   }
 
-  if (!analytics || !tasks || !projects || !members) {
+  if (!analytics || !tasks || !projects || !members || !teams) {
     return <PageError message="Failed to load workspace data." />
   }
 
-  const statusOverviewData = [
-    { id: "status-1", name: "Done", value: 48, color: "#10b981" },
-    { id: "status-2", name: "In Progress", value: 12, color: "#3b82f6" },
-    { id: "status-3", name: "To Do", value: 24, color: "#a78bfa" },
-  ]
-
-  const epicProgressData = [
-    { id: "epic-1", name: "Auth System", progress: 85 },
-    { id: "epic-2", name: "Dashboard", progress: 60 },
-    { id: "epic-3", name: "API Integration", progress: 45 },
-    { id: "epic-4", name: "Mobile App", progress: 30 },
-    { id: "epic-5", name: "Payment System", progress: 72 },
-  ]
-
-  // Team workload (dummy data for now)
-  const teamWorkloadData = [
-    { id: "workload-1", name: "John Doe", tasksCompleted: 24, tasksTotal: 28 },
-    { id: "workload-2", name: "Sarah Smith", tasksCompleted: 18, tasksTotal: 22 },
-    { id: "workload-3", name: "Mike Johnson", tasksCompleted: 32, tasksTotal: 35 },
-    { id: "workload-4", name: "Emma Wilson", tasksCompleted: 15, tasksTotal: 20 },
-  ]
-
-  const typesOfWorkData = [
-    { id: "type-1", name: "Subtask", count: 36, total: 100, icon: CheckSquare },
-    { id: "type-2", name: "Epic", count: 27, total: 100, icon: Zap },
-    { id: "type-3", name: "Feature", count: 27, total: 100, icon: Bug },
-  ]
-
-  const recentActivityData = [
-    {
-      id: "activity-1",
-      user: "John Doe",
-      action: "changed the Assignee to",
-      item: "SCRUM-4: Tasks Car",
-      status: "TO DO",
-      time: "12 minutes ago",
-    },
-    {
-      id: "activity-2",
-      user: "Sarah Smith",
-      action: "changed the Assignee to",
-      item: "SCRUM-12: Project D",
-      status: "DONE",
-      time: "12 minutes ago",
-    },
-  ]
-
-  const dueTasksData = [
-    { id: "due-1", task: "Complete API Documentation", dueIn: "2 days", priority: "high" },
-    { id: "due-2", task: "Review Pull Requests", dueIn: "1 day", priority: "medium" },
-    { id: "due-3", task: "Update Database Schema", dueIn: "3 days", priority: "high" },
-  ]
-
-  const filterCategories = [
-    {
-      id: "filter-1",
-      name: "Assignee",
-      subcategories: [
-        { id: "assignee-1", name: "John Doe" },
-        { id: "assignee-2", name: "Sarah Smith" },
-        { id: "assignee-3", name: "Mike Johnson" },
-        { id: "assignee-4", name: "Emma Wilson" },
-      ],
-      hasSearch: true,
-    },
-    {
-      id: "filter-2",
-      name: "Status",
-      subcategories: [
-        { id: "status-open", name: "Open" },
-        { id: "status-progress", name: "In Progress" },
-        { id: "status-completed", name: "Completed" },
-        { id: "status-blocked", name: "Blocked" },
-      ],
-    },
-    {
-      id: "filter-3",
-      name: "Priority",
-      subcategories: [
-        { id: "priority-high", name: "High" },
-        { id: "priority-medium", name: "Medium" },
-        { id: "priority-low", name: "Low" },
-      ],
-    },
-    {
-      id: "filter-4",
-      name: "Due Date",
-      subcategories: [
-        { id: "due-today", name: "Today" },
-        { id: "due-week", name: "This Week" },
-        { id: "due-month", name: "This Month" },
-        { id: "due-overdue", name: "Overdue" },
-      ],
-    },
-    {
-      id: "filter-5",
-      name: "Work Type",
-      subcategories: [
-        { id: "type-feature", name: "Feature" },
-        { id: "type-bug", name: "Bug" },
-        { id: "type-task", name: "Task" },
-      ],
-    },
-  ]
-
-  const filteredAssignees =
-    filterCategories
-      .find((f) => f.id === "filter-1")
-      ?.subcategories.filter((a) => a.name.toLowerCase().includes(searchAssignee.toLowerCase())) || []
-
-  const toggleAssignee = (assigneeId: string) => {
-    setSelectedAssignees((prev) =>
-      prev.includes(assigneeId) ? prev.filter((id) => id !== assigneeId) : [...prev, assigneeId],
-    )
-  }
-
-  const toggleFromSet = (id: string, setFn: (updater: (prev: string[]) => string[]) => void) => {
-    setFn((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))
-  }
-
   return (
+
     <div className="h-full flex flex-col space-y-4 p-6 bg-background">
       {/* Header with Filter */}
       <div className="flex items-center justify-between">
@@ -258,428 +271,374 @@ export const WorkspaceIdClient = () => {
                         />
                       </div>
 
-                      {selectedAssignees.length > 0 && (
-                        <div className="flex flex-wrap gap-2 animate-in fade-in duration-200">
-                          {selectedAssignees.map((assigneeId) => {
-                            const assignee = filterCategories
-                              .find((f) => f.id === "filter-1")
-                              ?.subcategories.find((a) => a.id === assigneeId)
-                            return (
-                              <div
-                                key={assigneeId}
-                                className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium hover:shadow-md transition-all duration-200"
-                              >
-                                <span>{assignee?.name}</span>
-                                <button
-                                  onClick={() => toggleAssignee(assigneeId)}
-                                  className="hover:text-blue-900 transition-all duration-200 hover:scale-110 active:scale-95"
-                                >
-                                  <XIcon className="size-3" />
-                                </button>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
+    <div className="space-y-3 p-4">
+      {/* Analytics Cards - Matching Project Dashboard Style */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Total Tasks</p>
+              <p className="text-xl font-semibold">{analytics.taskCount}</p>
+            </div>
+            <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
+              <ListTodo className="h-4 w-4 text-[#2663ec]" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <Progress 
+              value={dynamicData.completionRate} 
+              className="h-1 bg-blue-100 dark:bg-blue-900 [&>div]:bg-[#2663ec]" 
+            />
+          </div>
+        </Card>
 
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {filteredAssignees.map((assignee) => (
-                          <label
-                            key={assignee.id}
-                            className="flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg cursor-pointer transition-all duration-200 active:scale-95"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedAssignees.includes(assignee.id)}
-                              onChange={() => toggleAssignee(assignee.id)}
-                              className="rounded border-border cursor-pointer transition-all duration-200"
-                            />
-                            <span className="text-sm text-foreground">{assignee.name}</span>
-                          </label>
-                        ))}
-                      </div>
+
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Completed</p>
+              <p className="text-xl font-semibold">{analytics.completedTaskCount}</p>
+            </div>
+            <div className="p-2 bg-green-50 dark:bg-green-950 rounded">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              {dynamicData.completionRate}% completion rate
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">In Progress</p>
+              <p className="text-xl font-semibold">{analytics.incompleteTaskCount}</p>
+            </div>
+            <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded">
+              <Clock className="h-4 w-4 text-[#2663ec]" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Active tasks
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Flagged</p>
+              <p className="text-xl font-semibold">{dynamicData.flaggedCount}</p>
+            </div>
+            <div className="p-2 bg-red-50 dark:bg-red-950 rounded">
+              <Flag className="h-4 w-4 text-red-500" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Needs attention
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Overdue</p>
+              <p className="text-xl font-semibold">{analytics.overdueTaskCount}</p>
+            </div>
+            <div className="p-2 bg-amber-50 dark:bg-amber-950 rounded">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Past due date
+            </p>
+          </div>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground">Teams</p>
+              <p className="text-xl font-semibold">{teams.total}</p>
+            </div>
+            <div className="p-2 bg-purple-50 dark:bg-purple-950 rounded">
+              <UsersRound className="h-4 w-4 text-purple-500" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Active teams
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Top Row - Status Overview & Due Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-medium text-muted-foreground">Status Overview</h3>
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          {dynamicData.statusOverview.some(s => s.value > 0) ? (
+            <>
+              <div className="h-[160px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Pie
+                      data={dynamicData.statusOverview.filter(s => s.value > 0)}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={65}
+                    >
+                      {dynamicData.statusOverview.filter(s => s.value > 0).map((entry) => (
+                        <Cell key={entry.id} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {dynamicData.statusOverview.map((status) => (
+                  <div key={status.id} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: status.color }} />
+                    <span className="text-[11px] text-muted-foreground">{status.name}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-[160px] flex items-center justify-center text-sm text-muted-foreground">
+              No tasks yet
+            </div>
+          )}
+        </Card>
+
+        {/* Due Alerts & Recent Tasks */}
+        <div className="lg:col-span-2 space-y-3">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-medium text-muted-foreground">Due Alerts</h3>
+              <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {dynamicData.dueSoonTasks.length > 0 ? (
+                dynamicData.dueSoonTasks.map((alert) => (
+                  <Link
+                    key={alert.id}
+                    href={`/workspaces/${workspaceId}/tasks/${alert.id}`}
+                    className="flex items-center justify-between p-2 bg-secondary/10 rounded-md hover:bg-secondary/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Clock className="h-3.5 w-3.5 text-[#2663ec] flex-shrink-0" />
+                      <span className="text-xs font-medium truncate">{alert.title}</span>
                     </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {filterCategories
-                        .find((f) => f.id === activeFilterCategory)
-                        ?.subcategories.map((sub) => {
-                          const isStatus = activeFilterCategory === "filter-2"
-                          const isPriority = activeFilterCategory === "filter-3"
-                          const isDue = activeFilterCategory === "filter-4"
-                          const isWorkType = activeFilterCategory === "filter-5"
-
-                          const checked = isStatus
-                            ? selectedStatuses.includes(sub.id)
-                            : isPriority
-                              ? selectedPriorities.includes(sub.id)
-                              : isDue
-                                ? selectedDueDates.includes(sub.id)
-                                : isWorkType
-                                  ? selectedWorkTypes.includes(sub.id)
-                                  : false
-
-                          const onToggle = () => {
-                            if (isStatus) return toggleFromSet(sub.id, setSelectedStatuses)
-                            if (isPriority) return toggleFromSet(sub.id, setSelectedPriorities)
-                            if (isDue) return toggleFromSet(sub.id, setSelectedDueDates)
-                            if (isWorkType) return toggleFromSet(sub.id, setSelectedWorkTypes)
-                          }
-
-                          return (
-                            <label
-                              key={sub.id}
-                              className="flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg cursor-pointer transition-all duration-200 active:scale-95"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={onToggle}
-                                className="rounded border-border cursor-pointer transition-all duration-200"
-                              />
-                              <span className="text-sm text-foreground">{sub.name}</span>
-                            </label>
-                          )
-                        })}
-                    </div>
-                  )}
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
+                      {formatDistanceToNow(alert.dueDate, { addSuffix: true })}
+                    </span>
+                  </Link>
+                ))
+              ) : (
+                <div className="col-span-2 text-sm text-center text-muted-foreground py-2">
+                  No upcoming due dates
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-card border border-border rounded-lg p-3 hover:shadow-md transition-all duration-200 cursor-pointer">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Completed</p>
-              <p className="text-xl font-bold text-foreground">1</p>
-              <p className="text-xs text-muted-foreground mt-1">last 7 days</p>
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-medium text-muted-foreground">Recent Tasks</h3>
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-            <div className="text-lg text-green-600">✓</div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-3 hover:shadow-md transition-all duration-200 cursor-pointer">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Updated</p>
-              <p className="text-xl font-bold text-foreground">9</p>
-              <p className="text-xs text-muted-foreground mt-1">last 7 days</p>
-            </div>
-            <div className="text-lg text-blue-600">↻</div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-3 hover:shadow-md transition-all duration-200 cursor-pointer">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Created</p>
-              <p className="text-xl font-bold text-foreground">9</p>
-              <p className="text-xs text-muted-foreground mt-1">last 7 days</p>
-            </div>
-            <div className="text-lg text-blue-600">+</div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border rounded-lg p-3 hover:shadow-md transition-all duration-200 cursor-pointer">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Due Soon</p>
-              <p className="text-xl font-bold text-foreground">0</p>
-              <p className="text-xs text-muted-foreground mt-1">next 7 days</p>
-            </div>
-            <div className="text-lg text-orange-600">📅</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Status Overview - Pie Chart */}
-        <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
-          <h3 className="text-sm font-semibold text-foreground mb-2">Status Overview</h3>
-          <p className="text-xs text-muted-foreground mb-4">Get a snapshot of your work items.</p>
-          <div className="flex justify-center">
-            <ResponsiveContainer width="100%" height={180}>
-              <RechartsPieChart>
-                <Pie
-                  data={statusOverviewData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {statusOverviewData.map((entry) => (
-                    <Cell key={`cell-${entry.id}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </RechartsPieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-3 space-y-1.5">
-            {statusOverviewData.map((item) => (
-              <div key={item.id} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-foreground">{item.name}</span>
-                </div>
-                <span className="font-semibold text-foreground">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Activity + Due Alerts */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Recent Activity */}
-          <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Recent Activity</h3>
-            <p className="text-xs text-muted-foreground mb-3">Stay up to date with what&apos;s happening.</p>
             <div className="space-y-2">
-              {(() => {
-                const selectedAssigneeNames = filterCategories
-                  .find((f) => f.id === "filter-1")?.subcategories
-                  .filter((a) => selectedAssignees.includes(a.id))
-                  .map((a) => a.name) || []
-
-                const statusIdsToNames: Record<string, string> = {
-                  "status-open": "OPEN",
-                  "status-progress": "IN PROGRESS",
-                  "status-completed": "COMPLETED",
-                  "status-blocked": "BLOCKED",
-                }
-
-                const filtered = recentActivityData.filter((activity) => {
-                  const statusOk =
-                    selectedStatuses.length === 0 ||
-                    selectedStatuses.some((id) => statusIdsToNames[id]?.toLowerCase() === activity.status.toLowerCase())
-                  const assigneeOk =
-                    selectedAssigneeNames.length === 0 || selectedAssigneeNames.includes(activity.user)
-                  return statusOk && assigneeOk
-                })
-
-                return filtered.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex gap-2 pb-2 border-b border-border last:border-0 hover:bg-muted/50 p-1.5 -mx-1.5 rounded transition-all duration-200 cursor-pointer"
+              {dynamicData.recentTasks.length > 0 ? (
+                dynamicData.recentTasks.map((task) => (
+                  <Link
+                    key={task.id}
+                    href={`/workspaces/${workspaceId}/tasks/${task.id}`}
+                    className="flex items-center justify-between p-2 bg-secondary/10 rounded-md hover:bg-secondary/20 transition-colors"
                   >
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                      {activity.user.charAt(0)}
+                    <div className="flex items-start gap-2 min-w-0">
+                      <div className={`w-1.5 h-1.5 mt-1.5 rounded-full flex-shrink-0 ${
+                        task.status === "Done" ? "bg-green-500" :
+                        task.status === "In Progress" ? "bg-[#2663ec]" : "bg-gray-400"
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{task.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[11px] text-muted-foreground">{task.assignee}</span>
+                          <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                            task.priority === "HIGH" || task.priority === "URGENT" ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400" :
+                            task.priority === "MEDIUM" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400" :
+                            "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+                          }`}>
+                            {task.priority}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground">
-                        <span className="font-semibold">{activity.user}</span> {activity.action}
-                      </p>
-                      <p className="text-xs text-blue-600 font-medium mt-0.5">{activity.item}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-                          {activity.status}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{activity.time}</span>
+                  </Link>
+                ))
+              ) : (
+                <div className="text-sm text-center text-muted-foreground py-4">
+                  No tasks yet
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Middle Row - Workload & Priority Distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-medium text-muted-foreground">Workload Distribution</h3>
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <div className="space-y-3">
+            {dynamicData.memberWorkload.length > 0 ? (
+              dynamicData.memberWorkload.map((member) => {
+                const workloadPercentage = analytics.taskCount > 0 ? (member.tasks / analytics.taskCount) * 100 : 0
+                return (
+                  <div key={member.id} className="space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <MemberAvatar
+                        name={member.name}
+                        imageUrl={member.imageUrl}
+                        className="size-6"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium truncate">{member.name}</p>
+                          <span className="text-[11px] text-muted-foreground">{member.tasks} tasks</span>
+                        </div>
+                        <Progress value={workloadPercentage} className="h-1.5 mt-1.5 bg-blue-100 dark:bg-blue-900 [&>div]:bg-[#2663ec]" />
                       </div>
                     </div>
                   </div>
-                ))
-              })()}
-            </div>
+                )
+              })
+            ) : (
+              <div className="text-sm text-center text-muted-foreground py-4">
+                No assigned tasks yet
+              </div>
+            )}
           </div>
+        </Card>
 
-          {/* Due Alerts */}
-          <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
-            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-              <AlertCircleIcon className="size-4 text-red-500" />
-              Due Alerts
-            </h3>
-            <div className="space-y-2">
-              {(() => {
-                const priorityIdsToNames: Record<string, string> = {
-                  "priority-high": "high",
-                  "priority-medium": "medium",
-                  "priority-low": "low",
-                }
-
-                const dueIdToPredicate: Record<string, (days: number) => boolean> = {
-                  "due-today": (d) => d === 0,
-                  "due-week": (d) => d >= 0 && d <= 7,
-                  "due-month": (d) => d >= 0 && d <= 30,
-                  "due-overdue": (d) => d < 0,
-                }
-
-                const parseDays = (dueIn: string) => {
-                  const m = /(-?\d+)\s*day/.exec(dueIn)
-                  return m ? parseInt(m[1], 10) : 0
-                }
-
-                const filtered = dueTasksData.filter((item) => {
-                  const prioOk =
-                    selectedPriorities.length === 0 ||
-                    selectedPriorities.some((id) => priorityIdsToNames[id] === item.priority)
-
-                  const days = parseDays(item.dueIn)
-                  const dueOk =
-                    selectedDueDates.length === 0 ||
-                    selectedDueDates.some((id) => dueIdToPredicate[id]?.(days))
-
-                  return prioOk && dueOk
-                })
-
-                return filtered.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-2 p-2 bg-muted rounded-lg hover:shadow-md transition-all duration-200 cursor-pointer hover:bg-muted/80"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-foreground">{item.task}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.dueIn}</p>
-                    </div>
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap transition-all duration-200 flex-shrink-0 font-medium ${item.priority === "high" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"
-                        }`}
-                    >
-                      {item.priority}
-                    </span>
-                  </div>
-                ))
-              })()}
-            </div>
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-medium text-muted-foreground">Priority Distribution</h3>
+            <Layers className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
-        </div>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsBarChart
+                data={dynamicData.priorityDistribution}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="name" 
+                  tick={{ fontSize: 11 }}
+                  stroke="#888"
+                />
+                <YAxis 
+                  tick={{ fontSize: 11 }}
+                  stroke="#888"
+                  allowDecimals={false}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'white', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '12px'
+                  }}
+                  cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+                />
+                <Bar 
+                  dataKey="count" 
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={60}
+                />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      {/* Top Contributors - GitHub-style contribution display */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground">Top Contributors</h3>
+          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+        {dynamicData.contributionData.length > 0 ? (
+          <div className="h-[180px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsBarChart
+                data={dynamicData.contributionData}
+                layout="vertical"
+                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} stroke="#888" allowDecimals={false} />
+                <YAxis 
+                  type="category" 
+                  dataKey="name" 
+                  tick={{ fontSize: 11 }} 
+                  stroke="#888"
+                  width={80}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'white', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '12px'
+                  }}
+                  cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'completed') return [value, 'Completed']
+                    if (name === 'total') return [value, 'Total']
+                    return [value, name]
+                  }}
+                />
+                <Bar 
+                  dataKey="completed" 
+                  fill="#22c55e"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={24}
+                  name="Completed"
+                />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-[180px] flex items-center justify-center text-sm text-muted-foreground">
+            No completed tasks yet
+          </div>
+        )}
+      </Card>
+
+      {/* Bottom Row - Tasks, Projects, Members */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <TaskList data={tasks.documents} total={tasks.total} />
         <ProjectList data={projects.documents} total={projects.total} />
         <MemberList data={members.documents} total={members.total} />
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Epic Progress - Full Width Style */}
-        <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="size-4 text-blue-500" />
-            <h3 className="text-sm font-semibold text-foreground">Epic Progress</h3>
-          </div>
-          <p className="text-xs text-muted-foreground mb-2">See how your epics are progressing.</p>
-          <div className="space-y-1.5">
-            {epicProgressData.map((epic) => (
-              <div key={epic.id} className="hover:bg-muted/50 p-1.5 -mx-1.5 rounded transition-all duration-200">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs font-semibold text-foreground truncate">{epic.name}</p>
-                  <p className="text-xs font-bold text-foreground bg-muted px-2 py-0.5 rounded-full flex-shrink-0">
-                    {epic.progress}%
-                  </p>
-                </div>
-                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
-                    style={{ width: `${epic.progress}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Team Workload - Card Grid Style */}
-        <div className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="size-4 text-green-500" />
-            <h3 className="text-sm font-semibold text-foreground">Team Workload</h3>
-          </div>
-          <p className="text-xs text-muted-foreground mb-2">Monitor team capacity and distribution.</p>
-          <div className="space-y-1.5">
-            {(() => {
-              const selectedAssigneeNames = filterCategories
-                .find((f) => f.id === "filter-1")?.subcategories
-                .filter((a) => selectedAssignees.includes(a.id))
-                .map((a) => a.name) || []
-
-              const visibleMembers = teamWorkloadData.filter((m) =>
-                selectedAssigneeNames.length === 0 || selectedAssigneeNames.includes(m.name),
-              )
-
-              const totalWorkloadTasks = visibleMembers.reduce((sum, m) => sum + m.tasksTotal, 0) || 1
-              return visibleMembers.map((member) => {
-                const progress = Math.round((member.tasksTotal / totalWorkloadTasks) * 100)
-                return (
-                  <div
-                    key={member.id}
-                    className="bg-muted/50 rounded-lg p-2 hover:bg-muted transition-all duration-200"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-semibold text-foreground truncate">{member.name}</p>
-                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full flex-shrink-0 bg-blue-500">
-                        {progress}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-background rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground text-center mt-1">
-                      {member.tasksTotal}/{totalWorkloadTasks} tasks
-                    </p>
-                  </div>
-                )
-              })
-            })()}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-lg p-3 hover:shadow-md transition-all duration-200">
-        <div className="flex items-center gap-2 mb-2">
-          <Layers className="size-4 text-blue-500" />
-          <h3 className="text-sm font-semibold text-foreground">Types of Work</h3>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">Work breakdown by type</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {(() => {
-            const workTypeIdsToNames: Record<string, string> = {
-              "type-feature": "Feature",
-              "type-bug": "Bug",
-              "type-task": "Task",
-            }
-            const filtered = typesOfWorkData.filter((w) => {
-              if (selectedWorkTypes.length === 0) return true
-              // Match by display name
-              return selectedWorkTypes.some((id) => workTypeIdsToNames[id] === w.name)
-            })
-            return filtered.map((workType) => {
-              const IconComponent = workType.icon
-              return (
-                <div
-                  key={workType.id}
-                  className="bg-muted/30 rounded-lg p-2.5 hover:bg-muted/50 transition-all duration-200 border border-border/30"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 rounded-md text-white flex-shrink-0 bg-blue-500">
-                      <IconComponent className="size-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-foreground">{workType.name}</p>
-                    </div>
-                  </div>
-                  <div className="w-full bg-background rounded-full h-1.5 overflow-hidden mb-1">
-                    <div
-                      className="h-1.5 rounded-full transition-all duration-500 bg-blue-500"
-                      style={{ width: `${workType.count}%` }}
-                    />
-                  </div>
-                  <p className="text-xs font-bold text-foreground text-center">{workType.count}%</p>
-                </div>
-              )
-            })
-          })()}
-        </div>
-      </div>
-
-
     </div>
   )
 }
@@ -695,59 +654,57 @@ export const TaskList = ({ data, total }: TaskListProps) => {
   const { isAdmin } = useCurrentMember({ workspaceId })
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Tasks</h2>
-          <p className="text-xs text-muted-foreground">{total} total</p>
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ListTodo className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-muted-foreground">Tasks ({total})</h3>
         </div>
         {isAdmin && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             onClick={createTask}
-            className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
+            className="h-6 w-6"
           >
-            <PlusIcon className="size-3.5" />
+            <PlusIcon className="size-3" />
           </Button>
         )}
       </div>
-
-      <div className="bg-card border border-border rounded-lg p-3 space-y-2 flex-1 overflow-y-auto">
-        <ul className="flex flex-col gap-2">
-          {data.slice(0, 5).map((task) => (
-            <li key={task.$id}>
-              <Link href={`/workspaces/${workspaceId}/tasks/${task.$id}`}>
-                <Card className="shadow-none border border-border rounded-lg hover:shadow-sm hover:border-muted-foreground transition-all duration-200 hover:bg-muted/50">
-                  <CardContent className="p-2.5">
-                    <p className="text-xs font-medium text-foreground truncate">{task.name}</p>
-                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                      <span className="truncate">{task.project?.name}</span>
-                      <div className="size-0.5 rounded-full bg-border" />
-                      <div className="flex items-center gap-0.5">
-                        <CalendarIcon className="size-2.5" />
-                        <span className="truncate">{formatDistanceToNow(new Date(task.dueDate))}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </li>
-          ))}
-          <li className="text-xs text-muted-foreground text-center hidden first-of-type:block py-4">No tasks</li>
-        </ul>
-
-        {data.length > 5 && (
-          <Button
-            variant="outline"
-            className="w-full mt-2 rounded-lg border-border hover:bg-muted transition-colors bg-transparent text-xs h-8"
-            asChild
+      <div className="space-y-2">
+        {data.slice(0, 5).map((task) => (
+          <Link
+            key={task.$id}
+            href={`/workspaces/${workspaceId}/tasks/${task.$id}`}
+            className="flex items-center justify-between p-2 bg-secondary/10 rounded-md hover:bg-secondary/20 transition-colors"
           >
-            <Link href={`/workspaces/${workspaceId}/tasks`}>View All</Link>
-          </Button>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate">{task.name}</p>
+              <div className="flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground">
+                <span className="truncate">{task.project?.name}</span>
+                {task.dueDate && (
+                  <>
+                    <span>•</span>
+                    <CalendarIcon className="size-2.5" />
+                    <span>{formatDistanceToNow(new Date(task.dueDate))}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </Link>
+        ))}
+        {data.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">No tasks</p>
         )}
       </div>
-    </div>
+      {data.length > 5 && (
+        <Link href={`/workspaces/${workspaceId}/tasks`}>
+          <Button variant="ghost" size="sm" className="w-full mt-2 h-7 text-xs gap-1">
+            View All <ExternalLink className="size-3" />
+          </Button>
+        </Link>
+      )}
+    </Card>
   )
 }
 
@@ -762,61 +719,51 @@ export const ProjectList = ({ data, total }: ProjectListProps) => {
   const { isAdmin } = useCurrentMember({ workspaceId })
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Projects</h2>
-          <p className="text-xs text-muted-foreground">{total} total</p>
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FolderKanban className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-muted-foreground">Projects ({total})</h3>
         </div>
         {isAdmin && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             onClick={createProject}
-            className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
+            className="h-6 w-6"
           >
-            <PlusIcon className="size-3.5" />
+            <PlusIcon className="size-3" />
           </Button>
         )}
       </div>
-
-      <div className="bg-card border border-border rounded-lg p-3">
-        <ul className="grid grid-cols-2 gap-2">
-          {data.slice(0, 4).map((project) => (
-            <li key={project.$id}>
-              <Link href={`/workspaces/${workspaceId}/projects/${project.$id}`}>
-                <Card className="shadow-none border border-border rounded-lg hover:shadow-sm hover:border-muted-foreground transition-all duration-200 h-full hover:bg-muted/50">
-                  <CardContent className="flex flex-col items-center gap-2 p-2.5">
-                    <ProjectAvatar
-                      name={project.name}
-                      image={project.imageUrl}
-                      className="size-7 flex-shrink-0"
-                      fallbackClassName="text-xs"
-                    />
-                    <p className="text-xs font-medium text-foreground truncate text-center line-clamp-2">
-                      {project.name}
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            </li>
-          ))}
-          <li className="text-xs text-muted-foreground text-center hidden first-of-type:block col-span-full py-4">
-            No projects
-          </li>
-        </ul>
-
-        {data.length > 4 && (
-          <Button
-            variant="outline"
-            className="w-full mt-2 rounded-lg border-border hover:bg-muted transition-colors bg-transparent text-xs h-8"
-            asChild
+      <div className="grid grid-cols-2 gap-2">
+        {data.slice(0, 4).map((project) => (
+          <Link
+            key={project.$id}
+            href={`/workspaces/${workspaceId}/projects/${project.$id}`}
+            className="flex flex-col items-center gap-2 p-3 bg-secondary/10 rounded-md hover:bg-secondary/20 transition-colors"
           >
-            <Link href={`/workspaces/${workspaceId}/projects`}>View All</Link>
-          </Button>
+            <ProjectAvatar
+              name={project.name}
+              image={project.imageUrl}
+              className="size-8"
+              fallbackClassName="text-xs"
+            />
+            <p className="text-xs font-medium text-center truncate w-full">{project.name}</p>
+          </Link>
+        ))}
+        {data.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4 col-span-2">No projects</p>
         )}
       </div>
-    </div >
+      {data.length > 4 && (
+        <Link href={`/workspaces/${workspaceId}/projects`}>
+          <Button variant="ghost" size="sm" className="w-full mt-2 h-7 text-xs gap-1">
+            View All <ExternalLink className="size-3" />
+          </Button>
+        </Link>
+      )}
+    </Card>
   )
 }
 
@@ -829,64 +776,49 @@ export const MemberList = ({ data, total }: MemberListProps) => {
   const workspaceId = useWorkspaceId()
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Members</h2>
-          <p className="text-xs text-muted-foreground">{total} team</p>
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-muted-foreground">Members ({total})</h3>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          asChild
-          className="rounded-lg hover:bg-muted transition-colors bg-transparent h-8 w-8 hover:scale-110 active:scale-95"
-        >
-          <Link href={`/workspaces/${workspaceId}/members`}>
-            <SettingsIcon className="size-3.5" />
-          </Link>
-        </Button>
-      </div>
-
-      <div className="bg-card border border-border rounded-lg p-3">
-        <ul className="grid grid-cols-2 gap-2">
-          {data.slice(0, 4).map((member) => {
-            const displayName = member.name?.trim() || member.email || "Unknown"
-            const displayEmail = member.email || "Unknown"
-
-            return (
-              <li key={member.$id}>
-                <Card className="shadow-none border border-border rounded-lg overflow-hidden hover:shadow-sm hover:border-muted-foreground transition-all duration-200 hover:bg-muted/50">
-                  <CardContent className="p-2.5 flex flex-col items-center gap-1.5 text-center">
-                    <MemberAvatar
-                      name={displayName}
-                      className="size-7"
-                      imageUrl={member.profileImageUrl}
-                      tooltipText={displayName}
-                    />
-                    <div className="flex flex-col items-center overflow-hidden w-full">
-                      <p className="text-xs font-semibold text-foreground line-clamp-1">{displayName}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-1">{displayEmail}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </li>
-            )
-          })}
-          <li className="text-xs text-muted-foreground text-center hidden first-of-type:block col-span-full py-4">
-            No members
-          </li>
-        </ul>
-
-        {data.length > 4 && (
-          <Button
-            variant="outline"
-            className="w-full mt-2 rounded-lg border-border hover:bg-muted transition-colors bg-transparent text-xs h-8"
-            asChild
-          >
-            <Link href={`/workspaces/${workspaceId}/members`}>View All</Link>
+        <Link href={`/workspaces/${workspaceId}/members`}>
+          <Button variant="ghost" size="icon" className="h-6 w-6">
+            <SettingsIcon className="size-3" />
           </Button>
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {data.slice(0, 4).map((member) => {
+          const displayName = member.name?.trim() || member.email || "Unknown"
+          return (
+            <div
+              key={member.$id}
+              className="flex flex-col items-center gap-2 p-3 bg-secondary/10 rounded-md"
+            >
+              <MemberAvatar
+                name={displayName}
+                className="size-8"
+                imageUrl={member.profileImageUrl}
+              />
+              <div className="text-center w-full overflow-hidden">
+                <p className="text-xs font-medium truncate">{displayName}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{member.role}</p>
+              </div>
+            </div>
+          )
+        })}
+        {data.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4 col-span-2">No members</p>
         )}
       </div>
-    </div>
+      {data.length > 4 && (
+        <Link href={`/workspaces/${workspaceId}/members`}>
+          <Button variant="ghost" size="sm" className="w-full mt-2 h-7 text-xs gap-1">
+            View All <ExternalLink className="size-3" />
+          </Button>
+        </Link>
+      )}
+    </Card>
   )
 }
