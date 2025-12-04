@@ -203,6 +203,74 @@ export const WorkspaceIdClient = () => {
   }
 
   return (
+
+    <div className="h-full flex flex-col space-y-4 p-6 bg-background">
+      {/* Header with Filter */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-foreground">Workspace Dashboard</h1>
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setShowFilterModal(!showFilterModal)}
+            className="rounded-lg hover:bg-muted transition-all duration-200 bg-transparent h-9 w-9 hover:scale-105 active:scale-95"
+          >
+            <FilterIcon className="size-5" />
+          </Button>
+
+          {showFilterModal && (
+            <div className="absolute right-0 mt-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-foreground">Filters</h3>
+                <button
+                  onClick={() => {
+                    setShowFilterModal(false)
+                    setActiveFilterCategory(null)
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-all duration-200 hover:scale-110 active:scale-95"
+                >
+                  <XIcon className="size-4" />
+                </button>
+              </div>
+
+              {activeFilterCategory === null ? (
+                <div className="space-y-1">
+                  {filterCategories.map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setActiveFilterCategory(filter.id)}
+                      className="w-full text-left px-3 py-2.5 text-sm text-foreground hover:bg-muted rounded-lg transition-all duration-200 flex items-center justify-between group active:scale-95"
+                    >
+                      <span>{filter.name}</span>
+                      <span className="text-muted-foreground group-hover:text-foreground transition-all duration-200 group-hover:translate-x-1">
+                        →
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="animate-in fade-in duration-200">
+                  <button
+                    onClick={() => setActiveFilterCategory(null)}
+                    className="flex items-center gap-2 mb-3 text-sm text-muted-foreground hover:text-foreground transition-all duration-200 hover:-translate-x-1 active:scale-95"
+                  >
+                    <span>←</span>
+                    <span>Back</span>
+                  </button>
+
+                  {activeFilterCategory === "filter-1" ? (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <SearchIcon className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Search assignees..."
+                          value={searchAssignee}
+                          onChange={(e) => setSearchAssignee(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+                        />
+                      </div>
+
     <div className="space-y-3 p-4">
       {/* Analytics Cards - Matching Project Dashboard Style */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -223,6 +291,7 @@ export const WorkspaceIdClient = () => {
             />
           </div>
         </Card>
+
 
         <Card className="p-3">
           <div className="flex items-start justify-between">

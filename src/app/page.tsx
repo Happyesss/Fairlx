@@ -6,14 +6,17 @@ import { redirect } from "next/navigation";
 export default async function Home() {
   const user = await getCurrent();
 
-  if (user) {
-    const workspaces = await getWorkspaces();
+  // if (user) {
+  //   const workspaces = await getWorkspaces();
 
-    if (workspaces.total === 0) {
-      redirect("/workspaces/create");
-    } else {
-      redirect(`/workspaces/${workspaces.documents[0].$id}`);
-    }
+  //   if (workspaces.total === 0) {
+  //     redirect("/workspaces/create");
+  //   } else {
+  //     redirect(`/workspaces/${workspaces.documents[0].$id}`);
+  //   }
+  // }
+  if (user) {
+    redirect("/workspaces/me/tasks");
   }
 
   redirect("/sign-in");

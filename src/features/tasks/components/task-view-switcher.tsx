@@ -21,6 +21,7 @@ import { EnhancedDataKanban } from "@/features/custom-columns/components/enhance
 import { DataDashboard } from "./data-dashboard";
 import { TimelineView } from "@/features/timeline/components/timeline-view";
 import { MyBacklogView } from "@/features/personal-backlog/components/my-backlog-view";
+import { MySpaceDashboard } from "./my-space-dashboard";
 import EnhancedBacklogScreen from "@/features/sprints/components/enhanced-backlog-screen";
 
 import { useGetTasks } from "../api/use-get-tasks";
@@ -42,15 +43,22 @@ export const TaskViewSwitcher = ({
 
   const [{ status, assigneeId, projectId, dueDate, search, priority, labels }] =
     useTaskFilters();
-  const [view, setView] = useQueryState("task-view", { defaultValue: "dashboard" });
-  const { mutate: bulkUpdate } = useBulkUpdateTasks();
-
   const workspaceId = useWorkspaceId();
   const paramProjectId = useProjectId();
+
+  // Set default view based on whether we're in a project context
+  const defaultView = paramProjectId && hideProjectFilter ? "dashboard" : "myspace";
+  const [view, setView] = useQueryState("task-view", { defaultValue: defaultView });
+  const { mutate: bulkUpdate } = useBulkUpdateTasks();
 
   // Get current user data
   const { member: currentMember, isAdmin } = useCurrentMember({ workspaceId });
   const { data: members } = useGetMembers({ workspaceId });
+
+  // Check if user has a project selected
+  const hasProjectId = !!paramProjectId || !!projectId;
+
+  console.log("project id", paramProjectId, projectId);
 
   // Determine the effective assigneeId - if showMyTasksOnly is true, use current member's ID
   const effectiveAssigneeId = showMyTasksOnly && currentMember ? currentMember.$id : assigneeId;
@@ -109,6 +117,11 @@ export const TaskViewSwitcher = ({
       <div className="h-full flex flex-col overflow-auto ">
         <div className="flex flex-col gap-y-2  px-4 py-6 lg:flex-row justify-between items-center">
           <TabsList className="w-full lg:w-auto">
+
+            {!hasProjectId && !showMyTasksOnly && (
+              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="myspace">
+                My Space
+
             <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
               {showMyTasksOnly ? "My Space" : "Dashboard"}
             </TabsTrigger>
@@ -127,12 +140,46 @@ export const TaskViewSwitcher = ({
             {paramProjectId && (
               <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
                 Backlog
+
               </TabsTrigger>
             )}
+            {hasProjectId && (
+              <>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
+                  Dashboard
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="table">
+                  Table
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="kanban">
+                  Kanban
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
+                  Timeline
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="calendar">
+                  Calendar
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="backlog">
+                  Backlog
+                </TabsTrigger>
+              </>
+            )}
             {showMyTasksOnly && (
-              <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="my-backlog">
-                My Backlog
-              </TabsTrigger>
+              <>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="myspace">
+                  My Space
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="table">
+                  Table
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="timeline">
+                  Timeline
+                </TabsTrigger>
+                <TabsTrigger className="h-8 w-full text-xs lg:w-auto" value="my-backlog">
+                  My Backlog
+                </TabsTrigger>
+              </>
             )}
           </TabsList>
           {isAdmin && (
@@ -144,7 +191,7 @@ export const TaskViewSwitcher = ({
         </div>
 
 
-        {view !== "dashboard" && view !== "timeline" && view !== "backlog" && (
+        {hasProjectId && view !== "dashboard" && view !== "timeline" && view !== "backlog" && view !== "myspace" && (
           <DataFilters hideProjectFilter={hideProjectFilter} showMyTasksOnly={showMyTasksOnly} />
         )}
 
@@ -155,6 +202,9 @@ export const TaskViewSwitcher = ({
           </div>
         ) : (
           <>
+            <TabsContent value="myspace" className="mt-0 p-0">
+              <MySpaceDashboard />
+            </TabsContent>
             <TabsContent value="dashboard" className="mt-0 p-4">
               <DataDashboard tasks={filteredTasks?.documents} isLoading={isLoadingTasks} />
             </TabsContent>
