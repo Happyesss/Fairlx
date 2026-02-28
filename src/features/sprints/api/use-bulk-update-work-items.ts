@@ -17,7 +17,7 @@ export const useBulkUpdateWorkItems = () => {
   const mutation = useMutation<void, Error, { json: BulkUpdateWorkItemsRequest }>({
     mutationFn: async ({ json }) => {
       // Update each work item individually
-      // This is a simple approach - could be optimized with a bulk endpoint later
+      // For single item updates (most common case - kanban drag), just make one call
       const updatePromises = json.workItems.map(async (item) => {
         const response = await client.api["work-items"][":workItemId"].$patch({
           param: { workItemId: item.$id },
@@ -36,10 +36,21 @@ export const useBulkUpdateWorkItems = () => {
 
       await Promise.all(updatePromises);
     },
-    onSuccess: () => {
-      toast.success("Work items updated.");
-      queryClient.invalidateQueries({ queryKey: ["work-items"] });
-      queryClient.invalidateQueries({ queryKey: ["sprints"] });
+    onSuccess: (_data, variables) => {
+      // Only show toast for bulk updates (more than 1 item)
+      if (variables.json.workItems.length > 1) {
+        toast.success("Work items updated.");
+      }
+      // Use refetchType: 'none' to avoid immediate refetch that causes flicker
+      // The optimistic update already shows the correct state
+      queryClient.invalidateQueries({ 
+        queryKey: ["work-items"],
+        refetchType: 'none'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["sprints"],
+        refetchType: 'none'
+      });
     },
     onError: () => {
       toast.error("Failed to update work items.");

@@ -30,7 +30,10 @@ export const useUpdateTask = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update task.");
+        // Extract error message from response body
+        const errorBody = await response.json().catch(() => ({}));
+        const errorMessage = (errorBody as { error?: string }).error || "Failed to update task.";
+        throw new Error(errorMessage);
       }
 
       return await response.json();
