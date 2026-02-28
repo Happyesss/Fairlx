@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import { DATABASE_ID, MEMBERS_ID, PROJECTS_ID, TASKS_ID, TIME_LOGS_ID, COMMENTS_ID, WORKFLOW_TRANSITIONS_ID, PROJECT_TEAM_MEMBERS_ID, WORKFLOW_STATUSES_ID } from "@/config";
+import { DATABASE_ID, MEMBERS_ID, PROJECTS_ID, TASKS_ID, TIME_LOGS_ID, COMMENTS_ID, WORKFLOW_TRANSITIONS_ID, PROJECT_TEAM_MEMBERS_ID, WORKFLOW_STATUSES_ID, CUSTOM_COLUMNS_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
@@ -159,6 +159,56 @@ async function validateStatusTransition(
   }
 }
 
+/**
+ * Resolve status ID or key to a human-readable name.
+ * If it's a standard TaskStatus, returns it as-is (formatted).
+ * If it's a custom column ID, looks up the column name.
+ * Falls back to the original value if not found.
+ */
+async function resolveStatusName(
+  databases: Databases,
+  status: string,
+  workspaceId: string
+): Promise<string> {
+  // Check if it's a standard TaskStatus enum value
+  if (Object.values(TaskStatus).includes(status as TaskStatus)) {
+    // Format the enum value nicely (e.g., "IN_PROGRESS" -> "In Progress")
+    return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // Otherwise, try to look up in custom columns
+  try {
+    const customColumns = await databases.listDocuments(
+      DATABASE_ID,
+      CUSTOM_COLUMNS_ID,
+      [Query.equal("workspaceId", workspaceId), Query.equal("$id", status)]
+    );
+    
+    if (customColumns.documents.length > 0) {
+      return customColumns.documents[0].name as string;
+    }
+  } catch {
+    // Silent failure - return status as-is
+  }
+
+  // Also check workflow statuses (for workflow-managed statuses)
+  try {
+    const workflowStatuses = await databases.listDocuments(
+      DATABASE_ID,
+      WORKFLOW_STATUSES_ID,
+      [Query.equal("$id", status)]
+    );
+    
+    if (workflowStatuses.documents.length > 0) {
+      return workflowStatuses.documents[0].name as string;
+    }
+  } catch {
+    // Silent failure - return status as-is
+  }
+
+  return status;
+}
+
 const app = new Hono()
   .delete("/:taskId", sessionMiddleware, async (c) => {
     const user = c.get("user");
@@ -227,6 +277,7 @@ const app = new Hono()
         dueDate: z.string().nullish(),
         priority: z.nativeEnum(TaskPriority).nullish(),
         labels: z.string().nullish(), // Will be comma-separated list
+        parentTaskId: z.string().nullish(), // Filter by parent task for sub-issues
       })
     ),
     async (c) => {
@@ -234,7 +285,7 @@ const app = new Hono()
       const databases = c.get("databases");
       const user = c.get("user");
 
-      const { workspaceId, projectId, assigneeId, status, dueDate, priority, labels } =
+      const { workspaceId, projectId, assigneeId, status, dueDate, priority, labels, parentTaskId } =
         c.req.valid("query");
 
       const member = await getMember({
@@ -291,6 +342,10 @@ const app = new Hono()
         for (const label of labelList) {
           query.push(Query.contains("labels", label));
         }
+      }
+
+      if (parentTaskId) {
+        query.push(Query.equal("parentTaskId", parentTaskId));
       }
 
       const tasks = await databases.listDocuments<Task>(
@@ -408,7 +463,7 @@ const app = new Hono()
     async (c) => {
       const user = c.get("user");
       const databases = c.get("databases");
-      const { name, type, status, workspaceId, projectId, startDate, dueDate, assigneeIds, description, estimatedHours, priority, labels } =
+      const { name, type, status, workspaceId, projectId, parentTaskId, startDate, dueDate, assigneeIds, description, estimatedHours, priority, labels } =
         c.req.valid("json");
 
       const member = await getMember({
@@ -527,6 +582,7 @@ const app = new Hono()
           status,
           workspaceId,
           projectId,
+          parentTaskId: parentTaskId || null, // Parent task ID for sub-issues
           startDate: startDate || null,
           dueDate: dueDate || null,
           assigneeIds: assigneeIds || [],
@@ -537,6 +593,7 @@ const app = new Hono()
           labels: labels || [],
           flagged: false,
           lastModifiedBy: user.$id,
+          reporterId: member.$id, // Track who created the task
           sprintId: targetSprintId, // Auto-assign to active sprint if available
         }
       ) as Task;
@@ -692,12 +749,18 @@ const app = new Hono()
             // Silent failure for non-critical event dispatch
           });
         } else {
+          // Resolve status IDs to human-readable names for notifications
+          const [oldStatusName, newStatusName] = await Promise.all([
+            resolveStatusName(databases, existingTask.status, task.workspaceId),
+            resolveStatusName(databases, status, task.workspaceId)
+          ]);
+          
           const event = createStatusChangedEvent(
             task,
             user.$id,
             userName,
-            existingTask.status,
-            status
+            oldStatusName,
+            newStatusName
           );
           dispatchWorkitemEvent(event).catch(() => {
             // Silent failure for non-critical event dispatch
@@ -883,6 +946,30 @@ const app = new Hono()
         ? validAssignees.filter((a) => task.assigneeIds!.includes(a.$id))
         : [];
 
+      // Fetch reporter info (task creator)
+      let reporter: { $id: string; name: string; email?: string; profileImageUrl?: string | null } | undefined;
+      if (task.reporterId) {
+        try {
+          const reporterMember = await databases.getDocument(
+            DATABASE_ID,
+            MEMBERS_ID,
+            task.reporterId
+          ) as Models.Document;
+          
+          const reporterUser = await users.get(reporterMember.userId as string);
+          const reporterPrefs = reporterUser.prefs as { profileImageUrl?: string | null } | undefined;
+          
+          reporter = {
+            $id: reporterMember.$id,
+            name: reporterUser.name || reporterUser.email,
+            email: reporterUser.email,
+            profileImageUrl: reporterPrefs?.profileImageUrl ?? null,
+          };
+        } catch {
+          // Silent failure - reporter info is optional
+        }
+      }
+
       return c.json({
         data: {
           ...task,
@@ -891,6 +978,7 @@ const app = new Hono()
           project,
           assignee, // Keep for backward compatibility
           assignees: taskAssignees, // New field for multiple assignees
+          reporter, // Task creator info
         },
       });
     } catch {
@@ -1066,24 +1154,33 @@ const app = new Hono()
       // Send bulk notifications via dispatcher
       const userName = user.name || user.email || "Someone";
 
-      updatedTasks.forEach(({ task, oldStatus, statusChanged }) => {
-        // Only emit events for significant changes
-        if (statusChanged) {
-          if (task.status === "DONE" || task.status === "CLOSED") {
-            const event = createCompletedEvent(task, user.$id, userName);
-            dispatchWorkitemEvent(event).catch(() => { });
-          } else {
-            const event = createStatusChangedEvent(
-              task,
-              user.$id,
-              userName,
-              oldStatus || "",
-              task.status
-            );
-            dispatchWorkitemEvent(event).catch(() => { });
+      // Process notifications asynchronously (fire and forget)
+      (async () => {
+        for (const { task, oldStatus, statusChanged } of updatedTasks) {
+          // Only emit events for significant changes
+          if (statusChanged) {
+            if (task.status === "DONE" || task.status === "CLOSED") {
+              const event = createCompletedEvent(task, user.$id, userName);
+              dispatchWorkitemEvent(event).catch(() => { });
+            } else {
+              // Resolve status IDs to human-readable names for notifications
+              const [oldStatusName, newStatusName] = await Promise.all([
+                resolveStatusName(databases, oldStatus || "", task.workspaceId),
+                resolveStatusName(databases, task.status, task.workspaceId)
+              ]);
+              
+              const event = createStatusChangedEvent(
+                task,
+                user.$id,
+                userName,
+                oldStatusName,
+                newStatusName
+              );
+              dispatchWorkitemEvent(event).catch(() => { });
+            }
           }
         }
-      });
+      })().catch(() => { /* Silent failure for non-critical event dispatch */ });
 
       // Return success with any partial failures noted
       return c.json({

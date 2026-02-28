@@ -142,7 +142,7 @@ NEXT_PUBLIC_APPWRITE_PROJECT_PERMISSIONS_ID=
 
 ## Storage Buckets
 1) **images** (`images`) — avatars/logos; max 5MB; extensions: jpg, jpeg, png, gif, svg, webp.
-2) **attachments_bucket** (`attachments_bucket`) — work item attachments; max 50MB; extensions: jpeg, png, svg, gif, html, pdf, mp4, txt, doc, docx, xls, xlsx, ppt, pptx, zip, rar, css, js, json, xml, jpg.
+2) **attachments_bucket** (`attachments_bucket`) — work item attachments; max 20MB; extensions: jpeg, png, svg, gif, html, pdf, mp4, txt, doc, docx, xls, xlsx, ppt, pptx, zip, rar, css, js, json, xml, jpg.
 3) **project-docs** (`project-docs`) — project documents; max 5GB; any extension.
 
 ## Database Schema (Collections & Key Attributes)

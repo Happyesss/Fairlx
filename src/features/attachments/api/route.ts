@@ -83,7 +83,7 @@ const app = new Hono()
 
         // Validate file size
         if (file.size > MAX_FILE_SIZE) {
-          return c.json({ error: "File size exceeds 50MB limit" }, 400);
+          return c.json({ error: "File size exceeds 20MB limit" }, 400);
         }
 
         // Validate file type
@@ -219,10 +219,11 @@ const app = new Hono()
           return c.json({ error: "Attachment not found" }, 404);
         }
 
-        // Get file from storage and return it directly
-        const file = await storage.getFileDownload(ATTACHMENTS_BUCKET_ID, attachment.fileId);
+        // Get file from storage using getFileView (same content, proven reliable)
+        // We add our own Content-Disposition header to force download
+        const file = await storage.getFileView(ATTACHMENTS_BUCKET_ID, attachment.fileId);
 
-        // Log download for traffic billing
+        // Log download for traffic billing (fire-and-forget, don't await)
         logStorageUsage({
           databases,
           workspaceId,
@@ -232,12 +233,15 @@ const app = new Hono()
             fileName: attachment.name,
             attachmentId,
           },
-        });
+        }).catch(() => { /* ignore metering errors */ });
 
         // Return the file directly with proper headers
+        // Use RFC 5987 encoding for unicode filenames
+        const safeFilename = attachment.name.replace(/[^\x20-\x7E]/g, '_');
+        const encodedFilename = encodeURIComponent(attachment.name);
         return new Response(file, {
           headers: {
-            'Content-Disposition': `attachment; filename="${attachment.name}"`,
+            'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
             'Content-Type': attachment.mimeType || 'application/octet-stream',
           },
         });

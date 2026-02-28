@@ -517,7 +517,7 @@ export const DataKanban = ({
                       {/* Add Task Button */}
                       {canCreateTasks && (
                         <Button
-                          onClick={openCreateTask}
+                          onClick={() => openCreateTask()}
                           variant="ghost"
                           className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent mt-2"
                         >

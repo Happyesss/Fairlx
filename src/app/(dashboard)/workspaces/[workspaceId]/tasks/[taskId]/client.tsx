@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrashIcon, Link, Copy, Plus } from "lucide-react";
+import { TrashIcon, Link, Copy } from "lucide-react";
 import { toast } from "sonner";
 import IconHelp from "@/components/icon-help";
 import { PageError } from "@/components/page-error";
@@ -25,6 +25,8 @@ import { useCurrent } from "@/features/auth/api/use-current";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal";
+import { SubIssuesList } from "@/features/tasks/components/sub-issues-list";
 
 export const TaskIdClient = () => {
   const [activeTab, setActiveTab] = useState<"activity" | "timelogs">("activity");
@@ -42,6 +44,9 @@ export const TaskIdClient = () => {
 
   // Get workspace admin status
   const { isAdmin } = useCurrentMember({ workspaceId });
+  
+  // Sub-issue creation modal
+  const { open: openCreateTaskModal } = useCreateTaskModal();
   
   // Get project-level task permissions
   const { 
@@ -104,10 +109,11 @@ export const TaskIdClient = () => {
 
           {/* Add Sub-issues */}
           <div className="px-6 pb-6">
-            <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <Plus size={14} />
-              <span>Add sub-issues</span>
-            </button>
+            <SubIssuesList 
+              parentTaskId={data.$id} 
+              workspaceId={workspaceId}
+              onAddSubIssue={() => openCreateTaskModal(data.$id)}
+            />
           </div>
 
 

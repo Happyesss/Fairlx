@@ -8,10 +8,12 @@ import { CreateTaskForm } from "./create-task-form";
 
 interface CreateTaskFormWrapperProps {
   onCancel: () => void;
+  parentTaskId?: string;
 }
 
 export const CreateTaskFormWrapper = ({
   onCancel,
+  parentTaskId,
 }: CreateTaskFormWrapperProps) => {
   const workspaceId = useWorkspaceId();
 
@@ -51,6 +53,7 @@ export const CreateTaskFormWrapper = ({
       onCancel={onCancel}
       projectOptions={projectOptions ?? []}
       memberOptions={memberOptions ?? []}
+      parentTaskId={parentTaskId}
     />
   );
 };

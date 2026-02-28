@@ -1139,9 +1139,34 @@ const app = new Hono()
                 // Update user's password
                 await users.updatePassword(userId, newTempPassword);
 
+                // Generate new Magic Link Token
+                const rawToken = crypto.randomBytes(32).toString("hex");
+                const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+                const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+                // Store hashed token (if LOGIN_TOKENS_ID is configured)
+                const { LOGIN_TOKENS_ID } = await import("@/config");
+                if (LOGIN_TOKENS_ID) {
+                    const { databases: adminDatabases } = await createAdminClient();
+                    await adminDatabases.createDocument(
+                        DATABASE_ID,
+                        LOGIN_TOKENS_ID,
+                        ID.unique(),
+                        {
+                            userId,
+                            orgId,
+                            tokenHash,
+                            expiresAt,
+                            usedAt: null,
+                            purpose: "FIRST_LOGIN",
+                        }
+                    );
+                }
+
                 // Send welcome email
                 const { sendWelcomeEmail } = await import("../services/email-service");
                 const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL}/sign-in`;
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
 
                 const emailResult = await sendWelcomeEmail({
                     recipientEmail: targetUser.email,
@@ -1150,6 +1175,8 @@ const app = new Hono()
                     organizationName: organization.name,
                     tempPassword: newTempPassword,
                     loginUrl,
+                    firstLoginToken: LOGIN_TOKENS_ID ? rawToken : undefined,
+                    appUrl: LOGIN_TOKENS_ID ? appUrl : undefined,
                     logoUrl: (organization as { imageUrl?: string }).imageUrl || undefined,
                 });
 
@@ -1162,6 +1189,7 @@ const app = new Hono()
                 return c.json({
                     success: true,
                     emailSent: true,
+                    hasMagicLink: !!LOGIN_TOKENS_ID,
                     message: "Welcome email resent with new temporary password",
                     // SECURITY: In production, remove this - send via email only
                     tempPassword: process.env.NODE_ENV === "development" ? newTempPassword : undefined,

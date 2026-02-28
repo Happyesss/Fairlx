@@ -44,6 +44,7 @@ export type Task = Models.Document & {
   commentCount?: number;   // Number of comments on this task
   storyPoints?: number;    // Story points for agile
   reporterId?: string;     // Who created the item
+  parentTaskId?: string;   // Parent task ID for sub-issues
 };
 
 export type TaskAssignee = {
@@ -66,4 +67,5 @@ export type PopulatedTask = Task & {
   assignedTeam?: TaskTeam; // Single assigned team
   assignedTeams?: TaskTeam[]; // Multiple assigned teams
   project?: { $id: string; name: string; imageUrl: string };
+  reporter?: TaskAssignee; // Who created/reported the task
 };

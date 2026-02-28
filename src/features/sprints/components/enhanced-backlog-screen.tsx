@@ -937,7 +937,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                   <Button
                     size="xs"
                     // Default/Primary variant
-                    onClick={openCreateTaskModal}
+                    onClick={() => openCreateTaskModal()}
                   >
                     <Plus className="w-3 h-3 mr-0.5" />
                     Create Full Workitem
@@ -1499,7 +1499,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                   Create work item
                                 </button>
                                 <button
-                                  onClick={openCreateTaskModal}
+                                  onClick={() => openCreateTaskModal()}
                                   className="w-1/2 px-4 py-3 text-left text-sm text-muted-foreground hover:bg-accent transition-colors flex items-center gap-2"
                                 >
                                   <Plus className="size-4" />
@@ -1877,7 +1877,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                             Create work item
                           </button>
                           <button
-                            onClick={openCreateTaskModal}
+                            onClick={() => openCreateTaskModal()}
                             className="w-1/2 px-4 py-3 text-left text-sm text-muted-foreground hover:bg-muted transition-colors flex items-center gap-2"
                           >
                             <Plus className="size-4" />

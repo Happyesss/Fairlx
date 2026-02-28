@@ -78,6 +78,7 @@ interface AttachmentItemProps {
 }
 
 const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemProps & { onPreview?: (attachment: Attachment) => void }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
   const [ConfirmDialog, confirm] = useConfirm(
     "Delete Attachment",
     "Are you sure you want to delete this attachment?",
@@ -96,14 +97,28 @@ const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemPr
     });
   };
 
-  const handleDownload = () => {
-    const downloadUrl = `/api/attachments/${attachment.$id}/download?workspaceId=${workspaceId}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = attachment.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const downloadUrl = `/api/attachments/${attachment.$id}/download?workspaceId=${workspaceId}`;
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { type: attachment.mimeType || 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download attachment:", error);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handlePreview = () => {
@@ -154,9 +169,13 @@ const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemPr
                   Preview
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={handleDownload} className="text-xs">
-                <Download className="size-3.5 mr-2" />
-                Download
+              <DropdownMenuItem onClick={handleDownload} className="text-xs" disabled={isDownloading}>
+                {isDownloading ? (
+                  <Loader2 className="size-3.5 mr-2 animate-spin" />
+                ) : (
+                  <Download className="size-3.5 mr-2" />
+                )}
+                {isDownloading ? "Downloading..." : "Download"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={handleDelete}
@@ -298,7 +317,7 @@ export const TaskAttachments = ({ taskId, workspaceId, onPreview }: TaskAttachme
                     {dragActive ? "Drop to upload" : "Drop files or click"}
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Max 50MB · Images, docs, archives
+                    Max 20MB · Images, docs, archives
                   </p>
                 </div>
                 {isUploading && (

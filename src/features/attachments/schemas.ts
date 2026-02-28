@@ -24,8 +24,8 @@ export const uploadAttachmentSchema = z.object({
   workspaceId: z.string().trim().min(1, "Workspace ID is required"),
 });
 
-// File size limit: 50MB
-export const MAX_FILE_SIZE = 50 * 1024 * 1024;
+// File size limit: 20MB
+export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 // Allowed file types
 export const ALLOWED_FILE_TYPES = [
