@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
     Building2, Users, Settings2, Shield, Trash2, Crown,
     CreditCard, AlertTriangle, FileText, Loader2, Clock, Hash, UserPlus, Mail, BarChart3, ImageIcon,
-    Gift
+    Gift, Eye
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Select,
     SelectContent,
@@ -58,6 +59,8 @@ import { useDeleteOrganization } from "@/features/organizations/api/use-delete-o
 import { useCurrentOrgMember } from "@/features/organizations/api/use-current-org-member";
 import { useCreateOrgMember } from "@/features/organizations/api/use-create-org-member";
 import { useResendWelcomeEmail } from "@/features/organizations/api/use-resend-welcome-email";
+import { useBulkUpdateMemberRoles } from "@/features/organizations/api/use-bulk-update-member-roles";
+import { useBulkRemoveMembers } from "@/features/organizations/api/use-bulk-remove-members";
 import { OrganizationRole } from "@/features/organizations/types";
 import { useCurrentUserOrgPermissions } from "@/features/org-permissions/api/use-current-user-permissions";
 import { OrgPermissionKey } from "@/features/org-permissions/types";
@@ -81,6 +84,14 @@ const DepartmentsList = dynamic(() => import("@/features/departments/components/
 
 const OrganizationRewards = dynamic(() => import("@/features/organizations/components/organization-rewards").then(mod => mod.OrganizationRewards), {
     loading: () => <Skeleton className="h-[400px] w-full" />,
+});
+
+const OrgMemberBulkActionsToolbar = dynamic(() => import("@/features/organizations/components/org-member-bulk-actions-toolbar").then(mod => mod.OrgMemberBulkActionsToolbar), {
+    ssr: false,
+});
+
+const MemberProfileDialog = dynamic(() => import("@/features/organizations/components/member-profile-dialog").then(mod => mod.MemberProfileDialog), {
+    ssr: false,
 });
 
 
@@ -134,11 +145,23 @@ export const OrganizationSettingsClient = () => {
     const { mutate: createMember, isPending: isCreatingMember } = useCreateOrgMember();
     const { mutate: resendWelcome, isPending: isResendingWelcome } = useResendWelcomeEmail();
 
+    // Track which user's welcome email is being resent (explicit state for reliable UI)
+    const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+
     // Add Member modal state
     const [addMemberOpen, setAddMemberOpen] = useState(false);
     const [newMemberName, setNewMemberName] = useState("");
     const [newMemberEmail, setNewMemberEmail] = useState("");
     const [newMemberRole, setNewMemberRole] = useState<OrganizationRole>(OrganizationRole.MEMBER);
+
+    // Bulk management state
+    const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+    const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+    const [profileViewIndex, setProfileViewIndex] = useState(0);
+
+    // Bulk operation mutations
+    const { mutate: bulkUpdateRoles, isPending: isBulkUpdating } = useBulkUpdateMemberRoles();
+    const { mutate: bulkRemoveMembers, isPending: isBulkRemoving } = useBulkRemoveMembers();
 
     // Redirect if not an organization account
     useEffect(() => {
@@ -191,8 +214,77 @@ export const OrganizationSettingsClient = () => {
         };
     }, [orgLogoPreview]);
 
-    const members = membersData?.documents || [];
-    const ownerCount = members.filter((m: OrgMember) => m.role === "OWNER").length;
+    const members = useMemo(() => membersData?.documents || [], [membersData?.documents]);
+    const ownerCount = useMemo(() => members.filter((m: OrgMember) => m.role === "OWNER").length, [members]);
+
+    // Get selected members as array - must be before early returns
+    const selectedMembers = useMemo(() => {
+        return members.filter((m: OrgMember) => selectedMemberIds.has(m.userId));
+    }, [members, selectedMemberIds]);
+
+    // Handler: Toggle member selection - must be before early returns
+    const handleToggleMember = useCallback((userId: string) => {
+        setSelectedMemberIds((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(userId)) {
+                newSet.delete(userId);
+            } else {
+                newSet.add(userId);
+            }
+            return newSet;
+        });
+    }, []);
+
+    // Handler: Select/Deselect all members - must be before early returns
+    const handleSelectAll = useCallback((checked: boolean) => {
+        if (checked) {
+            setSelectedMemberIds(new Set(members.map((m: OrgMember) => m.userId)));
+        } else {
+            setSelectedMemberIds(new Set());
+        }
+    }, [members]);
+
+    // Handler: Clear selection - must be before early returns
+    const handleClearSelection = useCallback(() => {
+        setSelectedMemberIds(new Set());
+    }, []);
+
+    // Handler: Bulk update roles - must be before early returns
+    const handleBulkRoleChange = useCallback((role: OrganizationRole) => {
+        if (!primaryOrganizationId || selectedMemberIds.size === 0) return;
+        bulkUpdateRoles({
+            organizationId: primaryOrganizationId,
+            userIds: Array.from(selectedMemberIds),
+            role,
+        }, {
+            onSuccess: () => {
+                setSelectedMemberIds(new Set());
+            },
+        });
+    }, [primaryOrganizationId, selectedMemberIds, bulkUpdateRoles]);
+
+    // Handler: Bulk delete members - must be before early returns
+    const handleBulkDelete = useCallback(() => {
+        if (!primaryOrganizationId || selectedMemberIds.size === 0) return;
+        bulkRemoveMembers({
+            organizationId: primaryOrganizationId,
+            userIds: Array.from(selectedMemberIds),
+        }, {
+            onSuccess: () => {
+                setSelectedMemberIds(new Set());
+            },
+        });
+    }, [primaryOrganizationId, selectedMemberIds, bulkRemoveMembers]);
+
+    // Handler: View profiles - must be before early returns
+    const handleViewProfiles = useCallback(() => {
+        setProfileViewIndex(0);
+        setProfileDialogOpen(true);
+    }, []);
+
+    // Check if all selectable members are selected
+    const allSelected = members.length > 0 && selectedMemberIds.size === members.length;
+    const someSelected = selectedMemberIds.size > 0 && selectedMemberIds.size < members.length;
 
     // Don't render anything if not an org account
     if (isOrg === false) {
@@ -334,7 +426,7 @@ export const OrganizationSettingsClient = () => {
                 <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
                     <TabsTrigger
                         value="general"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                     >
                         <Settings2 className="size-4 mr-2" />
                         General
@@ -342,7 +434,7 @@ export const OrganizationSettingsClient = () => {
                     {hasPermission(OrgPermissionKey.MEMBERS_VIEW) && (
                         <TabsTrigger
                             value="members"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                         >
                             <Users className="size-4 mr-2" />
                             Members
@@ -354,7 +446,7 @@ export const OrganizationSettingsClient = () => {
                     {hasPermission(OrgPermissionKey.SECURITY_VIEW) && (
                         <TabsTrigger
                             value="security"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                         >
                             <Shield className="size-4 mr-2" />
                             Security
@@ -363,7 +455,7 @@ export const OrganizationSettingsClient = () => {
                     {hasPermission(OrgPermissionKey.DEPARTMENTS_MANAGE) && (
                         <TabsTrigger
                             value="departments"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                         >
                             <Building2 className="size-4 mr-2" />
                             Departments
@@ -372,7 +464,7 @@ export const OrganizationSettingsClient = () => {
                     {hasPermission(OrgPermissionKey.BILLING_VIEW) && (
                         <TabsTrigger
                             value="billing"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                         >
                             <CreditCard className="size-4 mr-2" />
                             Billing
@@ -381,7 +473,7 @@ export const OrganizationSettingsClient = () => {
                     {hasPermission(OrgPermissionKey.AUDIT_VIEW) && (
                         <TabsTrigger
                             value="audit"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                         >
                             <FileText className="size-4 mr-2" />
                             Audit
@@ -389,7 +481,7 @@ export const OrganizationSettingsClient = () => {
                     )}
                     <TabsTrigger
                         value="rewards"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
+                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
                     >
                         <Gift className="size-4 mr-2" />
                         Rewards
@@ -647,12 +739,48 @@ export const OrganizationSettingsClient = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-2">
+                                    {/* Select All Header (only for admins) */}
+                                    {canManageMembers && members.length > 0 && (
+                                        <div className="flex items-center gap-3 px-3 py-2 border-b mb-2">
+                                            <Checkbox
+                                                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                                                onCheckedChange={handleSelectAll}
+                                                aria-label="Select all members"
+                                            />
+                                            <span className="text-xs text-muted-foreground">
+                                                {selectedMemberIds.size > 0 
+                                                    ? `${selectedMemberIds.size} selected`
+                                                    : "Select all"
+                                                }
+                                            </span>
+                                            {selectedMemberIds.size > 0 && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 px-2 text-xs"
+                                                    onClick={handleClearSelection}
+                                                >
+                                                    Clear
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
                                     {members.map((member: OrgMember) => (
                                         <div
                                             key={member.$id}
-                                            className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 hover:bg-accent/30 transition-all"
+                                            className={`flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 hover:bg-accent/30 transition-all ${
+                                                selectedMemberIds.has(member.userId) ? "border-primary/50 bg-primary/5" : ""
+                                            }`}
                                         >
                                             <div className="flex items-center gap-3">
+                                                {/* Selection Checkbox (only for admins) */}
+                                                {canManageMembers && (
+                                                    <Checkbox
+                                                        checked={selectedMemberIds.has(member.userId)}
+                                                        onCheckedChange={() => handleToggleMember(member.userId)}
+                                                        aria-label={`Select ${member.name || member.email}`}
+                                                    />
+                                                )}
                                                 <div className="relative">
                                                     <Avatar className="size-9">
                                                         <AvatarImage src={member.profileImageUrl || undefined} />
@@ -683,6 +811,20 @@ export const OrganizationSettingsClient = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
+                                                {/* View Profile Button */}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8 text-muted-foreground hover:text-foreground"
+                                                    onClick={() => {
+                                                        const idx = members.findIndex((m: OrgMember) => m.userId === member.userId);
+                                                        setProfileViewIndex(idx >= 0 ? idx : 0);
+                                                        setSelectedMemberIds(new Set([member.userId]));
+                                                        setProfileDialogOpen(true);
+                                                    }}
+                                                >
+                                                    <Eye className="size-3.5" />
+                                                </Button>
                                                 {/* Pending activation badge + Resend button */}
                                                 {member.mustResetPassword && canManageMembers && primaryOrganizationId && (
                                                     <>
@@ -693,13 +835,21 @@ export const OrganizationSettingsClient = () => {
                                                             variant="ghost"
                                                             size="sm"
                                                             className="h-7 gap-1 text-xs"
-                                                            disabled={isResendingWelcome}
-                                                            onClick={() => resendWelcome({
-                                                                orgId: primaryOrganizationId,
-                                                                userId: member.userId
-                                                            })}
+                                                            disabled={resendingUserId === member.userId}
+                                                            onClick={() => {
+                                                                setResendingUserId(member.userId);
+                                                                resendWelcome(
+                                                                    {
+                                                                        orgId: primaryOrganizationId,
+                                                                        userId: member.userId
+                                                                    },
+                                                                    {
+                                                                        onSettled: () => setResendingUserId(null)
+                                                                    }
+                                                                );
+                                                            }}
                                                         >
-                                                            {isResendingWelcome ? (
+                                                            {resendingUserId === member.userId ? (
                                                                 <Loader2 className="size-3 animate-spin" />
                                                             ) : (
                                                                 <Mail className="size-3" />
@@ -946,6 +1096,28 @@ export const OrganizationSettingsClient = () => {
 
 
             </Tabs>
+
+            {/* Bulk Actions Toolbar (floating at bottom when members selected) */}
+            {canManageMembers && (
+                <OrgMemberBulkActionsToolbar
+                    selectedMembers={selectedMembers}
+                    onClearSelection={handleClearSelection}
+                    onBulkRoleChange={handleBulkRoleChange}
+                    onBulkDelete={handleBulkDelete}
+                    onViewProfiles={handleViewProfiles}
+                    isUpdating={isBulkUpdating}
+                    isDeleting={isBulkRemoving}
+                />
+            )}
+
+            {/* Member Profile Dialog */}
+            <MemberProfileDialog
+                members={selectedMembers.length > 0 ? selectedMembers : members}
+                currentIndex={profileViewIndex}
+                isOpen={profileDialogOpen}
+                onClose={() => setProfileDialogOpen(false)}
+                onNavigate={setProfileViewIndex}
+            />
         </div>
     );
 };

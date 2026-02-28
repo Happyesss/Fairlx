@@ -67,3 +67,20 @@ export const createOrgMemberSchema = z.object({
 export const convertToOrganizationSchema = z.object({
     organizationName: z.string().trim().min(1, "Organization name is required.").max(128, "Organization name too long."),
 });
+
+/**
+ * Schema for bulk role update of organization members
+ * Allows admin to change roles of multiple members at once
+ */
+export const bulkUpdateMemberRolesSchema = z.object({
+    userIds: z.array(z.string()).min(1, "At least one member must be selected"),
+    role: z.enum(["OWNER", "ADMIN", "MODERATOR", "MEMBER"]),
+});
+
+/**
+ * Schema for bulk deletion of organization members
+ * Allows admin to remove multiple members at once
+ */
+export const bulkRemoveMembersSchema = z.object({
+    userIds: z.array(z.string()).min(1, "At least one member must be selected"),
+});
