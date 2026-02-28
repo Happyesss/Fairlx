@@ -83,7 +83,7 @@ const app = new Hono()
 
         // Validate file size
         if (file.size > MAX_FILE_SIZE) {
-          return c.json({ error: "File size exceeds 50MB limit" }, 400);
+          return c.json({ error: "File size exceeds 20MB limit" }, 400);
         }
 
         // Validate file type

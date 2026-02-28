@@ -317,7 +317,7 @@ export const TaskAttachments = ({ taskId, workspaceId, onPreview }: TaskAttachme
                     {dragActive ? "Drop to upload" : "Drop files or click"}
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Max 50MB · Images, docs, archives
+                    Max 20MB · Images, docs, archives
                   </p>
                 </div>
                 {isUploading && (

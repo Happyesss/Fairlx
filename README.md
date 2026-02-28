@@ -154,7 +154,7 @@ Fairlx is a **production-ready enterprise project management platform** built wi
 ### 📎 Collaboration & Documentation
 
 - **Comments**: Threaded conversations with @mentions
-- **Attachments**: File uploads (50MB limit) with preview support
+- **Attachments**: File uploads (20MB limit) with preview support
 - **Project Documents**: PRDs, FRDs, Technical Specs, API Docs (5GB storage)
 - **AI Documentation**: Auto-generate documentation from project context
 - **Notifications**: Real-time updates for assignments, status changes, comments
@@ -972,7 +972,7 @@ All collection IDs must be configured. See [`.env.example`](.env.example) for th
 | Variable | Purpose | Max Size |
 |----------|---------|----------|
 | `NEXT_PUBLIC_APPWRITE_IMAGES_BUCKET_ID` | User avatars, workspace images | N/A |
-| `NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET_ID` | Task attachments | 50MB per file |
+| `NEXT_PUBLIC_APPWRITE_ATTACHMENTS_BUCKET_ID` | Task attachments | 20MB per file |
 | `NEXT_PUBLIC_APPWRITE_PROJECT_DOCS_BUCKET_ID` | Project documentation files | 5GB total |
 
 ### Optional Environment Variables
@@ -1089,7 +1089,7 @@ src/features/{feature-name}/
 | Feature | Description | Key Files |
 |---------|-------------|-----------|
 | **comments** | Threaded comments with @mentions | `api/use-get-comments.ts`, `components/comment-list.tsx` |
-| **attachments** | File uploads (50MB limit) | `api/use-upload-attachment.ts` |
+| **attachments** | File uploads (20MB limit) | `api/use-upload-attachment.ts` |
 | **project-docs** | Rich documentation with AI chat | `api/use-get-docs.ts`, `components/doc-editor.tsx` |
 | **notifications** | Real-time notification system | `api/use-get-notifications.ts`, `components/notification-panel.tsx` |
 
@@ -1752,8 +1752,8 @@ router.push(`/workspaces/${workspaceId}/settings`);  // No validation
 const file = event.target.files[0];
 
 // Validate
-if (file.size > 50 * 1024 * 1024) {
-  toast.error("File too large (max 50MB)");
+if (file.size > 20 * 1024 * 1024) {
+  toast.error("File too large (max 20MB)");
   return;
 }
 

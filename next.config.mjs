@@ -14,7 +14,7 @@ const nextConfig = {
       static: 180,  // Cache static pages for 3 min
     },
     serverActions: {
-      bodySizeLimit: '50mb',
+      bodySizeLimit: '20mb',
     },
   },
   images: {

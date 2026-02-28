@@ -27,7 +27,7 @@ export const CreateTaskAttachmentUpload = ({
     Array.from(newFiles).forEach((file) => {
       // Validate file size
       if (file.size > MAX_FILE_SIZE) {
-        alert(`File "${file.name}" exceeds 50MB limit`);
+        alert(`File "${file.name}" exceeds 20MB limit`);
         return;
       }
 
