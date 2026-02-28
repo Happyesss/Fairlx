@@ -182,8 +182,7 @@ export function BulkMemberUpload({ organizationId, onComplete }: BulkMemberUploa
 
         if (successCount > 0 && errorCount === 0) {
             onComplete?.();
-            setOpen(false);
-            setRows([]);
+            handleOpenChange(false);
         }
     };
 
@@ -202,8 +201,18 @@ export function BulkMemberUpload({ organizationId, onComplete }: BulkMemberUploa
     const successCount = rows.filter((r) => r.status === "success").length;
     const errorCount = rows.filter((r) => r.status === "error").length;
 
+    const handleOpenChange = (newOpen: boolean) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+            // Reset all state when dialog closes
+            setRows([]);
+            setProcessedCount(0);
+            setIsProcessing(false);
+        }
+    };
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2">
                     <Upload className="size-4" />
@@ -324,10 +333,7 @@ export function BulkMemberUpload({ organizationId, onComplete }: BulkMemberUploa
                     <div className="flex justify-end gap-2">
                         <Button
                             variant="outline"
-                            onClick={() => {
-                                setOpen(false);
-                                setRows([]);
-                            }}
+                            onClick={() => handleOpenChange(false)}
                             disabled={isProcessing}
                         >
                             Cancel

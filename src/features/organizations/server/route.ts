@@ -24,6 +24,8 @@ import {
     updateOrganizationMemberSchema,
     createOrgMemberSchema,
     convertToOrganizationSchema,
+    bulkUpdateMemberRolesSchema,
+    bulkRemoveMembersSchema,
 } from "../schemas";
 
 // NEW SECURITY IMPORTS
@@ -623,6 +625,211 @@ const app = new Hono()
             return c.json({ error: "Failed to remove member" }, 500);
         }
     })
+
+    /**
+     * POST /organizations/:orgId/members/bulk-update-role
+     * Bulk update role for multiple organization members
+     */
+    .post(
+        "/:orgId/members/bulk-update-role",
+        sessionMiddleware,
+        zValidator("json", bulkUpdateMemberRolesSchema),
+        async (c) => {
+            const databases = c.get("databases");
+            const user = c.get("user");
+            const { orgId } = c.req.param();
+            const { userIds, role } = c.req.valid("json");
+
+            // Check permissions
+            const access = await resolveUserOrgAccess(databases, user.$id, orgId);
+            if (!hasOrgPermissionFromAccess(access, OrgPermissionKey.MEMBERS_MANAGE)) {
+                return c.json({ error: "Unauthorized" }, 401);
+            }
+
+            const results = { updated: [] as string[], failed: [] as string[], skipped: [] as string[] };
+
+            // Count current owners to ensure at least one remains
+            const currentOwners = await databases.listDocuments<OrganizationMember>(
+                DATABASE_ID,
+                ORGANIZATION_MEMBERS_ID,
+                [
+                    Query.equal("organizationId", orgId),
+                    Query.equal("role", OrganizationRole.OWNER),
+                ]
+            );
+
+            const ownerUserIds = new Set(currentOwners.documents.map((o) => o.userId));
+            const ownersBeingDemoted = userIds.filter((id) => ownerUserIds.has(id) && role !== OrganizationRole.OWNER);
+            const remainingOwners = currentOwners.total - ownersBeingDemoted.length;
+
+            // Prevent demoting all owners
+            if (remainingOwners < 1 && role !== OrganizationRole.OWNER) {
+                return c.json({ error: "Cannot demote all owners. At least one owner must remain." }, 400);
+            }
+
+            for (const userId of userIds) {
+                try {
+                    const members = await databases.listDocuments<OrganizationMember>(
+                        DATABASE_ID,
+                        ORGANIZATION_MEMBERS_ID,
+                        [
+                            Query.equal("organizationId", orgId),
+                            Query.equal("userId", userId),
+                        ]
+                    );
+
+                    if (members.total === 0) {
+                        results.failed.push(userId);
+                        continue;
+                    }
+
+                    const member = members.documents[0];
+
+                    // Skip if already has the target role
+                    if (member.role === role) {
+                        results.skipped.push(userId);
+                        continue;
+                    }
+
+                    await databases.updateDocument(
+                        DATABASE_ID,
+                        ORGANIZATION_MEMBERS_ID,
+                        member.$id,
+                        { role }
+                    );
+                    results.updated.push(userId);
+                } catch {
+                    results.failed.push(userId);
+                }
+            }
+
+            return c.json({ data: results });
+        }
+    )
+
+    /**
+     * POST /organizations/:orgId/members/bulk-delete
+     * Bulk remove multiple members from organization
+     */
+    .post(
+        "/:orgId/members/bulk-delete",
+        sessionMiddleware,
+        zValidator("json", bulkRemoveMembersSchema),
+        async (c) => {
+            const databases = c.get("databases");
+            const user = c.get("user");
+            const { orgId } = c.req.param();
+            const { userIds } = c.req.valid("json");
+
+            // Check permissions
+            const access = await resolveUserOrgAccess(databases, user.$id, orgId);
+            if (!hasOrgPermissionFromAccess(access, OrgPermissionKey.MEMBERS_MANAGE)) {
+                return c.json({ error: "Unauthorized" }, 401);
+            }
+
+            const results = { deleted: [] as string[], failed: [] as string[], skipped: [] as string[] };
+
+            // Ensure at least one owner remains
+            const currentOwners = await databases.listDocuments<OrganizationMember>(
+                DATABASE_ID,
+                ORGANIZATION_MEMBERS_ID,
+                [
+                    Query.equal("organizationId", orgId),
+                    Query.equal("role", OrganizationRole.OWNER),
+                ]
+            );
+
+            const ownerUserIds = new Set(currentOwners.documents.map((o) => o.userId));
+            const ownersBeingDeleted = userIds.filter((id) => ownerUserIds.has(id));
+            const remainingOwners = currentOwners.total - ownersBeingDeleted.length;
+
+            if (remainingOwners < 1) {
+                return c.json({ error: "Cannot remove all owners. At least one owner must remain." }, 400);
+            }
+
+            // Get org workspaces for cascade deletion
+            const orgWorkspaces = await databases.listDocuments(
+                DATABASE_ID,
+                WORKSPACES_ID,
+                [Query.equal("organizationId", orgId)]
+            );
+
+            for (const userId of userIds) {
+                try {
+                    const members = await databases.listDocuments<OrganizationMember>(
+                        DATABASE_ID,
+                        ORGANIZATION_MEMBERS_ID,
+                        [
+                            Query.equal("organizationId", orgId),
+                            Query.equal("userId", userId),
+                        ]
+                    );
+
+                    if (members.total === 0) {
+                        results.failed.push(userId);
+                        continue;
+                    }
+
+                    const member = members.documents[0];
+
+                    // Skip owners if they are in the delete list but we've already warned
+                    if (member.role === OrganizationRole.OWNER) {
+                        // Protect the last owner from deletion
+                        if (currentOwners.total <= 1 || ownersBeingDeleted.length === currentOwners.total) {
+                            results.skipped.push(userId);
+                            continue;
+                        }
+                    }
+
+                    // Remove workspace memberships
+                    for (const workspace of orgWorkspaces.documents) {
+                        const wsMemberships = await databases.listDocuments(
+                            DATABASE_ID,
+                            MEMBERS_ID,
+                            [
+                                Query.equal("workspaceId", workspace.$id),
+                                Query.equal("userId", userId),
+                            ]
+                        );
+                        for (const wsm of wsMemberships.documents) {
+                            await databases.deleteDocument(DATABASE_ID, MEMBERS_ID, wsm.$id);
+                        }
+                    }
+
+                    // Delete org membership
+                    await databases.deleteDocument(
+                        DATABASE_ID,
+                        ORGANIZATION_MEMBERS_ID,
+                        member.$id
+                    );
+                    results.deleted.push(userId);
+                } catch {
+                    results.failed.push(userId);
+                }
+            }
+
+            // Log audit event
+            try {
+                const { logOrgAudit, OrgAuditAction } = await import("../audit");
+                const { databases: adminDatabases } = await createAdminClient();
+                await logOrgAudit({
+                    databases: adminDatabases,
+                    organizationId: orgId,
+                    actorUserId: user.$id,
+                    actionType: OrgAuditAction.MEMBER_REMOVED,
+                    metadata: {
+                        bulkOperation: true,
+                        deletedUserIds: results.deleted,
+                        failedUserIds: results.failed,
+                    },
+                });
+            } catch {
+                // Don't fail the operation if audit logging fails
+            }
+
+            return c.json({ data: results });
+        }
+    )
 
     /**
      * POST /organizations/:orgId/members/create-user
