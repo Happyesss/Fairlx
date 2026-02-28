@@ -143,7 +143,7 @@ export const OrganizationSettingsClient = () => {
     const { mutate: removeMember, isPending: isRemoving } = useRemoveOrgMember();
     const { mutate: deleteOrg, isPending: isDeleting } = useDeleteOrganization();
     const { mutate: createMember, isPending: isCreatingMember } = useCreateOrgMember();
-    const { mutate: resendWelcome, isPending: isResendingWelcome } = useResendWelcomeEmail();
+    const { mutate: resendWelcome, isPending: _isResendingWelcome } = useResendWelcomeEmail();
 
     // Track which user's welcome email is being resent (explicit state for reliable UI)
     const [resendingUserId, setResendingUserId] = useState<string | null>(null);

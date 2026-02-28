@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ID, Query, Databases } from "node-appwrite";
+import { ID, Query, Databases, Models } from "node-appwrite";
 
 import {
     DATABASE_ID,
@@ -64,18 +64,32 @@ export async function aggregateUsageForBillingPeriod(
         ? "organization"
         : "user";
 
-    // Query usage aggregations for this billing period
-    const aggregations = await databases.listDocuments(
-        DATABASE_ID,
-        USAGE_AGGREGATIONS_ID,
-        [
-            Query.equal("billingEntityId", entityId!),
-            Query.equal("billingEntityType", entityType),
-            Query.greaterThanEqual("periodStart", billingAccount.billingCycleStart),
-            Query.lessThanEqual("periodEnd", billingAccount.billingCycleEnd),
-            Query.limit(100),
-        ]
-    );
+    // Query usage aggregations for this billing period using pagination
+    // to ensure all records are fetched (avoiding under-billing from truncation)
+    const BATCH_SIZE = 100;
+    let offset = 0;
+    let allDocuments: Models.Document[] = [];
+    let aggregations;
+
+    do {
+        aggregations = await databases.listDocuments(
+            DATABASE_ID,
+            USAGE_AGGREGATIONS_ID,
+            [
+                Query.equal("billingEntityId", entityId!),
+                Query.equal("billingEntityType", entityType),
+                Query.greaterThanEqual("periodStart", billingAccount.billingCycleStart),
+                Query.lessThanEqual("periodEnd", billingAccount.billingCycleEnd),
+                Query.limit(BATCH_SIZE),
+                Query.offset(offset),
+            ]
+        );
+        allDocuments = allDocuments.concat(aggregations.documents);
+        offset += BATCH_SIZE;
+    } while (aggregations.documents.length === BATCH_SIZE);
+
+    // Replace aggregations.documents reference with fetched documents
+    aggregations = { ...aggregations, documents: allDocuments };
 
     // Initialize usage breakdown matching the UsageBreakdown type
     const breakdown: UsageBreakdown = {
