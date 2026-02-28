@@ -141,6 +141,8 @@ jobs:
           NEXT_PUBLIC_APPWRITE_USER_RECOVERY_CODES_ID: ${{ secrets.NEXT_PUBLIC_APPWRITE_USER_RECOVERY_CODES_ID }}
           NEXT_PUBLIC_APPWRITE_EMAIL_OTP_CODES_ID: ${{ secrets.NEXT_PUBLIC_APPWRITE_EMAIL_OTP_CODES_ID }}
           TWO_FACTOR_ENCRYPTION_SECRET: ${{ secrets.TWO_FACTOR_ENCRYPTION_SECRET }}
+          # Socket.IO
+          SOCKET_PUSH_SECRET: ${{ secrets.SOCKET_PUSH_SECRET }}
         run: npm run build
 
       - name: Clean up before transfer
@@ -273,6 +275,8 @@ jobs:
             NEXT_PUBLIC_APPWRITE_USER_RECOVERY_CODES_ID=${{ secrets.NEXT_PUBLIC_APPWRITE_USER_RECOVERY_CODES_ID }}
             NEXT_PUBLIC_APPWRITE_EMAIL_OTP_CODES_ID=${{ secrets.NEXT_PUBLIC_APPWRITE_EMAIL_OTP_CODES_ID }}
             TWO_FACTOR_ENCRYPTION_SECRET=${{ secrets.TWO_FACTOR_ENCRYPTION_SECRET }}
+            # Socket.IO
+            SOCKET_PUSH_SECRET=${{ secrets.SOCKET_PUSH_SECRET }}
             EOF
             
             # Ensure proper permissions

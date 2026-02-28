@@ -12,6 +12,9 @@
  * Only needed if you want true dedicated WebSocket push notifications.
  */
 
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import next from "next";
 import { initSocketServer, emitToUser } from "./src/lib/socket";
@@ -20,13 +23,21 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
 
-// SECURITY: Internal secret for socket push endpoint - REQUIRED, no fallback
-const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET;
+// SECURITY: Internal secret for socket push endpoint
+// In development: uses default value for contributor convenience
+// In production: REQUIRED - must be set as environment variable
+const DEV_DEFAULT_SECRET = "dev-socket-secret-not-for-production";
+const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET || (dev ? DEV_DEFAULT_SECRET : undefined);
+
 if (!SOCKET_PUSH_SECRET) {
     console.error("FATAL: SOCKET_PUSH_SECRET environment variable is not set.");
-    console.error("This secret is required to secure the internal socket push endpoint.");
-    console.error("Generate a secure random string and set it in your .env file.");
+    console.error("This secret is required in production to secure the internal socket push endpoint.");
+    console.error("Generate a secure random string and set it in your environment.");
     process.exit(1);
+}
+
+if (dev && SOCKET_PUSH_SECRET === DEV_DEFAULT_SECRET) {
+    console.warn("⚠️  Using default SOCKET_PUSH_SECRET for development. Do NOT use in production!");
 }
 
 const app = next({ dev, hostname, port });
