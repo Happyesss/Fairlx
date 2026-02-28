@@ -338,6 +338,22 @@ const app = new Hono()
                 }
               };
 
+              // COMPLIANCE FIX: Log audit event FIRST before mutating state
+              // This ensures we have a compliance record even if subsequent operations fail
+              // If audit logging fails, we abort the acceptance to maintain compliance integrity
+              const { logOrgAudit, OrgAuditAction } = await import("@/features/organizations/audit");
+              await logOrgAudit({
+                databases,
+                organizationId: orgId,
+                actorUserId: user.$id,
+                actionType: OrgAuditAction.USER_ACCEPTED_LEGAL,
+                metadata: {
+                  version: CURRENT_LEGAL_VERSION,
+                  applyToOrg: true,
+                },
+              });
+
+              // Audit log succeeded - now safe to update organization settings
               await databases.updateDocument(
                 DATABASE_ID,
                 ORGANIZATIONS_ID,
@@ -359,23 +375,6 @@ const app = new Hono()
                 ...updatedPrefs,
                 legalHistory
               });
-
-              // Log Audit Event
-              try {
-                const { logOrgAudit, OrgAuditAction } = await import("@/features/organizations/audit");
-                await logOrgAudit({
-                  databases,
-                  organizationId: orgId,
-                  actorUserId: user.$id,
-                  actionType: OrgAuditAction.USER_ACCEPTED_LEGAL,
-                  metadata: {
-                    version: CURRENT_LEGAL_VERSION,
-                    applyToOrg: true,
-                  },
-                });
-              } catch (auditError) {
-                console.error("Failed to log legal acceptance audit:", auditError);
-              }
             }
           }
         }

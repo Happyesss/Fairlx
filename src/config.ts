@@ -145,6 +145,8 @@ export const TWO_FACTOR_ENCRYPTION_SECRET = process.env.TWO_FACTOR_ENCRYPTION_SE
 
 // ===============================
 // Landing Page Supabase (GitHub Star Rewards)
+// MOVED TO config.server.ts for security
 // ===============================
-export const LANDING_SUPABASE_URL = process.env.LANDING_SUPABASE_URL!;
-export const LANDING_SUPABASE_SERVICE_ROLE_KEY = process.env.LANDING_SUPABASE_SERVICE_ROLE_KEY!;
+// SECURITY: These credentials are now in config.server.ts which has 
+// "server-only" protection to prevent accidental client bundle inclusion.
+// Import from "@/config.server" instead.;

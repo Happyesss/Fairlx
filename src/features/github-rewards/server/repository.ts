@@ -4,12 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 import { Databases, Query, ID } from "node-appwrite";
 
 import {
-    LANDING_SUPABASE_URL,
-    LANDING_SUPABASE_SERVICE_ROLE_KEY,
     DATABASE_ID,
     BILLING_ACCOUNTS_ID,
     BILLING_AUDIT_LOGS_ID,
 } from "@/config";
+
+import {
+    LANDING_SUPABASE_URL,
+    LANDING_SUPABASE_SERVICE_ROLE_KEY,
+} from "@/config.server";
 
 import { BillingAccount, BillingStatus, BillingAuditEventType } from "@/features/billing/types";
 

@@ -20,8 +20,14 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
 
-// Internal secret for socket push endpoint (prevents unauthorized access)
-const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET || "internal-socket-push-secret";
+// SECURITY: Internal secret for socket push endpoint - REQUIRED, no fallback
+const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET;
+if (!SOCKET_PUSH_SECRET) {
+    console.error("FATAL: SOCKET_PUSH_SECRET environment variable is not set.");
+    console.error("This secret is required to secure the internal socket push endpoint.");
+    console.error("Generate a secure random string and set it in your .env file.");
+    process.exit(1);
+}
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();

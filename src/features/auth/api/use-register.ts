@@ -38,17 +38,29 @@ export const useRegister = (returnUrl?: string) => {
       queryClient.invalidateQueries({ queryKey: ["current"] });
     },
     onError: (error) => {
+      // Extract and display server error messages to the user
       try {
         const errorData = JSON.parse(error.message);
         if ('smtpError' in errorData && errorData.smtpError) {
           toast.error("Account created but verification email could not be sent. Please contact support.");
-        } else if ('error' in errorData) {
+        } else if ('error' in errorData && errorData.error) {
+          // Show server's specific error message (e.g. "A user with this email already exists")
           toast.error(String(errorData.error));
+        } else if ('message' in errorData && errorData.message) {
+          // Handle alternative error format with 'message' field
+          toast.error(String(errorData.message));
+        } else if (typeof errorData === 'string') {
+          // Handle plain string error
+          toast.error(errorData);
         } else {
-          toast.error("Failed to sign up.");
+          toast.error("Failed to sign up. Please try again.");
         }
       } catch {
-        toast.error("Failed to sign up.");
+        // JSON parse failed - show the raw error message if available
+        const message = error.message && error.message !== '[object Object]' 
+          ? error.message 
+          : "Failed to sign up. Please try again.";
+        toast.error(message);
       }
     },
   });

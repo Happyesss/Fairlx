@@ -62,8 +62,8 @@ export const sessionMiddleware = createMiddleware<AdditionalContext>(
       await next();
     } catch (error: unknown) {
       // Only return 401 for authentication errors
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const isAuthError = (error as any)?.code === 401 || (error as any)?.message?.includes("Unauthorized");
+      // Check error code only - avoid false positives from message text matching
+      const isAuthError = (error as { code?: number })?.code === 401;
       if (isAuthError) {
         return c.json({ error: "Session expired or invalid" }, 401);
       }
@@ -74,18 +74,17 @@ export const sessionMiddleware = createMiddleware<AdditionalContext>(
   }
 );
 
-export async function getSessionUser(c: Context) {
+/**
+ * Get the current session user from the middleware context.
+ * This avoids duplicating client setup logic from sessionMiddleware.
+ * 
+ * @param c - Hono context (must have passed through sessionMiddleware)
+ * @returns The user object if authenticated, or null
+ */
+export function getSessionUser(c: Context): Models.User<Models.Preferences> | null {
   try {
-    const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT!)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT!);
-
-    const session = getCookie(c, AUTH_COOKIE);
-    if (!session) return null;
-
-    client.setSession(session);
-    const account = new Account(client);
-    return await account.get();
+    // Derive user from middleware context instead of recreating client
+    return c.get("user") ?? null;
   } catch {
     return null;
   }

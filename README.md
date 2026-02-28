@@ -834,7 +834,6 @@ Fairlx/
 │   │   ├── project-tools.tsx               # Project utilities
 │   │   ├── projects.tsx                    # Projects list
 │   │   ├── query-provider.tsx              # TanStack Query setup
-│   │   ├── queryProvider.tsx               # Query provider wrapper
 │   │   ├── responsive-modal.tsx            # Responsive modal
 │   │   ├── Separator.tsx                   # Visual separator
 │   │   ├── setting-navigation.tsx          # Settings nav

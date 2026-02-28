@@ -15,9 +15,20 @@
 
 import { NotificationPayload, ChannelHandler, NotificationChannel } from "../types";
 
-// Internal secret must match the one in server.ts
-const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET || "internal-socket-push-secret";
+// SECURITY: Internal secret must match the one in server.ts - no fallback allowed
+const SOCKET_PUSH_SECRET = process.env.SOCKET_PUSH_SECRET;
 const SOCKET_PUSH_URL = `http://localhost:${process.env.PORT || 3000}/internal/socket-push`;
+
+// Validation helper - throws only when actually trying to send
+function getSocketPushSecret(): string {
+    if (!SOCKET_PUSH_SECRET) {
+        throw new Error(
+            "SOCKET_PUSH_SECRET environment variable is not set. " +
+            "Socket push notifications are disabled for security."
+        );
+    }
+    return SOCKET_PUSH_SECRET;
+}
 
 export class SocketChannelHandler implements ChannelHandler {
     readonly name: NotificationChannel = "socket";
@@ -53,7 +64,7 @@ export class SocketChannelHandler implements ChannelHandler {
                 body: JSON.stringify({
                     userId,
                     payload: socketPayload,
-                    secret: SOCKET_PUSH_SECRET,
+                    secret: getSocketPushSecret(),
                 }),
             });
 
