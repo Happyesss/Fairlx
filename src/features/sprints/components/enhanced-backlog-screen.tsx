@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback, memo } from "react";
+import { useState, useMemo, useRef, useCallback, memo, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import {
   ChevronDown,
@@ -225,6 +225,70 @@ const AssigneePopover = memo(function AssigneePopover({
   );
 });
 
+// Memoized Select All Checkbox for instant feedback
+interface SelectAllCheckboxProps {
+  itemIds: string[];
+  selectedItemIds: Set<string>;
+  onToggle: (itemIds: string[]) => void;
+  label: string;
+  itemCount: number;
+}
+
+const SelectAllCheckbox = memo(function SelectAllCheckbox({
+  itemIds,
+  selectedItemIds,
+  onToggle,
+  label,
+  itemCount,
+}: SelectAllCheckboxProps) {
+  // Calculate selection state
+  const selectionState = useMemo(() => {
+    if (itemIds.length === 0) return 'none';
+    let selectedCount = 0;
+    for (const id of itemIds) {
+      if (selectedItemIds.has(id)) selectedCount++;
+    }
+    if (selectedCount === 0) return 'none';
+    if (selectedCount === itemIds.length) return 'all';
+    return 'some';
+  }, [itemIds, selectedItemIds]);
+
+  const handleClick = useCallback(() => {
+    onToggle(itemIds);
+  }, [itemIds, onToggle]);
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="w-5 flex items-center justify-center">
+            <Checkbox
+              checked={
+                selectionState === 'all'
+                  ? true
+                  : selectionState === 'some'
+                    ? "indeterminate"
+                    : false
+              }
+              onCheckedChange={handleClick}
+              className="data-[state=unchecked]:border-border"
+              aria-label={label}
+              disabled={itemIds.length === 0}
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">
+            {selectionState === 'all' 
+              ? 'Deselect all' 
+              : `Select all ${itemCount} items`}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+});
+
 interface EnhancedBacklogScreenProps {
   workspaceId: string;
   projectId: string;
@@ -416,7 +480,8 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
     );
   }, [workItemsData, searchQuery]);
 
-  const getSprintWorkItems = (sprintId: string) => {
+  // Define getSprintWorkItems BEFORE it's used in allVisibleWorkItemIds
+  const getSprintWorkItems = useCallback((sprintId: string) => {
     const items = workItemsData?.documents?.filter((item) =>
       item.sprintId === sprintId && item.type !== WorkItemType.EPIC
     ) || [];
@@ -425,8 +490,18 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.key.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  };
+  }, [workItemsData, searchQuery]);
 
+  // All visible work items (backlog + sprints)
+  const allVisibleWorkItemIds = useMemo(() => {
+    const sprintItemIds = sprints.flatMap(sprint => 
+      getSprintWorkItems(sprint.$id).map(item => item.$id)
+    );
+    const backlogItemIds = backlogItems.map(item => item.$id);
+    return [...backlogItemIds, ...sprintItemIds];
+  }, [backlogItems, sprints, getSprintWorkItems]);
+
+  // Keyboard shortcuts for bulk selection
   const getStatusCounts = (items: PopulatedWorkItem[]) => {
     return {
       todo: items.filter((item) => item.status === WorkItemStatus.TODO).length,
@@ -436,7 +511,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
   };
 
   // Multi-select Handlers
-  const toggleSelection = (itemId: string) => {
+  const toggleSelection = useCallback((itemId: string) => {
     setSelectedItemIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(itemId)) {
@@ -446,29 +521,94 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
       }
       return newSet;
     });
-  };
+  }, []);
 
-  /* Unused selection helpers
-  const selectAll = (itemIds: string[]) => {
+  // Select all items from a given list
+  const selectAll = useCallback((itemIds: string[]) => {
     setSelectedItemIds((prev) => {
       const newSet = new Set(prev);
       itemIds.forEach(id => newSet.add(id));
       return newSet;
     });
-  };
+  }, []);
 
-  const deselectAll = (itemIds: string[]) => {
+  // Deselect all items from a given list
+  const _deselectAll = useCallback((itemIds: string[]) => {
     setSelectedItemIds((prev) => {
       const newSet = new Set(prev);
       itemIds.forEach(id => newSet.delete(id));
       return newSet;
     });
-  };
-  */
+  }, []);
 
-  const clearSelection = () => {
+  // Toggle all items in a list (select all if not all selected, deselect all if all are selected)
+  const toggleSelectAll = useCallback((itemIds: string[]) => {
+    setSelectedItemIds(prev => {
+      const allSelected = itemIds.length > 0 && itemIds.every(id => prev.has(id));
+      if (allSelected) {
+        // Deselect all
+        const newSet = new Set(prev);
+        itemIds.forEach(id => newSet.delete(id));
+        return newSet;
+      } else {
+        // Select all
+        const newSet = new Set(prev);
+        itemIds.forEach(id => newSet.add(id));
+        return newSet;
+      }
+    });
+  }, []);
+
+  // Check if all items in a list are selected
+  const _areAllSelected = useCallback((itemIds: string[]): boolean => {
+    return itemIds.length > 0 && itemIds.every(id => selectedItemIds.has(id));
+  }, [selectedItemIds]);
+
+  // Check if some (but not all) items in a list are selected  
+  const _areSomeSelected = useCallback((itemIds: string[]): boolean => {
+    if (itemIds.length === 0) return false;
+    const selectedCount = itemIds.filter(id => selectedItemIds.has(id)).length;
+    return selectedCount > 0 && selectedCount < itemIds.length;
+  }, [selectedItemIds]);
+
+  const clearSelection = useCallback(() => {
     setSelectedItemIds(new Set());
-  };
+  }, []);
+
+  // Keyboard shortcuts for selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Ctrl/Cmd + A: Select all visible items
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        if (selectedItemIds.size === allVisibleWorkItemIds.length && allVisibleWorkItemIds.length > 0) {
+          // All already selected, deselect all
+          clearSelection();
+        } else {
+          // Select all visible items
+          selectAll(allVisibleWorkItemIds);
+        }
+      }
+
+      // Escape: Clear selection
+      if (e.key === 'Escape' && selectedItemIds.size > 0) {
+        e.preventDefault();
+        clearSelection();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItemIds, allVisibleWorkItemIds, clearSelection, selectAll]);
+
+  // Memoize backlog item IDs to avoid recalculating on every render
+  const backlogItemIds = useMemo(() => backlogItems.map(i => i.$id), [backlogItems]);
 
 
   // Bulk Actions
@@ -876,6 +1016,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
             {/* Sprint Sections */}
             {sprints.map((sprint) => {
               const sprintItems = getSprintWorkItems(sprint.$id);
+              const sprintItemIds = sprintItems.map(i => i.$id); // Calculate once per sprint
               const counts = getStatusCounts(sprintItems);
               const isExpanded = expandedSprints.includes(sprint.$id);
 
@@ -1060,11 +1201,18 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                             </div>
                           ) : (
                             <div className="divide-y divide-border">
-                              {/* Column Header Row */}
-                              {/* <div className="px-4 py-2 bg-muted/50 border-b border-border">
+                              {/* Column Header Row with Select All */}
+                              <div className="px-4 py-2 bg-muted/50 border-b border-border">
                                 <div className="flex items-center gap-4">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-5" />
+                                    {/* Select All Checkbox for Sprint - Memoized */}
+                                    <SelectAllCheckbox
+                                      itemIds={sprintItemIds}
+                                      selectedItemIds={selectedItemIds}
+                                      onToggle={toggleSelectAll}
+                                      label={`Select all items in ${sprint.name}`}
+                                      itemCount={sprintItemIds.length}
+                                    />
                                     <div className="w-4" />
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-4">Type</span>
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">Key</span>
@@ -1077,7 +1225,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Assignee</span>
                                   </div>
                                 </div>
-                              </div> */}
+                              </div>
                               {sprintItems.map((item, index) => (
                                 <Draggable key={item.$id} draggableId={item.$id} index={index}>
                                   {(provided, snapshot) => (
@@ -1426,7 +1574,14 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                         <div className="px-4 py-2 bg-muted/50 border-b border-border">
                           <div className="flex items-center gap-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-5" />
+                              {/* Select All Checkbox - Memoized */}
+                              <SelectAllCheckbox
+                                itemIds={backlogItemIds}
+                                selectedItemIds={selectedItemIds}
+                                onToggle={toggleSelectAll}
+                                label="Select all backlog items"
+                                itemCount={backlogItemIds.length}
+                              />
                               <div className="w-4" />
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-4">Type</span>
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">Key</span>
