@@ -7,6 +7,8 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd";
+import { AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -20,6 +22,9 @@ import { Task, TaskStatus } from "@/features/tasks/types";
 import { useBulkUpdateTasks } from "@/features/tasks/api/use-bulk-update-tasks";
 
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
+import { useGetProject } from "@/features/projects/api/use-get-project";
+import { useGetWorkflowStatuses } from "@/features/workflows/api/use-get-workflow-statuses";
+import { useValidateTransition, TransitionValidationResult } from "@/features/workflows/api/use-validate-transition";
 
 import { useGetCustomColumns } from "../api/use-get-custom-columns";
 import { useDefaultColumns } from "../hooks/use-default-columns";
@@ -64,6 +69,25 @@ export const EnhancedDataKanban = ({
 }: EnhancedDataKanbanProps) => {
   const workspaceId = useWorkspaceId();
 
+  // Get project to find workflow
+  const { data: project } = useGetProject({ projectId: projectId || "" });
+  
+  // Workflow validation hooks
+  const { mutateAsync: validateTransition } = useValidateTransition();
+  const { data: workflowStatusesData } = useGetWorkflowStatuses({
+    workflowId: project?.workflowId || ""
+  });
+
+  // Create a map of status keys to status IDs for workflow validation
+  const statusKeyToIdMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (workflowStatusesData?.documents) {
+      workflowStatusesData.documents.forEach((status: { key: string; $id: string }) => {
+        map.set(status.key, status.$id);
+      });
+    }
+    return map;
+  }, [workflowStatusesData]);
 
   const { data: customColumns, isLoading: isLoadingColumns, error: columnsError } = useGetCustomColumns({
     workspaceId,
@@ -313,7 +337,7 @@ export const EnhancedDataKanban = ({
   }, [onChange, sortDirections]);
 
   const onDragEnd = useCallback(
-    (result: DropResult) => {
+    async (result: DropResult) => {
       if (!result.destination) return;
 
       const { source, destination, type } = result;
@@ -361,29 +385,36 @@ export const EnhancedDataKanban = ({
         return;
       }
 
-      let updatesPayload: {
+      // Get the task being moved for optimistic update
+      const movedTask = tasks[sourceColumnId]?.[source.index];
+      if (!movedTask) {
+        return;
+      }
+
+      // Store previous state for potential rollback
+      const previousTasks = { ...tasks };
+
+      // OPTIMISTIC UPDATE FIRST - update UI immediately for smooth UX
+      const updatesPayload: {
         $id: string;
         status: TaskStatus | string;
         position: number;
       }[] = [];
 
-      // Store previous state for potential rollback
-      const previousTasks = tasks;
-
       setTasks((prevTasks) => {
         const newTasks = { ...prevTasks };
 
         const sourceColumn = [...(newTasks[sourceColumnId] || [])];
-        const [movedTask] = sourceColumn.splice(source.index, 1);
+        const [draggedTask] = sourceColumn.splice(source.index, 1);
 
-        if (!movedTask) {
+        if (!draggedTask) {
           return prevTasks;
         }
 
         const updatedMovedTask =
           sourceColumnId !== destColumnId
-            ? { ...movedTask, status: destColumnId }
-            : movedTask;
+            ? { ...draggedTask, status: destColumnId }
+            : draggedTask;
 
         newTasks[sourceColumnId] = sourceColumn;
 
@@ -391,47 +422,76 @@ export const EnhancedDataKanban = ({
         destColumn.splice(destination.index, 0, updatedMovedTask);
         newTasks[destColumnId] = destColumn;
 
-        updatesPayload = [];
-
+        // Only update the moved task - not all tasks in the column
+        // This dramatically reduces API calls
         updatesPayload.push({
           $id: updatedMovedTask.$id,
           status: destColumnId,
           position: Math.min((destination.index + 1) * 1000, 1_000_000),
         });
 
-        newTasks[destColumnId].forEach((task, index) => {
-          if (task && task.$id !== updatedMovedTask.$id) {
-            const newPosition = Math.min((index + 1) * 1000, 1_000_000);
-            if (task.position !== newPosition) {
-              updatesPayload.push({
-                $id: task.$id,
-                status: destColumnId,
-                position: newPosition,
-              });
-            }
-          }
-        });
-
-        if (sourceColumnId !== destColumnId) {
-          newTasks[sourceColumnId].forEach((task, index) => {
-            if (task) {
-              const newPosition = Math.min((index + 1) * 1000, 1_000_000);
-              if (task.position !== newPosition) {
-                updatesPayload.push({
-                  $id: task.$id,
-                  status: sourceColumnId,
-                  position: newPosition,
-                });
-              }
-            }
-          });
-        }
-
         return newTasks;
       });
 
+      // ======= WORKFLOW TRANSITION VALIDATION =======
+      // If moving to a different column and project has a workflow, validate the transition
+      if (sourceColumnId !== destColumnId && project?.workflowId) {
+        const fromStatusId = statusKeyToIdMap.get(sourceColumnId);
+        const toStatusId = statusKeyToIdMap.get(destColumnId);
+
+        // If workflow is active but statuses not found, rollback and block
+        if (!fromStatusId || !toStatusId) {
+          setTasks(previousTasks);
+          toast.error(
+            "Cannot validate this transition - status not found in workflow",
+            {
+              icon: <AlertCircle className="size-4 text-red-500" />,
+              duration: 4000,
+            }
+          );
+          return;
+        }
+
+        try {
+          const validationResult = await validateTransition({
+            json: {
+              workflowId: project.workflowId,
+              fromStatusId,
+              toStatusId,
+            },
+          });
+
+          const validationData = validationResult.data as TransitionValidationResult;
+
+          if (!validationData.allowed) {
+            // Transition is not allowed - rollback and show error
+            setTasks(previousTasks);
+            toast.error(
+              validationData.message || "This status transition is not allowed by the workflow",
+              {
+                icon: <AlertCircle className="size-4 text-red-500" />,
+                duration: 4000,
+              }
+            );
+            return;
+          }
+        } catch {
+          // On validation error, rollback (fail-closed for security)
+          setTasks(previousTasks);
+          toast.error(
+            "Failed to validate workflow transition. Please try again.",
+            {
+              icon: <AlertCircle className="size-4 text-red-500" />,
+              duration: 4000,
+            }
+          );
+          return;
+        }
+      }
+      // ======= END WORKFLOW VALIDATION =======
+
       // Only call onChange if we have valid updates
-      if (Array.isArray(updatesPayload) && updatesPayload.length > 0) {
+      if (updatesPayload.length > 0) {
         try {
           onChange(updatesPayload);
         } catch (error) {
@@ -441,7 +501,7 @@ export const EnhancedDataKanban = ({
         }
       }
     },
-    [orderedColumns, onChange, updateColumnOrder, workspaceId, projectId, tasks]
+    [orderedColumns, onChange, updateColumnOrder, workspaceId, projectId, tasks, project?.workflowId, validateTransition, statusKeyToIdMap]
   );
 
   // Derive body content states (keep hooks above regardless of state)

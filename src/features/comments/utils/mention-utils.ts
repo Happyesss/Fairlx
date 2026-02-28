@@ -54,44 +54,80 @@ export function parseContentWithMentions(
 ): ContentPart[] {
   const parts: ContentPart[] = [];
 
-  // Match @name[userId] format OR plain @name format
-  // Group 1: name, Group 2: optional userId (inside brackets)
-  const mentionRegex = /@([\w.-]+)(?:\[([a-zA-Z0-9]+)\])?/g;
-  let lastIndex = 0;
-  let match;
+  // Two-pass parsing to handle both @Name[userId] (with spaces) and plain @name
+  // First regex: @Name[userId] format where Name can contain spaces
+  // Second regex: plain @name format (single word)
+  const mentionWithIdRegex = /@([^@\[\]]+?)\[([a-zA-Z0-9]+)\]/g;
+  const plainMentionRegex = /@([\w.-]+)/g;
+  
+  // Build a map of all mention positions
+  const mentions: Array<{
+    start: number;
+    end: number;
+    name: string;
+    userId?: string;
+  }> = [];
 
-  while ((match = mentionRegex.exec(content)) !== null) {
+  // First pass: find all @Name[userId] mentions
+  let match;
+  while ((match = mentionWithIdRegex.exec(content)) !== null) {
+    mentions.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      name: match[1].trim(),
+      userId: match[2],
+    });
+  }
+
+  // Second pass: find plain @name mentions that don't overlap with first pass
+  while ((match = plainMentionRegex.exec(content)) !== null) {
+    const overlaps = mentions.some(
+      (m) => match!.index >= m.start && match!.index < m.end
+    );
+    if (!overlaps) {
+      mentions.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        name: match[1].trim(),
+        userId: undefined,
+      });
+    }
+  }
+
+  // Sort mentions by position
+  mentions.sort((a, b) => a.start - b.start);
+
+  // Build parts array
+  let lastIndex = 0;
+  for (const mention of mentions) {
     // Add text before mention
-    if (match.index > lastIndex) {
+    if (mention.start > lastIndex) {
       parts.push({
         type: "text",
-        content: content.substring(lastIndex, match.index),
+        content: content.substring(lastIndex, mention.start),
       });
     }
 
-    const mentionName = match[1].trim();
-    const mentionUserId = match[2]; // userId from brackets if present
-
     // Try to find member by userId first, then by name
     let member = null;
-    if (mentionUserId) {
-      member = members?.find((m) => m.userId === mentionUserId);
+    if (mention.userId) {
+      member = members?.find((m) => m.userId === mention.userId);
     }
     if (!member) {
       member = members?.find(
         (m) =>
-          m.name?.toLowerCase() === mentionName.toLowerCase() ||
-          m.email?.toLowerCase() === mentionName.toLowerCase()
+          m.name?.toLowerCase() === mention.name.toLowerCase() ||
+          m.email?.toLowerCase() === mention.name.toLowerCase()
       );
     }
 
     parts.push({
       type: "mention",
-      name: member?.name || mentionName, // Use resolved name if available
-      userId: mentionUserId || member?.userId,
+      name: member?.name || mention.name, // Use resolved name if available
+      userId: mention.userId || member?.userId,
     });
 
-    lastIndex = match.index + match[0].length;
+    lastIndex = mention.end;
   }
 
   // Add remaining text

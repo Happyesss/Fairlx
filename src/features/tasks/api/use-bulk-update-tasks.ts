@@ -23,16 +23,33 @@ export const useBulkUpdateTasks = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update tasks.");
+        // Extract error message from response body
+        const errorBody = await response.json().catch(() => ({}));
+        const errorMessage = (errorBody as { error?: string }).error || "Failed to update tasks.";
+        throw new Error(errorMessage);
       }
 
       return await response.json();
     },
-    onSuccess: () => {
-      toast.success("Tasks updated.");
-      queryClient.invalidateQueries({ queryKey: ["project-analytics"] });
-      queryClient.invalidateQueries({ queryKey: ["workspace-analytics"] });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    onSuccess: (_data, variables) => {
+      // Only show toast for bulk updates (more than 1 item)
+      if (variables.json.tasks.length > 1) {
+        toast.success("Tasks updated.");
+      }
+      // Use refetchType: 'none' to avoid immediate refetch that causes flicker
+      // The optimistic update already shows the correct state
+      queryClient.invalidateQueries({ 
+        queryKey: ["project-analytics"],
+        refetchType: 'none'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["workspace-analytics"],
+        refetchType: 'none'
+      });
+      queryClient.invalidateQueries({ 
+        queryKey: ["tasks"],
+        refetchType: 'none'
+      });
     },
     onError: () => {
       toast.error("Failed to update tasks.");

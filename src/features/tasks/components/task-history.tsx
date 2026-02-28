@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { useGetComments } from "@/features/comments/hooks/use-get-comments";
+import { CommentContent } from "@/features/comments/components/comment-content";
 import { useGetAttachments } from "@/features/attachments/hooks/use-get-attachments";
 import { useGetTimeLogs } from "@/features/time-tracking/api/use-get-time-logs";
 import { useUpdateComment } from "@/features/comments/hooks/use-update-comment";
@@ -202,7 +203,7 @@ const ReplyItem = ({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-foreground whitespace-pre-wrap">{reply.content}</p>
+              <CommentContent content={reply.content} workspaceId={workspaceId} />
             )}
           </div>
         </div>
@@ -365,7 +366,7 @@ const CommentHistoryItem = ({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-foreground whitespace-pre-wrap">{comment?.content || item.metadata?.content as string}</p>
+              <CommentContent content={comment?.content || (item.metadata?.content as string) || ""} workspaceId={workspaceId} />
             )}
           </div>
 

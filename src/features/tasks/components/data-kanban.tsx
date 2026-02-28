@@ -312,56 +312,20 @@ export const DataKanban = ({
       }
 
       // Get the task being moved
-      const movedTask = tasks[sourceStatus][source.index];
+      const movedTask = tasks[sourceStatus]?.[source.index];
       if (!movedTask) {
         return;
       }
 
-      // ======= WORKFLOW TRANSITION VALIDATION =======
-      // If moving to a different column and project has a workflow, validate the transition
-      if (sourceStatus !== destStatus && project?.workflowId) {
-        const fromStatusId = statusKeyToIdMap.get(sourceStatus);
-        const toStatusId = statusKeyToIdMap.get(destStatus);
+      // Store previous state for potential rollback
+      const previousTasks = { ...tasks };
 
-        // Only validate if both statuses exist in the workflow
-        if (fromStatusId && toStatusId) {
-          try {
-            const validationResult = await validateTransition({
-              json: {
-                workflowId: project.workflowId,
-                fromStatusId,
-                toStatusId,
-              },
-            });
-
-            const data = validationResult.data as TransitionValidationResult;
-
-            if (!data.allowed) {
-              // Transition is not allowed - show error and don't update
-              toast.error(
-                data.message || "This status transition is not allowed by the workflow",
-                {
-                  icon: <AlertCircle className="size-4 text-red-500" />,
-                  duration: 4000,
-                }
-              );
-              return;
-            }
-          } catch {
-            // On validation error, allow the transition (fail-open)
-          }
-        }
-      }
-      // ======= END WORKFLOW VALIDATION =======
-
-      let updatesPayload: {
+      // OPTIMISTIC UPDATE FIRST - update UI immediately for smooth UX
+      const updatesPayload: {
         $id: string;
         status: TaskStatus;
         position: number;
       }[] = [];
-
-      // Store previous state for potential rollback
-      const previousTasks = tasks;
 
       setTasks((prevTasks) => {
         const newTasks = { ...prevTasks };
@@ -389,56 +353,83 @@ export const DataKanban = ({
         destColumn.splice(destination.index, 0, updatedMovedTask);
         newTasks[destStatus] = destColumn;
 
-        // Prepare minimal update payloads
-        updatesPayload = [];
-
-        // Always update the moved task
+        // Only update the moved task - not all tasks in the column
+        // This dramatically reduces API calls
         updatesPayload.push({
           $id: updatedMovedTask.$id,
           status: destStatus,
           position: Math.min((destination.index + 1) * 1000, 1_000_000),
         });
 
-        // Update positions for affected tasks in the destination column
-        newTasks[destStatus].forEach((task, index) => {
-          if (task && task.$id !== updatedMovedTask.$id) {
-            const newPosition = Math.min((index + 1) * 1000, 1_000_000);
-            if (task.position !== newPosition) {
-              updatesPayload.push({
-                $id: task.$id,
-                status: destStatus,
-                position: newPosition,
-              });
-            }
-          }
-        });
-
-        // If the task moved between columns, update positions in the source column
-        if (sourceStatus !== destStatus) {
-          newTasks[sourceStatus].forEach((task, index) => {
-            if (task) {
-              const newPosition = Math.min((index + 1) * 1000, 1_000_000);
-              if (task.position !== newPosition) {
-                updatesPayload.push({
-                  $id: task.$id,
-                  status: sourceStatus,
-                  position: newPosition,
-                });
-              }
-            }
-          });
-        }
-
         return newTasks;
       });
 
+      // ======= WORKFLOW TRANSITION VALIDATION =======
+      // If moving to a different column and project has a workflow, validate the transition
+      if (sourceStatus !== destStatus && project?.workflowId) {
+        const fromStatusId = statusKeyToIdMap.get(sourceStatus);
+        const toStatusId = statusKeyToIdMap.get(destStatus);
+
+        // If workflow is active but statuses not found, rollback and block
+        if (!fromStatusId || !toStatusId) {
+          setTasks(previousTasks);
+          toast.error(
+            "Cannot validate this transition - status not found in workflow",
+            {
+              icon: <AlertCircle className="size-4 text-red-500" />,
+              duration: 4000,
+            }
+          );
+          return;
+        }
+
+        try {
+          const validationResult = await validateTransition({
+            json: {
+              workflowId: project.workflowId,
+              fromStatusId,
+              toStatusId,
+            },
+          });
+
+          const data = validationResult.data as TransitionValidationResult;
+
+          if (!data.allowed) {
+            // Transition is not allowed - rollback and show error
+            setTasks(previousTasks);
+            toast.error(
+              data.message || "This status transition is not allowed by the workflow",
+              {
+                icon: <AlertCircle className="size-4 text-red-500" />,
+                duration: 4000,
+              }
+            );
+            return;
+          }
+        } catch {
+          // On validation error, rollback (fail-closed for security)
+          setTasks(previousTasks);
+          toast.error(
+            "Failed to validate workflow transition. Please try again.",
+            {
+              icon: <AlertCircle className="size-4 text-red-500" />,
+              duration: 4000,
+            }
+          );
+          return;
+        }
+      }
+      // ======= END WORKFLOW VALIDATION =======
+
       // Call onChange and handle errors with rollback
-      try {
-        onChange(updatesPayload);
-      } catch (error) {
-        console.error('Failed to update task positions:', error);
-        // Rollback to previous state on error
-        setTasks(previousTasks);
+      if (updatesPayload.length > 0) {
+        try {
+          onChange(updatesPayload);
+        } catch (error) {
+          console.error('Failed to update task positions:', error);
+          // Rollback to previous state on error
+          setTasks(previousTasks);
+        }
       }
     },
     [onChange, project?.workflowId, statusKeyToIdMap, tasks, validateTransition]

@@ -6,11 +6,11 @@ import {
   useEffect,
   useCallback,
   KeyboardEvent,
+  useMemo,
 } from "react";
 import { Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useGetMembers } from "@/features/members/api/use-get-members";
@@ -27,6 +27,28 @@ interface MentionInputProps {
   className?: string;
 }
 
+// Parse content into display parts (text and mentions)
+function parseForDisplay(content: string): Array<{ type: "text" | "mention"; content: string; userId?: string }> {
+  const parts: Array<{ type: "text" | "mention"; content: string; userId?: string }> = [];
+  const mentionRegex = /@([^@\[\]]+?)\[([a-zA-Z0-9]+)\]/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", content: content.substring(lastIndex, match.index) });
+    }
+    parts.push({ type: "mention", content: match[1], userId: match[2] });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push({ type: "text", content: content.substring(lastIndex) });
+  }
+
+  return parts;
+}
+
 export const MentionInput = ({
   workspaceId,
   value,
@@ -39,9 +61,9 @@ export const MentionInput = ({
 }: MentionInputProps) => {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+  const [_mentionStartIndex, setMentionStartIndex] = useState(-1);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: members } = useGetMembers({ workspaceId });
@@ -55,10 +77,20 @@ export const MentionInput = ({
     return name.includes(query) || email.includes(query);
   }) || [];
 
+  // Parse value for display
+  const _displayParts = useMemo(() => parseForDisplay(value), [value]);
+
   // Reset selected index when filtered members change
   useEffect(() => {
     setSelectedIndex(0);
   }, [filteredMembers.length]);
+
+  // Auto focus
+  useEffect(() => {
+    if (autoFocus && editorRef.current) {
+      editorRef.current.focus();
+    }
+  }, [autoFocus]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -66,8 +98,8 @@ export const MentionInput = ({
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(e.target as Node) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(e.target as Node)
+        editorRef.current &&
+        !editorRef.current.contains(e.target as Node)
       ) {
         setShowMentions(false);
       }
@@ -77,56 +109,123 @@ export const MentionInput = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Get plain text from contenteditable, preserving mention format
+  const getValueFromEditor = useCallback(() => {
+    if (!editorRef.current) return "";
+    
+    let result = "";
+    const walker = document.createTreeWalker(
+      editorRef.current,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      null
+    );
+
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent || "";
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (el.dataset.mentionUserId) {
+          result += `@${el.dataset.mentionName}[${el.dataset.mentionUserId}]`;
+          walker.nextNode(); // Skip the text inside the mention span
+        } else if (el.tagName === "BR") {
+          result += "\n";
+        }
+      }
+    }
+
+    return result;
+  }, []);
+
   const insertMention = useCallback(
     (member: Member) => {
-      const beforeMention = value.substring(0, mentionStartIndex);
-      const afterMention = value.substring(
-        textareaRef.current?.selectionStart || mentionStartIndex + mentionQuery.length + 1
-      );
-      // Include userId in parseable format: @Name[userId]
-      // The format @[userId] is parsed by extractMentions() for notification dispatch
-      const displayName = member.name || member.email || "User";
-      const mentionText = `@${displayName}[${member.userId}]`;
+      if (!editorRef.current) return;
 
-      const newValue = beforeMention + mentionText + afterMention;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+
+      const range = selection.getRangeAt(0);
+      const displayName = member.name || member.email || "User";
+
+      // Find and delete the @query text
+      const textNode = range.startContainer;
+      if (textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
+        const text = textNode.textContent;
+        const cursorPos = range.startOffset;
+        const beforeCursor = text.substring(0, cursorPos);
+        const lastAtIndex = beforeCursor.lastIndexOf("@");
+
+        if (lastAtIndex !== -1) {
+          // Create new text nodes and mention span
+          const before = text.substring(0, lastAtIndex);
+          const after = text.substring(cursorPos);
+
+          const mentionSpan = document.createElement("span");
+          mentionSpan.className = "inline-flex items-center px-1 py-0.5 mx-0.5 rounded bg-primary/10 text-primary font-medium text-sm";
+          mentionSpan.contentEditable = "false";
+          mentionSpan.dataset.mentionUserId = member.userId;
+          mentionSpan.dataset.mentionName = displayName;
+          mentionSpan.textContent = `@${displayName}`;
+
+          const parent = textNode.parentNode;
+          if (parent) {
+            const beforeNode = document.createTextNode(before);
+            const afterNode = document.createTextNode(after + " ");
+
+            parent.insertBefore(beforeNode, textNode);
+            parent.insertBefore(mentionSpan, textNode);
+            parent.insertBefore(afterNode, textNode);
+            parent.removeChild(textNode);
+
+            // Set cursor after mention
+            const newRange = document.createRange();
+            newRange.setStart(afterNode, 1);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+        }
+      }
+
+      // Update value
+      const newValue = getValueFromEditor();
       onChange(newValue);
+
       setShowMentions(false);
       setMentionQuery("");
       setMentionStartIndex(-1);
-
-      // Focus back on textarea and set cursor position
-      setTimeout(() => {
-        if (textareaRef.current) {
-          const newCursorPos = beforeMention.length + mentionText.length;
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        }
-      }, 0);
     },
-    [value, mentionStartIndex, mentionQuery, onChange]
+    [onChange, getValueFromEditor]
   );
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    const cursorPos = e.target.selectionStart;
-
+  const handleInput = useCallback(() => {
+    const newValue = getValueFromEditor();
     onChange(newValue);
 
-    // Check if we should show mention dropdown
-    const textBeforeCursor = newValue.substring(0, cursorPos);
-    const lastAtIndex = textBeforeCursor.lastIndexOf("@");
+    // Check for mention trigger
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
 
-    if (lastAtIndex !== -1) {
-      // Check if @ is at start or preceded by whitespace
-      const charBeforeAt = lastAtIndex > 0 ? textBeforeCursor[lastAtIndex - 1] : " ";
-      if (charBeforeAt === " " || charBeforeAt === "\n" || lastAtIndex === 0) {
-        const query = textBeforeCursor.substring(lastAtIndex + 1);
-        // Only show if query doesn't contain spaces (single word)
-        if (!query.includes(" ") && !query.includes("\n")) {
-          setMentionQuery(query);
-          setMentionStartIndex(lastAtIndex);
-          setShowMentions(true);
-          return;
+    const range = selection.getRangeAt(0);
+    const textNode = range.startContainer;
+
+    if (textNode.nodeType === Node.TEXT_NODE && textNode.textContent) {
+      const text = textNode.textContent;
+      const cursorPos = range.startOffset;
+      const beforeCursor = text.substring(0, cursorPos);
+      const lastAtIndex = beforeCursor.lastIndexOf("@");
+
+      if (lastAtIndex !== -1) {
+        const charBeforeAt = lastAtIndex > 0 ? beforeCursor[lastAtIndex - 1] : " ";
+        if (charBeforeAt === " " || charBeforeAt === "\n" || lastAtIndex === 0) {
+          const query = beforeCursor.substring(lastAtIndex + 1);
+          if (!query.includes(" ") && !query.includes("\n") && !query.includes("[")) {
+            setMentionQuery(query);
+            setMentionStartIndex(lastAtIndex);
+            setShowMentions(true);
+            return;
+          }
         }
       }
     }
@@ -134,9 +233,9 @@ export const MentionInput = ({
     setShowMentions(false);
     setMentionQuery("");
     setMentionStartIndex(-1);
-  };
+  }, [onChange, getValueFromEditor]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (showMentions && filteredMembers.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -164,11 +263,17 @@ export const MentionInput = ({
       }
     }
 
-    // Submit on Enter without Shift (when not showing mentions)
+    // Submit on Enter without Shift
     if (e.key === "Enter" && !e.shiftKey && !showMentions) {
       e.preventDefault();
       onSubmit();
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
   };
 
   const getInitials = (member: Member) => {
@@ -183,30 +288,49 @@ export const MentionInput = ({
     return member.email?.[0]?.toUpperCase() || "?";
   };
 
+  // Sync editor content when value changes externally (like after submission)
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const currentValue = getValueFromEditor();
+    if (currentValue !== value) {
+      // Value was changed externally, update editor
+      if (value === "") {
+        editorRef.current.innerHTML = "";
+      }
+    }
+  }, [value, getValueFromEditor]);
+
   return (
     <div className={cn("relative", className)}>
       <div className="flex gap-2">
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleInputChange}
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          onInput={handleInput}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-          autoFocus={autoFocus}
-          className="min-h-[80px] resize-none flex-1"
+          onPaste={handlePaste}
+          data-placeholder={placeholder}
+          className={cn(
+            "min-h-[80px] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm",
+            "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+            "whitespace-pre-wrap break-words overflow-y-auto max-h-[200px]",
+            "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",
+            disabled && "cursor-not-allowed opacity-50"
+          )}
+          suppressContentEditableWarning
         />
         <Button
-          type="submit"
+          type="button"
           size="icon"
           disabled={disabled || !value.trim()}
-          className="shrink-0"
+          onClick={onSubmit}
+          className="shrink-0 self-end"
         >
           <Send className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Mention Dropdown - positioned above */}
+      {/* Mention Dropdown */}
       {showMentions && filteredMembers.length > 0 && (
         <div
           ref={dropdownRef}

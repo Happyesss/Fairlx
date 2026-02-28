@@ -274,13 +274,9 @@ export const TaskDetailsSidebar = ({
       { param: { taskId: task.$id }, json: updates },
       {
         onError: (error) => {
-          // Check if this is a workflow transition error
+          // Show the actual error message from server
           const errorMessage = error?.message || "Failed to update task";
-          if (errorMessage.includes("transition") || errorMessage.includes("workflow")) {
-            toast.error("This status transition is not allowed by the workflow");
-          } else {
-            toast.error(errorMessage);
-          }
+          toast.error(errorMessage);
         },
       }
     );
@@ -300,12 +296,9 @@ export const TaskDetailsSidebar = ({
       {
         onError: (error) => {
           setLocalStatus(prev);
+          // Show the actual error message from server - it contains the specific reason
           const errorMessage = error?.message || "Failed to update task";
-          if (errorMessage.includes("transition") || errorMessage.includes("workflow")) {
-            toast.error("This status transition is not allowed by the workflow");
-          } else {
-            toast.error(errorMessage);
-          }
+          toast.error(errorMessage);
         },
       }
     );
