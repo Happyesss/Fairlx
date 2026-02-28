@@ -155,9 +155,9 @@ export const NotificationItem = ({
     e.preventDefault();
     e.stopPropagation();
     if (!notification.read) {
-      markAsRead({ param: { notificationId: notification.$id } });
+      markAsRead({ param: { notificationId: notification.$id }, workspaceId });
     } else {
-      deleteNotification({ param: { notificationId: notification.$id } });
+      deleteNotification({ param: { notificationId: notification.$id }, workspaceId });
     }
   };
 

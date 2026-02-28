@@ -66,4 +66,5 @@ export type PopulatedTask = Task & {
   assignedTeam?: TaskTeam; // Single assigned team
   assignedTeams?: TaskTeam[]; // Multiple assigned teams
   project?: { $id: string; name: string; imageUrl: string };
+  reporter?: TaskAssignee; // Who created/reported the task
 };

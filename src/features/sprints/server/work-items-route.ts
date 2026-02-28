@@ -1,9 +1,9 @@
-import { ID, Query } from "node-appwrite";
+import { ID, Query, Databases } from "node-appwrite";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import { DATABASE_ID, WORK_ITEMS_ID, PROJECTS_ID, MEMBERS_ID, COMMENTS_ID } from "@/config";
+import { DATABASE_ID, WORK_ITEMS_ID, PROJECTS_ID, MEMBERS_ID, COMMENTS_ID, CUSTOM_COLUMNS_ID, WORKFLOW_STATUSES_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
@@ -106,6 +106,56 @@ async function generateWorkItemKey(
 
   const nextNumber = highestNumber + 1;
   return `${prefix}-${nextNumber}`;
+}
+
+/**
+ * Resolve status ID or key to a human-readable name.
+ * If it's a standard WorkItemStatus, returns it as-is (formatted).
+ * If it's a custom column ID, looks up the column name.
+ * Falls back to the original value if not found.
+ */
+async function resolveStatusName(
+  databases: Databases,
+  status: string,
+  workspaceId: string
+): Promise<string> {
+  // Check if it's a standard WorkItemStatus enum value
+  if (Object.values(WorkItemStatus).includes(status as WorkItemStatus)) {
+    // Format the enum value nicely (e.g., "IN_PROGRESS" -> "In Progress")
+    return status.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // Otherwise, try to look up in custom columns
+  try {
+    const customColumns = await databases.listDocuments(
+      DATABASE_ID,
+      CUSTOM_COLUMNS_ID,
+      [Query.equal("workspaceId", workspaceId), Query.equal("$id", status)]
+    );
+    
+    if (customColumns.documents.length > 0) {
+      return customColumns.documents[0].name as string;
+    }
+  } catch {
+    // Silent failure - return status as-is
+  }
+
+  // Also check workflow statuses (for workflow-managed statuses)
+  try {
+    const workflowStatuses = await databases.listDocuments(
+      DATABASE_ID,
+      WORKFLOW_STATUSES_ID,
+      [Query.equal("$id", status)]
+    );
+    
+    if (workflowStatuses.documents.length > 0) {
+      return workflowStatuses.documents[0].name as string;
+    }
+  } catch {
+    // Silent failure - return status as-is
+  }
+
+  return status;
 }
 
 const app = new Hono()
@@ -788,10 +838,19 @@ const app = new Hono()
       // Status change notification
       if (updates.status && updates.status !== workItem.status) {
         const isDone = updates.status === "DONE";
-        const event = isDone
-          ? createCompletedEvent(taskLike, user.$id, userName)
-          : createStatusChangedEvent(taskLike, user.$id, userName, workItem.status, updates.status);
-        dispatchWorkitemEvent(event).catch(() => { });
+        if (isDone) {
+          const event = createCompletedEvent(taskLike, user.$id, userName);
+          dispatchWorkitemEvent(event).catch(() => { });
+        } else {
+          // Resolve status IDs to human-readable names for notifications (non-blocking)
+          Promise.all([
+            resolveStatusName(databases, workItem.status, workItem.workspaceId),
+            resolveStatusName(databases, updates.status, workItem.workspaceId)
+          ]).then(([oldStatusName, newStatusName]) => {
+            const event = createStatusChangedEvent(taskLike, user.$id, userName, oldStatusName, newStatusName);
+            dispatchWorkitemEvent(event).catch(() => { });
+          }).catch(() => { });
+        }
       }
 
       // Priority change notification

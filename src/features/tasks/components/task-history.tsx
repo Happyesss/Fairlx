@@ -483,27 +483,28 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
   const historyItems = useMemo(() => {
     const items: HistoryItem[] = [];
 
-    // Task created event
+    // Task created event - use reporter (creator) info, not assignee
     items.push({
       id: `task-created-${task.$id}`,
       type: "created",
       timestamp: task.$createdAt,
       description: "created this task",
-      userName: task.assignee?.name || "Someone",
-      userEmail: task.assignee?.email,
-      userImage: task.assignee?.profileImageUrl || undefined,
+      userName: task.reporter?.name || "Someone",
+      userEmail: task.reporter?.email,
+      userImage: task.reporter?.profileImageUrl || undefined,
     });
 
     // Task updated event (if different from created)
+    // Note: We don't currently track lastModifiedBy user info, so show generic message
     if (task.$updatedAt && task.$updatedAt !== task.$createdAt) {
       items.push({
         id: `task-updated-${task.$id}`,
         type: "updated",
         timestamp: task.$updatedAt,
         description: "updated this task",
-        userName: task.assignee?.name || "Someone",
-        userEmail: task.assignee?.email,
-        userImage: task.assignee?.profileImageUrl || undefined,
+        userName: "Someone", // TODO: Would need lastModifiedBy user lookup
+        userEmail: undefined,
+        userImage: undefined,
       });
     }
 

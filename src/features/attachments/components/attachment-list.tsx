@@ -1,4 +1,5 @@
-import { MoreHorizontal, Download, Trash2, Eye, File, Image, FileText, Archive } from "lucide-react";
+import { useState } from "react";
+import { MoreHorizontal, Download, Trash2, Eye, File, Image, FileText, Archive, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,6 +48,7 @@ const formatFileSize = (bytes: number) => {
 };
 
 const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
+  const [isDownloading, setIsDownloading] = useState(false);
   const [ConfirmDialog, confirm] = useConfirm(
     "Delete Attachment",
     "Are you sure you want to delete this attachment? This action cannot be undone.",
@@ -65,14 +67,28 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
     });
   };
 
-  const handleDownload = () => {
-    const downloadUrl = `/api/attachments/${attachment.$id}/download?workspaceId=${workspaceId}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = attachment.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const downloadUrl = `/api/attachments/${attachment.$id}/download?workspaceId=${workspaceId}`;
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { type: attachment.mimeType || 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = attachment.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download attachment:", error);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handlePreview = () => {
@@ -121,8 +137,13 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
                 size="sm"
                 onClick={handleDownload}
                 className="h-8 w-8 p-0"
+                disabled={isDownloading}
               >
-                <Download className="h-4 w-4" />
+                {isDownloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -136,9 +157,13 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleDownload}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
+                  <DropdownMenuItem onClick={handleDownload} disabled={isDownloading}>
+                    {isDownloading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    {isDownloading ? "Downloading..." : "Download"}
                   </DropdownMenuItem>
                   {isPreviewable && (
                     <DropdownMenuItem onClick={handlePreview}>
