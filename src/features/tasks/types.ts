@@ -44,6 +44,7 @@ export type Task = Models.Document & {
   commentCount?: number;   // Number of comments on this task
   storyPoints?: number;    // Story points for agile
   reporterId?: string;     // Who created the item
+  parentTaskId?: string;   // Parent task ID for sub-issues
 };
 
 export type TaskAssignee = {

@@ -23,6 +23,7 @@ interface UseGetTasksProps {
   search?: string | null;
   priority?: TaskPriority | null;
   labels?: string[] | null;
+  parentTaskId?: string | null;
 }
 
 export const useGetTasks = ({
@@ -34,6 +35,7 @@ export const useGetTasks = ({
   search,
   priority,
   labels,
+  parentTaskId,
 }: UseGetTasksProps) => {
   const sanitizedWorkspaceId = sanitizeString(workspaceId);
   const sanitizedProjectId = sanitizeString(projectId ?? undefined);
@@ -45,6 +47,7 @@ export const useGetTasks = ({
     | TaskPriority
     | undefined;
   const sanitizedLabels = labels?.map((label) => label.trim()).filter(Boolean);
+  const sanitizedParentTaskId = sanitizeString(parentTaskId ?? undefined);
 
   const query = useQuery({
     queryKey: [
@@ -57,6 +60,7 @@ export const useGetTasks = ({
       sanitizedSearch,
       sanitizedPriority,
       sanitizedLabels,
+      sanitizedParentTaskId,
     ],
     enabled: Boolean(sanitizedWorkspaceId),
     queryFn: async () => {
@@ -76,6 +80,7 @@ export const useGetTasks = ({
           labels: sanitizedLabels?.length
             ? sanitizedLabels.join(",")
             : undefined,
+          parentTaskId: sanitizedParentTaskId,
         },
       });
 
