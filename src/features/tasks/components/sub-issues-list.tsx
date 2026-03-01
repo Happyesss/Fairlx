@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface SubIssuesListProps {
-  parentTaskId: string;
+  parentId: string;
   workspaceId: string;
   onAddSubIssue: () => void;
 }
 
 export const SubIssuesList = ({
-  parentTaskId,
+  parentId,
   workspaceId,
   onAddSubIssue,
 }: SubIssuesListProps) => {
@@ -24,7 +24,7 @@ export const SubIssuesList = ({
 
   const { data: subIssues, isLoading } = useGetTasks({
     workspaceId,
-    parentTaskId,
+    parentId,
   });
 
   const subIssueCount = subIssues?.documents?.length || 0;

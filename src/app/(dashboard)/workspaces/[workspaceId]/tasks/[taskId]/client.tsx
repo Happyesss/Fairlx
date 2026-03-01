@@ -110,7 +110,7 @@ export const TaskIdClient = () => {
           {/* Add Sub-issues */}
           <div className="px-6 pb-6">
             <SubIssuesList 
-              parentTaskId={data.$id} 
+              parentId={data.$id} 
               workspaceId={workspaceId}
               onAddSubIssue={() => openCreateTaskModal(data.$id)}
             />

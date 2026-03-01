@@ -277,7 +277,7 @@ const app = new Hono()
         dueDate: z.string().nullish(),
         priority: z.nativeEnum(TaskPriority).nullish(),
         labels: z.string().nullish(), // Will be comma-separated list
-        parentTaskId: z.string().nullish(), // Filter by parent task for sub-issues
+        parentId: z.string().nullish(), // Filter by parent task for sub-issues
       })
     ),
     async (c) => {
@@ -285,7 +285,7 @@ const app = new Hono()
       const databases = c.get("databases");
       const user = c.get("user");
 
-      const { workspaceId, projectId, assigneeId, status, dueDate, priority, labels, parentTaskId } =
+      const { workspaceId, projectId, assigneeId, status, dueDate, priority, labels, parentId } =
         c.req.valid("query");
 
       const member = await getMember({
@@ -344,8 +344,8 @@ const app = new Hono()
         }
       }
 
-      if (parentTaskId) {
-        query.push(Query.equal("parentTaskId", parentTaskId));
+      if (parentId) {
+        query.push(Query.equal("parentId", parentId));
       }
 
       const tasks = await databases.listDocuments<Task>(
@@ -463,7 +463,7 @@ const app = new Hono()
     async (c) => {
       const user = c.get("user");
       const databases = c.get("databases");
-      const { name, type, status, workspaceId, projectId, parentTaskId, startDate, dueDate, assigneeIds, description, estimatedHours, priority, labels } =
+      const { name, type, status, workspaceId, projectId, parentId, startDate, dueDate, assigneeIds, description, estimatedHours, priority, labels } =
         c.req.valid("json");
 
       const member = await getMember({
@@ -582,7 +582,7 @@ const app = new Hono()
           status,
           workspaceId,
           projectId,
-          parentTaskId: parentTaskId || null, // Parent task ID for sub-issues
+          parentId: parentId || null, // Parent task ID for sub-issues
           startDate: startDate || null,
           dueDate: dueDate || null,
           assigneeIds: assigneeIds || [],

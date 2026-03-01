@@ -46,13 +46,13 @@ interface CreateTaskFormProps {
   onCancel?: () => void;
   projectOptions: { id: string; name: string; imageUrl: string }[];
   memberOptions: { id: string; name: string; imageUrl?: string | null }[];
-  parentTaskId?: string;
+  parentId?: string;
 }
 export const CreateTaskForm = ({
   onCancel,
   projectOptions,
   memberOptions,
-  parentTaskId,
+  parentId,
 }: CreateTaskFormProps) => {
   const workspaceId = useWorkspaceId();
   const projectId = useProjectId();
@@ -139,7 +139,7 @@ export const CreateTaskForm = ({
           ...values,
           workspaceId,
           assigneeIds,
-          parentTaskId
+          parentId
         }
       },
       {

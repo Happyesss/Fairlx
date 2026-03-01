@@ -6,21 +6,21 @@ export const useCreateTaskModal = () => {
     parseAsBoolean.withDefault(false).withOptions({ clearOnDefault: true })
   );
 
-  const [parentTaskId, setParentTaskId] = useQueryState(
-    "parent-task-id",
+  const [parentId, setParentId] = useQueryState(
+    "parent-id",
     parseAsString.withOptions({ clearOnDefault: true })
   );
 
-  const open = (parentId?: string) => {
-    if (parentId) {
-      setParentTaskId(parentId);
+  const open = (taskParentId?: string) => {
+    if (taskParentId) {
+      setParentId(taskParentId);
     }
     setIsOpen(true);
   };
   
   const close = () => {
     setIsOpen(false);
-    setParentTaskId(null);
+    setParentId(null);
   };
 
   return {
@@ -28,7 +28,7 @@ export const useCreateTaskModal = () => {
     open,
     close,
     setIsOpen,
-    parentTaskId,
-    setParentTaskId,
+    parentId,
+    setParentId,
   };
 };
