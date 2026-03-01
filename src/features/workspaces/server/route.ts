@@ -538,42 +538,42 @@ const app = new Hono()
 
     const tasks = allTasks.documents;
 
-    // 1. Basic Counts (Monthly comparison)
+    // Monthly data for difference/trend calculations
     const thisMonthTasks = tasks.filter(t => new Date(t.$createdAt) >= thisMonthStart);
     const lastMonthTasks = tasks.filter(t => {
       const createdDate = new Date(t.$createdAt);
       return createdDate >= lastMonthStart && createdDate < thisMonthStart;
     });
 
-    const taskCount = thisMonthTasks.length;
-    const taskDifference = taskCount - lastMonthTasks.length;
+    // 1. Basic Counts - ALL-TIME totals for dashboard stat cards
+    const taskCount = tasks.length;
+    const taskDifference = thisMonthTasks.length - lastMonthTasks.length;
 
-    // 2. Assigned Tasks (Current User/Member)
-    const thisMonthAssignedTasks = thisMonthTasks.filter(t => t.assigneeIds?.includes(member.$id));
-    const lastMonthAssignedTasks = lastMonthTasks.filter(t => t.assigneeIds?.includes(member.$id));
+    // 2. Assigned Tasks (Current User/Member) - all-time
+    const assignedTaskCount = tasks.filter(t => t.assigneeIds?.includes(member.$id)).length;
+    const assignedTaskDifference =
+      thisMonthTasks.filter(t => t.assigneeIds?.includes(member.$id)).length -
+      lastMonthTasks.filter(t => t.assigneeIds?.includes(member.$id)).length;
 
-    const assignedTaskCount = thisMonthAssignedTasks.length;
-    const assignedTaskDifference = assignedTaskCount - lastMonthAssignedTasks.length;
-
-    // 3. Status Distribution
+    // 3. Status Distribution - ALL-TIME counts
     const completedTasks = tasks.filter(t => t.status === TaskStatus.DONE);
+    const incompleteTasks = tasks.filter(t => t.status !== TaskStatus.DONE);
 
-    const thisMonthCompletedTasks = thisMonthTasks.filter(t => t.status === TaskStatus.DONE);
-    const lastMonthCompletedTasks = lastMonthTasks.filter(t => t.status === TaskStatus.DONE);
-    const completedTaskCount = thisMonthCompletedTasks.length;
-    const completedTaskDifference = completedTaskCount - lastMonthCompletedTasks.length;
+    const completedTaskCount = completedTasks.length;
+    const completedTaskDifference =
+      thisMonthTasks.filter(t => t.status === TaskStatus.DONE).length -
+      lastMonthTasks.filter(t => t.status === TaskStatus.DONE).length;
 
-    const thisMonthIncompleteTasks = thisMonthTasks.filter(t => t.status !== TaskStatus.DONE);
-    const lastMonthIncompleteTasks = lastMonthTasks.filter(t => t.status !== TaskStatus.DONE);
-    const incompleteTaskCount = thisMonthIncompleteTasks.length;
-    const incompleteTaskDifference = incompleteTaskCount - lastMonthIncompleteTasks.length;
+    const incompleteTaskCount = incompleteTasks.length;
+    const incompleteTaskDifference =
+      thisMonthTasks.filter(t => t.status !== TaskStatus.DONE).length -
+      lastMonthTasks.filter(t => t.status !== TaskStatus.DONE).length;
 
-    // 4. Overdue Tasks
-    const thisMonthOverdueTasks = thisMonthIncompleteTasks.filter(t => t.dueDate && new Date(t.dueDate) < now);
-    const lastMonthOverdueTasks = lastMonthIncompleteTasks.filter(t => t.dueDate && new Date(t.dueDate) < now);
-
-    const overdueTaskCount = thisMonthOverdueTasks.length;
-    const overdueTaskDifference = overdueTaskCount - lastMonthOverdueTasks.length;
+    // 4. Overdue Tasks - all incomplete tasks past due date
+    const overdueTaskCount = incompleteTasks.filter(t => t.dueDate && new Date(t.dueDate) < now).length;
+    const overdueTaskDifference =
+      thisMonthTasks.filter(t => t.status !== TaskStatus.DONE && t.dueDate && new Date(t.dueDate) < now).length -
+      lastMonthTasks.filter(t => t.status !== TaskStatus.DONE && t.dueDate && new Date(t.dueDate) < now).length;
 
     // 5. Member Aggregations
     const memberDocs = workspaceMembers.documents;
