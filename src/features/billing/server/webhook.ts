@@ -192,7 +192,7 @@ async function handlePaymentSuccess(
 
     // Credit the wallet (idempotent via payment ID)
     const result = await topUpWallet(databases, walletId, amountToCredit, {
-        idempotencyKey: `webhook_${payment.cf_payment_id}`,
+        idempotencyKey: `topup_${payment.cf_payment_id}`,
         paymentId: String(payment.cf_payment_id),
         description: `Wallet top-up via Cashfree webhook`,
     });
