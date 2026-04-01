@@ -76,7 +76,7 @@ const app = new Hono()
                 data: {
                     walletId: wallet.$id,
                     ...balance,
-                    lastTopupAt: wallet.lastTopupAt,
+                    lastTopUpAt: wallet.lastTopUpAt,
                 },
             });
         }

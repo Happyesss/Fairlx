@@ -337,7 +337,7 @@ export async function topUpWallet(
         // 4. Update wallet balance with optimistic locking
         await updateWalletWithVersion(databases, walletId, wallet.version, {
             balance: balanceAfter,
-            lastTopupAt: now,
+            lastTopUpAt: now,
         });
 
         // 5. Generate transaction signature

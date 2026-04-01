@@ -30,11 +30,11 @@ export async function setupWallets(databases: Databases, databaseId: string): Pr
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'userId', 256, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'organizationId', 256, false);
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'balance', false, 0);
-    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'currency', 8, false, 'INR');
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'currency', 8, false, 'USD');
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'lockedBalance', false, 0);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'status', ['active', 'frozen', 'closed'], false, 'active');
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'version', false, 0);
-    await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'lastTopupAt', false);
+    await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'lastTopUpAt', false);
     await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'lastDeductionAt', false);
 
     // Legacy/Analytics Attributes
