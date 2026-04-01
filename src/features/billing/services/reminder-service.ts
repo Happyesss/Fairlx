@@ -322,7 +322,7 @@ async function sendEmail(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { messaging } = await createAdminClient();
-        const emailFrom = process.env.EMAIL_FROM || "billing@fairlx.com";
+        const _emailFrom = process.env.EMAIL_FROM || "billing@fairlx.com";
 
         // Send direct email using Appwrite Messaging
         await messaging.createEmail(

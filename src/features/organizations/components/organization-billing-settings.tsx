@@ -219,34 +219,44 @@ export function OrganizationBillingSettings({
                 redirectTarget: "_modal",
             });
 
-            if (checkoutResult.orderStatus === "PAID" && checkoutResult.transaction) {
-                // Verify the payment and credit the wallet
+            // Cashfree SDK v3 modal returns { error, paymentDetails } — NOT orderStatus/transaction
+            if (checkoutResult.error) {
+                // User closed modal or payment error
+                if (checkoutResult.error.message?.includes("user")) {
+                    // User dismissed — don't show error
+                } else {
+                    toast.error(`Payment error: ${checkoutResult.error.message || "Unknown error"}`);
+                }
+            } else {
+                // Modal closed without error — verify payment server-side
+                // The backend fetches order status and payment details from Cashfree API directly
                 try {
                     const verifyResponse = await client.api.wallet["verify-topup"].$post({
                         json: {
-                            cashfreeOrderId: checkoutResult.order_id || orderData.orderId,
-                            cfPaymentId: checkoutResult.transaction.referenceId,
-                            orderAmount: checkoutResult.order_amount,
-                            signature: checkoutResult.transaction.signature,
+                            cashfreeOrderId: orderData.orderId,
                         },
                     });
 
                     if (!verifyResponse.ok) {
                         const errorData = await verifyResponse.json().catch(() => ({}));
-                        throw new Error((errorData as { error?: string }).error || "Verification failed");
+                        const errorMsg = (errorData as { error?: string }).error || "Verification failed";
+                        // If order is still ACTIVE, payment might not be complete yet
+                        if (errorMsg.includes("ACTIVE")) {
+                            toast.info("Payment is being processed. Your wallet will be credited shortly via webhook.");
+                        } else {
+                            throw new Error(errorMsg);
+                        }
+                    } else {
+                        toast.success(`$${amount} added to your wallet successfully!`);
+                        // Refresh billing data to get updated balance
+                        queryClient.invalidateQueries({ queryKey: ["billing-account"] });
+                        queryClient.invalidateQueries({ queryKey: ["billing-status"] });
+                        setTopupAmount("");
                     }
-
-                    toast.success(`$${amount} added to your wallet successfully!`);
-                    // Refresh billing data to get updated balance (without full page reload)
-                    queryClient.invalidateQueries({ queryKey: ["billing-account"] });
-                    queryClient.invalidateQueries({ queryKey: ["billing-status"] });
-                    setTopupAmount("");
                 } catch (verifyError) {
                     const msg = verifyError instanceof Error ? verifyError.message : "Verification failed";
-                    toast.error(`Payment issue: ${msg}. Please contact support if credits were not added.`);
+                    toast.error(`Payment issue: ${msg}. Your wallet will be credited via webhook if payment succeeded.`);
                 }
-            } else if (checkoutResult.orderStatus !== "ACTIVE") {
-                toast.error("Payment was not completed. Please try again.");
             }
             setIsAddingCredits(false);
         } catch {

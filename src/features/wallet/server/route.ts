@@ -204,19 +204,45 @@ const app = new Hono()
             try {
                 const { cashfreeOrderId, cfPaymentId, orderAmount, signature } = c.req.valid("json");
 
-                // Step 1: Verify payment signature
-                const isValid = verifyPaymentSignature(
-                    cashfreeOrderId,
-                    String(orderAmount),
-                    cfPaymentId,
-                    signature
-                );
+                // Step 1: Verify payment signature (optional — only if frontend provided it)
+                if (signature && cfPaymentId && orderAmount) {
+                    const isValid = verifyPaymentSignature(
+                        cashfreeOrderId,
+                        String(orderAmount),
+                        cfPaymentId,
+                        signature
+                    );
 
-                if (!isValid) {
-                    return c.json({ error: "Invalid payment signature" }, 400);
+                    if (!isValid) {
+                        console.warn("[verify-topup] Client signature invalid, falling back to API verification:", cashfreeOrderId);
+                        // Don't fail — we'll verify via API below
+                    }
                 }
 
-                // Step 2: Get payment details from Cashfree server-side
+                // Step 2: Fetch order details from Cashfree server-side (source of truth)
+                const cashfreeClient = getCashfree();
+                let orderTags: Record<string, string> | undefined;
+                let orderStatus: string | undefined;
+
+                try {
+                    const orderDetails = await cashfreeClient.PGFetchOrder(cashfreeOrderId);
+                    orderTags = orderDetails.data?.order_tags as Record<string, string> | undefined;
+                    orderStatus = orderDetails.data?.order_status;
+                } catch (fetchErr) {
+                    console.warn("[verify-topup] Could not fetch order details:", {
+                        cashfreeOrderId,
+                        error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                    });
+                }
+
+                // If order is not PAID, check if there's still a chance it will be
+                if (orderStatus && orderStatus !== "PAID") {
+                    return c.json({
+                        error: `Order not in PAID state: ${orderStatus}. The webhook will credit your wallet when payment completes.`,
+                    }, 400);
+                }
+
+                // Step 3: Get payment details from Cashfree
                 const paymentsResponse = await getOrderPayments(cashfreeOrderId);
                 const payments = paymentsResponse.data;
 
@@ -224,10 +250,12 @@ const app = new Hono()
                     return c.json({ error: "No payments found for this order" }, 400);
                 }
 
-                // Find the successful payment
-                const payment = payments.find(
-                    (p) => p.cf_payment_id?.toString() === cfPaymentId && p.payment_status === "SUCCESS"
-                ) || payments.find((p) => p.payment_status === "SUCCESS");
+                // Find the successful payment — match by cfPaymentId if provided, else find any SUCCESS
+                const payment = cfPaymentId
+                    ? (payments.find(
+                        (p) => p.cf_payment_id?.toString() === cfPaymentId && p.payment_status === "SUCCESS"
+                    ) || payments.find((p) => p.payment_status === "SUCCESS"))
+                    : payments.find((p) => p.payment_status === "SUCCESS");
 
                 if (!payment || payment.payment_status !== "SUCCESS") {
                     return c.json({
@@ -235,20 +263,10 @@ const app = new Hono()
                     }, 400);
                 }
 
-                // Step 3: Get order tags by fetching the ORDER (not available on payment objects)
-                let orderTags: Record<string, string> | undefined;
-                try {
-                    const cashfree = getCashfree();
-                    const orderDetails = await cashfree.PGFetchOrder(cashfreeOrderId);
-                    orderTags = orderDetails.data?.order_tags as Record<string, string> | undefined;
-                } catch (fetchErr) {
-                    console.warn("[verify-topup] Could not fetch order details for tags:", {
-                        cashfreeOrderId,
-                        error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
-                    });
-                    // Continue — fallback logic below handles missing tags
-                }
+                // Resolve the actual cfPaymentId from the payment object
+                const resolvedCfPaymentId = cfPaymentId || String(payment.cf_payment_id);
 
+                // Step 4: Get wallet ID from order tags
                 let walletId = orderTags?.fairlx_wallet_id;
 
                 if (!walletId) {
@@ -265,9 +283,7 @@ const app = new Hono()
 
                 const { databases } = await createAdminClient();
 
-                // Step 4: Determine USD amount to credit
-                // The payment was charged in INR. The original USD amount was
-                // stored in the order tags during create-order.
+                // Step 5: Determine USD amount to credit
                 let usdCentsToCredit: number;
 
                 if (orderTags?.fairlx_usd_amount) {
@@ -277,15 +293,14 @@ const app = new Hono()
                     // Fallback: convert INR (major units) back to USD cents using live rate
                     const { getUsdToInrRate } = await import("@/lib/currency");
                     const rate = await getUsdToInrRate();
-                    // Cashfree payment_amount is in rupees, rate converts USD cents to INR paise
                     const paymentAmountPaise = (payment.payment_amount || 0) * 100;
                     usdCentsToCredit = Math.round(paymentAmountPaise / rate);
                 }
 
-                // Step 5: Credit wallet with USD cents (idempotent via payment ID)
+                // Step 6: Credit wallet with USD cents (idempotent via payment ID)
                 const result = await topUpWallet(databases, walletId, usdCentsToCredit, {
-                    idempotencyKey: `cashfree_${cfPaymentId}`,
-                    paymentId: cfPaymentId,
+                    idempotencyKey: `cashfree_${resolvedCfPaymentId}`,
+                    paymentId: resolvedCfPaymentId,
                     description: `Wallet top-up via Cashfree — $${(usdCentsToCredit / 100).toFixed(2)} USD`,
                 });
 
@@ -293,7 +308,7 @@ const app = new Hono()
                     return c.json({ error: result.error }, 400);
                 }
 
-                // Step 6: Return updated balance
+                // Step 7: Return updated balance
                 const balance = await getWalletBalance(databases, walletId);
 
                 return c.json({
