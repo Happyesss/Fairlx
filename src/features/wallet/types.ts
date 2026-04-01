@@ -78,7 +78,7 @@ export type Wallet = Models.Document & {
     version: number;
 
     /** Last top-up timestamp */
-    lastTopupAt?: string;
+    lastTopUpAt?: string;
 
     /** Last deduction timestamp */
     lastDeductionAt?: string;
@@ -182,7 +182,7 @@ export type WalletBalanceResponse = {
     availableBalance: number;
     currency: string;
     status: WalletStatus;
-    lastTopupAt?: string;
+    lastTopUpAt?: string;
 };
 
 export type CreateTopupOrderDto = {
