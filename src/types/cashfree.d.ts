@@ -6,18 +6,19 @@ interface CashfreeCheckoutConfig {
 }
 
 interface CashfreePaymentResponse {
-    order_id: string;
-    order_amount: number;
-    payment_session_id: string;
-    orderStatus: "PAID" | "ACTIVE" | "EXPIRED" | "TERMINATED";
-    transaction?: {
-        txStatus: "SUCCESS" | "FAILED" | "PENDING" | "CANCELLED" | "USER_DROPPED";
-        txTime: string;
-        txMsg: string;
-        txId: string;
-        referenceId: string;      // Cashfree payment ID (cfPaymentId)
-        signature: string;        // For client-side signature verification
+    /** Error object if checkout failed or user dismissed the modal */
+    error?: {
+        message?: string;
+        code?: string;
+        type?: string;
     };
+    /** Payment details if a payment attempt was made */
+    paymentDetails?: {
+        paymentMessage?: string;
+        [key: string]: unknown;
+    };
+    /** Redirect info (only for non-modal flows) */
+    redirect?: boolean;
 }
 
 interface CashfreeCheckoutInstance {

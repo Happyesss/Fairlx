@@ -29,12 +29,12 @@ export type CreateTopupOrderInput = z.infer<typeof createTopupOrderSchema>;
 export const verifyTopupSchema = z.object({
     /** Cashfree Order ID */
     cashfreeOrderId: z.string().min(1),
-    /** Cashfree Payment ID (cfPaymentId) */
-    cfPaymentId: z.string().min(1),
-    /** Order amount for signature verification */
-    orderAmount: z.number().positive(),
-    /** Cashfree Signature for verification */
-    signature: z.string().min(1),
+    /** Cashfree Payment ID (cfPaymentId) — optional, backend fetches from API if not provided */
+    cfPaymentId: z.string().optional(),
+    /** Order amount for signature verification — optional, backend fetches from API */
+    orderAmount: z.number().positive().optional(),
+    /** Cashfree Signature for verification — optional, backend verifies via API instead */
+    signature: z.string().optional(),
 });
 
 export type VerifyTopupInput = z.infer<typeof verifyTopupSchema>;
