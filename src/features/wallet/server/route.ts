@@ -299,7 +299,7 @@ const app = new Hono()
 
                 // Step 6: Credit wallet with USD cents (idempotent via payment ID)
                 const result = await topUpWallet(databases, walletId, usdCentsToCredit, {
-                    idempotencyKey: `cashfree_${resolvedCfPaymentId}`,
+                    idempotencyKey: `topup_${resolvedCfPaymentId}`,
                     paymentId: resolvedCfPaymentId,
                     description: `Wallet top-up via Cashfree — $${(usdCentsToCredit / 100).toFixed(2)} USD`,
                 });
