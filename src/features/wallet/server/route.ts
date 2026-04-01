@@ -11,7 +11,7 @@ import {
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
-import { createOrder, getPublicKey, verifyPaymentSignature, getOrderPayments, createCustomer, getCashfreeMode } from "@/lib/cashfree";
+import { createOrder, getPublicKey, verifyPaymentSignature, getOrderPayments, createCustomer, getCashfreeMode, getCashfree } from "@/lib/cashfree";
 
 import {
     createTopupOrderSchema,
@@ -235,13 +235,24 @@ const app = new Hono()
                     }, 400);
                 }
 
-                // Step 3: Get wallet from order tags
-                const orderTags = (payment as Record<string, unknown>).order_tags as Record<string, string> | undefined;
-                // Also try fetching from the order directly
+                // Step 3: Get order tags by fetching the ORDER (not available on payment objects)
+                let orderTags: Record<string, string> | undefined;
+                try {
+                    const cashfree = getCashfree();
+                    const orderDetails = await cashfree.PGFetchOrder(cashfreeOrderId);
+                    orderTags = orderDetails.data?.order_tags as Record<string, string> | undefined;
+                } catch (fetchErr) {
+                    console.warn("[verify-topup] Could not fetch order details for tags:", {
+                        cashfreeOrderId,
+                        error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                    });
+                    // Continue — fallback logic below handles missing tags
+                }
+
                 let walletId = orderTags?.fairlx_wallet_id;
 
                 if (!walletId) {
-                    // Parse from orderId: topup_{walletId}_{timestamp}
+                    // Fallback: parse from orderId format: topup_{walletId}_{timestamp}
                     const parts = cashfreeOrderId.split("_");
                     if (parts.length >= 2 && parts[0] === "topup") {
                         walletId = parts[1];

@@ -120,8 +120,8 @@ export const BILLING_CURRENCY = process.env.BILLING_CURRENCY || "USD";
 // ===============================
 // Wallet Security Configuration
 // ===============================
-/** Maximum daily top-up amount per wallet (paise). Default: ₹5,00,000 */
-export const WALLET_DAILY_TOPUP_LIMIT = parseInt(process.env.WALLET_DAILY_TOPUP_LIMIT || "50000000");
+/** Maximum daily top-up amount per wallet (USD cents). Default: $50,000 */
+export const WALLET_DAILY_TOPUP_LIMIT = parseInt(process.env.WALLET_DAILY_TOPUP_LIMIT || "5000000");
 
 // ===============================
 // Cron Job Security
