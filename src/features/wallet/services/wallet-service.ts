@@ -144,6 +144,7 @@ async function checkDebitRateLimit(
 
 /**
  * Check daily top-up limit to prevent fraud/money laundering
+ * @param newAmount - Amount in USD cents (must match WALLET_DAILY_TOPUP_LIMIT units)
  */
 async function checkDailyTopupLimit(
     databases: Databases,

@@ -101,7 +101,14 @@ export function verifyWebhookSignature(
     timestamp: string,
     secret?: string
 ): boolean {
-    const webhookSecret = secret || process.env.CASHFREE_SECRET_KEY;
+    // FIXED: Use dedicated CASHFREE_WEBHOOK_SECRET, fallback to API key
+    const webhookSecret = secret 
+        || process.env.CASHFREE_WEBHOOK_SECRET 
+        || process.env.CASHFREE_SECRET_KEY;
+
+    if (!process.env.CASHFREE_WEBHOOK_SECRET) {
+        console.warn("[Cashfree] CASHFREE_WEBHOOK_SECRET not set — falling back to CASHFREE_SECRET_KEY for webhook verification. Set CASHFREE_WEBHOOK_SECRET from the Cashfree dashboard.");
+    }
 
     if (!webhookSecret || !timestamp) {
         return false;

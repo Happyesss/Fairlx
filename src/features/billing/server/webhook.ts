@@ -133,9 +133,14 @@ const app = new Hono()
             await markEventProcessed(databases, eventId, "webhook");
 
             return c.json({ status: "processed" });
-        } catch {
-            // Return 200 to prevent Cashfree from retrying (we log the error)
-            return c.json({ status: "error_logged" });
+        } catch (err) {
+            console.error("[cashfree-webhook] Unhandled error processing event:", {
+                eventId,
+                error: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack : undefined,
+            });
+            // Return 500 so Cashfree retries on infrastructure failures
+            return c.json({ status: "error", retryable: true }, 500);
         }
     });
 
@@ -191,6 +196,19 @@ async function handlePaymentSuccess(
         paymentId: String(payment.cf_payment_id),
         description: `Wallet top-up via Cashfree webhook`,
     });
+
+    // If topUpWallet failed for a non-idempotency reason, throw so the outer
+    // catch returns 500 and Cashfree retries the webhook.
+    if (!result.success && result.error !== "already_processed") {
+        console.error("[cashfree-webhook] topUpWallet failed:", {
+            walletId,
+            amountToCredit,
+            error: result.error,
+            eventId,
+            cfPaymentId: payment.cf_payment_id,
+        });
+        throw new Error(`topUpWallet failed: ${result.error}`);
+    }
 
     if (result.success && result.error !== "already_processed") {
         // Update billing account status if needed
