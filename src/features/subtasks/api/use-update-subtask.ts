@@ -26,7 +26,7 @@ export const useUpdateSubtask = () => {
     onSuccess: ({ data }) => {
       toast.success("Subtask updated");
       queryClient.invalidateQueries({ 
-        queryKey: ["subtasks", data.workspaceId, data.workItemId] 
+        queryKey: ["subtasks", data.workspaceId, data.parentTaskId] 
       });
     },
     onError: () => {

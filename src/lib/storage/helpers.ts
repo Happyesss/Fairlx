@@ -73,10 +73,11 @@ export async function deleteImageSilently(
   appwriteStorage: AppwriteStorage,
   fileId: string,
   bucketId: string = IMAGES_BUCKET_ID,
+  context?: { workspaceId?: string; sizeBytes?: number }
 ): Promise<void> {
   try {
     const provider = getStorageProvider(appwriteStorage);
-    await provider.deleteFile(bucketId, fileId);
+    await provider.deleteFile(bucketId, fileId, context);
   } catch {
     // Ignore deletion errors
   }

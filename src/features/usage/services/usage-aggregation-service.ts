@@ -132,7 +132,6 @@ export async function aggregateDailyUsage(
 
                 // Compute aggregates
                 let trafficBytes = 0;
-                let storageBytes = 0;
                 let computeUnits = 0;
                 const bySource: Record<string, number> = {};
                 const byModule: Record<string, number> = {};
@@ -161,18 +160,24 @@ export async function aggregateDailyUsage(
                         case ResourceType.TRAFFIC:
                             trafficBytes += event.units;
                             break;
-                        case ResourceType.STORAGE:
-                            storageBytes += event.units;
-                            break;
                         case ResourceType.COMPUTE:
                             computeUnits += event.weightedUnits || event.units;
                             break;
                     }
                 }
 
-                // Convert to GB for storage
+                // CRITICAL FIX (Bug 3): Use time-weighted daily snapshot average for storage.
+                // The old approach summed raw storage-event bytes for the day, which is WRONG:
+                //   - It double-counts downloads as "storage usage"
+                //   - It doesn't reflect actual GB-month utilisation
+                // The correct approach: average the daily point-in-time snapshot across the month.
+                const { calculateTimeWeightedStorageAvg } = await import("@/lib/storage-snapshot-job");
+                // targetDate is YYYY-MM-DD; the period arg for time-weighting is YYYY-MM
+                const storagePeriod = targetDate.slice(0, 7); // e.g. "2025-03"
+                const storageAvgGB = await calculateTimeWeightedStorageAvg(databases, workspaceId, storagePeriod);
+
+                // Convert traffic to GB
                 const trafficTotalGB = trafficBytes / (1024 * 1024 * 1024);
-                const storageAvgGB = storageBytes / (1024 * 1024 * 1024);
 
                 // Create daily summary document
                 await databases.createDocument(

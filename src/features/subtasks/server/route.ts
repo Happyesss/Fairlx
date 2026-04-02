@@ -45,7 +45,7 @@ const app = new Hono()
         DATABASE_ID,
         SUBTASKS_ID,
         [
-          Query.equal("workItemId", workItemId),
+          Query.equal("parentTaskId", workItemId),
           Query.orderAsc("position"),
         ]
       );
@@ -62,7 +62,28 @@ const app = new Hono()
       const databases = c.get("databases");
       const user = c.get("user");
 
-      const { title, workItemId, workspaceId, completed, assigneeId, status, dueDate, estimatedHours, priority, description } = c.req.valid("json");
+      const { 
+        title, 
+        parentTaskId, 
+        workItemId, 
+        workspaceId, 
+        isCompleted, 
+        completed, 
+        assigneeId, 
+        status, 
+        dueDate, 
+        estimatedHours, 
+        priority, 
+        description 
+      } = c.req.valid("json");
+ 
+      // Resolve IDs (handle backward compatibility)
+      const resolvedParentTaskId = parentTaskId || workItemId;
+      const resolvedIsCompleted = isCompleted !== undefined ? isCompleted : (completed || false);
+ 
+      if (!resolvedParentTaskId) {
+        return c.json({ error: "parentTaskId or workItemId is required" }, 400);
+      }
 
       const member = await getMember({
         databases,
@@ -79,7 +100,7 @@ const app = new Hono()
         DATABASE_ID,
         SUBTASKS_ID,
         [
-          Query.equal("workItemId", workItemId),
+          Query.equal("parentTaskId", resolvedParentTaskId),
           Query.orderDesc("position"),
           Query.limit(1),
         ]
@@ -97,9 +118,9 @@ const app = new Hono()
         {
           title,
           description,
-          workItemId,
+          parentTaskId: resolvedParentTaskId,
           workspaceId,
-          completed: completed || false,
+          isCompleted: resolvedIsCompleted,
           position: highestPosition + 1000,
           createdBy: user.$id,
           assigneeId: assigneeId || null,
@@ -148,8 +169,16 @@ const app = new Hono()
         return c.json({ error: "Unauthorized" }, 401);
       }
 
-      const updates = c.req.valid("json");
-
+      const updates: Record<string, unknown> = { ...c.req.valid("json") };
+      
+      // Map 'completed' to 'isCompleted' if present
+      if (updates.completed !== undefined && updates.isCompleted === undefined) {
+        updates.isCompleted = updates.completed;
+      }
+      // Remove legacy fields from database payload
+      delete updates.completed;
+      delete updates.workItemId;
+ 
       const updatedSubtask = await databases.updateDocument<Subtask>(
         DATABASE_ID,
         SUBTASKS_ID,

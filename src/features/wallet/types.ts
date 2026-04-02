@@ -62,13 +62,13 @@ export type Wallet = Models.Document & {
     /** Organization ID (for ORG accounts) */
     organizationId?: string;
 
-    /** Available balance in smallest currency unit (paise) */
+    /** Available balance in USD (supports high precision, e.g. $0.000001) */
     balance: number;
 
     /** Currency code (USD) */
     currency: string;
 
-    /** Balance reserved for pending transactions */
+    /** Balance reserved for pending transactions (in USD) */
     lockedBalance: number;
 
     /** Wallet status */

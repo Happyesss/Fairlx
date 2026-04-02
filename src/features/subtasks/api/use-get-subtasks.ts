@@ -4,15 +4,15 @@ import { client } from "@/lib/rpc";
 
 interface UseGetSubtasksProps {
   workspaceId: string;
-  workItemId: string;
+  parentTaskId: string;
 }
 
-export const useGetSubtasks = ({ workspaceId, workItemId }: UseGetSubtasksProps) => {
+export const useGetSubtasks = ({ workspaceId, parentTaskId }: UseGetSubtasksProps) => {
   const query = useQuery({
-    queryKey: ["subtasks", workspaceId, workItemId],
+    queryKey: ["subtasks", workspaceId, parentTaskId],
     queryFn: async () => {
       const response = await client.api.subtasks.$get({
-        query: { workspaceId, workItemId },
+        query: { workspaceId, workItemId: parentTaskId },
       });
 
       if (!response.ok) {

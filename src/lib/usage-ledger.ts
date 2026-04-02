@@ -57,6 +57,9 @@ export interface WriteUsageEventParams {
     billingEntityId?: string;
     /** Billing entity type */
     billingEntityType?: "user" | "organization";
+    /** Optional compute weighting fields */
+    baseUnits?: number;
+    weightedUnits?: number;
 }
 
 export interface WriteUsageResult {
@@ -89,7 +92,7 @@ export async function findByIdempotencyKey(
             DATABASE_ID,
             USAGE_EVENTS_ID,
             [
-                Query.contains("metadata", idempotencyKey),
+                Query.equal("idempotencyKey", idempotencyKey),
                 Query.limit(1),
             ]
         );
@@ -199,7 +202,45 @@ export async function writeUsageEvent(
         } : {}),
     };
 
-    // 5. Atomic write with unique ID
+    // 5. Resolve billingEntityId if not provided by caller
+    // WHY: billing-service.ts filters USAGE_AGGREGATIONS_ID by billingEntityId as a top-level
+    // Appwrite indexed field. Without it at the top level, Query.equal() returns 0 results.
+    let resolvedBillingEntityId = params.billingEntityId;
+    let resolvedBillingEntityType = params.billingEntityType;
+
+    if (!resolvedBillingEntityId) {
+        try {
+            const { WORKSPACES_ID, ORGANIZATIONS_ID } = await import("@/config");
+            const workspace = await databases.getDocument(
+                DATABASE_ID,
+                WORKSPACES_ID,
+                params.workspaceId
+            );
+            if (workspace.organizationId) {
+                const org = await databases.getDocument(
+                    DATABASE_ID,
+                    ORGANIZATIONS_ID,
+                    workspace.organizationId
+                );
+                const billingStartAt = org.billingStartAt ? new Date(org.billingStartAt) : null;
+                const eventDate = new Date(adjustedTimestamp);
+                if (billingStartAt && eventDate >= billingStartAt) {
+                    resolvedBillingEntityId = workspace.organizationId;
+                    resolvedBillingEntityType = "organization";
+                } else {
+                    resolvedBillingEntityId = workspace.userId;
+                    resolvedBillingEntityType = "user";
+                }
+            } else {
+                resolvedBillingEntityId = workspace.userId;
+                resolvedBillingEntityType = "user";
+            }
+        } catch {
+            // Non-fatal — leave billing entity unset rather than block the write
+        }
+    }
+
+    // 6. Atomic write with unique ID
     try {
         const event = await databases.createDocument<UsageEvent>(
             DATABASE_ID,
@@ -210,11 +251,52 @@ export async function writeUsageEvent(
                 projectId: params.projectId || null,
                 resourceType: params.resourceType,
                 units: params.units,
+                baseUnits: params.baseUnits || null,
+                weightedUnits: params.weightedUnits || null,
                 source: params.source,
+                module: params.module || null,
+                billingEntityId: resolvedBillingEntityId || null,
+                billingEntityType: resolvedBillingEntityType || null,
+                idempotencyKey: params.idempotencyKey,
                 metadata: JSON.stringify(fullMetadata),
                 timestamp: adjustedTimestamp,
             }
         );
+
+        // INSTANT DEDUCTION (Approved Requirement)
+        // WHY: Wallet balance should drop as soon as usage occurs.
+        // We defer this call to avoid blocking the main API response, but it runs
+        // immediately in the background execution context.
+        if (resolvedBillingEntityId) {
+            setImmediate(async () => {
+                try {
+                    const { calculateEventCostUSD } = await import("@/lib/billing/pricing");
+                    const costUSD = calculateEventCostUSD(
+                        params.resourceType,
+                        params.units,
+                        params.weightedUnits
+                    );
+
+                    if (costUSD > 0) {
+                        const { getOrCreateWallet, deductFromWallet } = await import("@/features/wallet/services/wallet-service");
+                        const wallet = await getOrCreateWallet(databases, {
+                            userId: resolvedBillingEntityType === "user" ? resolvedBillingEntityId : undefined,
+                            organizationId: resolvedBillingEntityType === "organization" ? resolvedBillingEntityId : undefined,
+                        });
+
+                        await deductFromWallet(databases, wallet.$id, costUSD, {
+                            referenceId: event.$id,
+                            idempotencyKey: `deduct:${params.idempotencyKey}`,
+                            description: `Instant Charge: ${params.resourceType.toUpperCase()}`,
+                        });
+                    }
+                } catch (err) {
+                    console.error("[UsageLedger] Instant deduction failed:", err);
+                    // Non-fatal: Daily aggregation cron will catch any missed deductions
+                    // to ensure eventual consistency if the instant deduction fails.
+                }
+            });
+        }
 
         return {
             written: true,
@@ -232,10 +314,11 @@ export async function writeUsageEvent(
             };
         }
 
+        console.error("[UsageLedger] Failed to write usage event:", error);
         return {
             written: false,
             reason: "ERROR",
-            message: errorMessage,
+            message: error instanceof Error ? error.message : "Unknown database error",
         };
     }
 }

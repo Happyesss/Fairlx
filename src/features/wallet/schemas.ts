@@ -10,8 +10,8 @@ import { WalletTransactionType } from "./types";
  * This creates the order server-side; frontend opens Cashfree Checkout with it
  */
 export const createTopupOrderSchema = z.object({
-    /** Amount in smallest currency unit (paise). Min ₹1, Max ₹1,00,000 */
-    amount: z.number().min(100, "Minimum top-up is ₹1").max(100000000, "Maximum top-up is ₹10,00,000"),
+    /** Amount in USD (supports decimals). Min $1, Max $10,000 */
+    amount: z.number().min(1, "Minimum top-up is $1").max(10000, "Maximum top-up is $10,000"),
     /** Currency - defaults to USD on server */
     currency: z.string().optional(),
     /** Organization ID (for org wallets) */
@@ -65,11 +65,10 @@ export type GetTransactionsInput = z.infer<typeof getTransactionsSchema>;
 
 /**
  * Schema for usage deduction from wallet (internal use)
- * Used by billing system to deduct from wallet
  */
 export const deductUsageSchema = z.object({
-    /** Amount to deduct in smallest currency unit (paise) */
-    amount: z.number().min(1),
+    /** Amount to deduct in USD (supports high precision decimals) */
+    amount: z.number().positive(),
     /** Reference ID (invoice ID, usage event ID, etc.) */
     referenceId: z.string().min(1),
     /** Idempotency key to prevent double-deduction */
@@ -84,8 +83,8 @@ export type DeductUsageInput = z.infer<typeof deductUsageSchema>;
  * Schema for holding funds in wallet (async jobs)
  */
 export const holdWalletSchema = z.object({
-    /** Amount to hold in smallest currency unit (paise) */
-    amount: z.number().min(1),
+    /** Amount to hold in USD (supports high precision decimals) */
+    amount: z.number().positive(),
     /** Reference ID for the hold */
     referenceId: z.string().min(1),
     /** Idempotency key */
@@ -100,8 +99,8 @@ export type HoldWalletInput = z.infer<typeof holdWalletSchema>;
  * Schema for releasing a hold on wallet funds
  */
 export const releaseHoldSchema = z.object({
-    /** Amount to release */
-    amount: z.number().min(1),
+    /** Amount to release (in USD) */
+    amount: z.number().positive(),
     /** Reference ID matching the original hold */
     referenceId: z.string().min(1),
     /** Idempotency key */

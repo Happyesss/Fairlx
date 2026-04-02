@@ -2,6 +2,8 @@ name: Billing & Usage Cron Jobs
 
 on:
   schedule:
+    # Storage snapshots — midnight UTC every day (MUST run before aggregate-daily)
+    - cron: '0 0 * * *'
     # Process billing cycle - 1st of each month at midnight UTC
     - cron: '0 0 1 * *'
     # Enforce grace periods - daily at 1 AM UTC
@@ -25,6 +27,7 @@ on:
           - send-reminders
           - evaluate-alerts
           - aggregate-daily
+          - storage-snapshot
 
 # Note: All billing operations use USD as the primary currency.
 # Razorpay payments are processed in INR with live conversion rates.
@@ -47,8 +50,11 @@ jobs:
             HOUR=$(date -u +%H)
             DAY=$(date -u +%d)
             
-            if [ "$DAY" == "01" ] && [ "$HOUR" == "00" ]; then
-              echo "job=process-cycle" >> $GITHUB_OUTPUT
+            if [ "$HOUR" == "00" ]; then
+              echo "job=storage-snapshot" >> $GITHUB_OUTPUT
+              if [ "$DAY" == "01" ]; then
+                echo "run_billing_cycle=true" >> $GITHUB_OUTPUT
+              fi
             elif [ "$HOUR" == "01" ]; then
               echo "job=enforce-grace" >> $GITHUB_OUTPUT
             elif [ "$HOUR" == "02" ]; then
@@ -62,8 +68,28 @@ jobs:
             fi
           fi
 
+      - name: Capture daily storage snapshots
+        if: steps.job.outputs.job == 'storage-snapshot'
+        run: |
+          echo "📦 Capturing daily storage snapshots for all workspaces..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            "$API_BASE_URL/api/cron/storage/snapshot")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Storage snapshot failed with status $http_code"
+            exit 1
+          fi
+          echo "✅ Storage snapshots captured successfully"
+
       - name: Run billing cycle processing
-        if: steps.job.outputs.job == 'process-cycle'
+        if: steps.job.outputs.job == 'process-cycle' || steps.job.outputs.run_billing_cycle == 'true'
         run: |
           echo "📅 Running monthly billing cycle processing..."
           response=$(curl -s -w "\n%{http_code}" -X POST \

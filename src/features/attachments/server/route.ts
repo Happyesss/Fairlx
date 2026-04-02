@@ -102,7 +102,10 @@ export const deleteAttachment = async (
   // Delete the file from storage (R2 or Appwrite)
   try {
     const storageProvider = await getAdminStorageProvider();
-    await storageProvider.deleteFile(ATTACHMENTS_BUCKET_ID, attachment.fileId);
+    await storageProvider.deleteFile(ATTACHMENTS_BUCKET_ID, attachment.fileId, {
+      workspaceId: attachment.workspaceId,
+      sizeBytes: attachment.fileSize,
+    });
   } catch {
     // Continue with database deletion even if file deletion fails
   }

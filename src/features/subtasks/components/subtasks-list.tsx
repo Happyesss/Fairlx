@@ -24,7 +24,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
 
   const { data: subtasksData, isLoading } = useGetSubtasks({ 
     workspaceId, 
-    workItemId 
+    parentTaskId: workItemId 
   });
   const { mutate: createSubtask, isPending: isCreating } = useCreateSubtask();
 
@@ -32,7 +32,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
   
   // Calculate progress based on both completed and status
   const completedCount = subtasks.filter((st) => 
-    st.completed || st.status === SubtaskStatus.DONE
+    st.isCompleted || st.completed || st.status === SubtaskStatus.DONE
   ).length;
   const inProgressCount = subtasks.filter((st) => 
     st.status === SubtaskStatus.IN_PROGRESS
@@ -43,7 +43,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
   // Calculate total estimated hours
   const totalEstimatedHours = subtasks.reduce((acc, st) => acc + (st.estimatedHours || 0), 0);
   const completedEstimatedHours = subtasks
-    .filter((st) => st.completed || st.status === SubtaskStatus.DONE)
+    .filter((st) => st.isCompleted || st.completed || st.status === SubtaskStatus.DONE)
     .reduce((acc, st) => acc + (st.estimatedHours || 0), 0);
 
   const handleAddSubtask = () => {
@@ -51,9 +51,9 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
       createSubtask(
         {
           title: newSubtaskTitle.trim(),
-          workItemId,
+          parentTaskId: workItemId,
           workspaceId,
-          completed: false,
+          isCompleted: false,
         },
         {
           onSuccess: () => {
