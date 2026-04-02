@@ -348,8 +348,9 @@ export async function topUpWallet(
             return { success: false, error: `wallet_${wallet.status}: Cannot top up a ${wallet.status} wallet` };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore + amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore + amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // 4. Update wallet balance with optimistic locking
@@ -362,7 +363,7 @@ export async function topUpWallet(
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.TOPUP,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.paymentId || "",
@@ -464,8 +465,9 @@ export async function deductFromWallet(
             };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore - amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore - amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // 5. Update wallet balance with optimistic locking
@@ -478,7 +480,7 @@ export async function deductFromWallet(
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.USAGE,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,
@@ -493,7 +495,7 @@ export async function deductFromWallet(
             {
                 walletId,
                 type: WalletTransactionType.USAGE,
-                amount,
+                amount: amountFixed,
                 direction: "debit",
                 balanceBefore,
                 balanceAfter,
@@ -567,18 +569,19 @@ export async function holdFromWallet(
         }
 
         const now = new Date().toISOString();
-        const balanceBefore = wallet.balance;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
 
         // Increase lockedBalance (balance stays the same)
         await updateWalletWithVersion(databases, walletId, wallet.version, {
-            lockedBalance: wallet.lockedBalance + amount,
+            lockedBalance: Number((wallet.lockedBalance + amountFixed).toFixed(6)),
         });
 
         // Generate signature
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.HOLD,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter: balanceBefore, // balance doesn't change on HOLD
             referenceId: options.referenceId,
@@ -741,21 +744,22 @@ export async function confirmHold(
             return { success: false, error: "insufficient_locked_balance" };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore - amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore - amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // Deduct from both balance and lockedBalance
         await updateWalletWithVersion(databases, walletId, wallet.version, {
             balance: balanceAfter,
-            lockedBalance: wallet.lockedBalance - amount,
+            lockedBalance: Number((wallet.lockedBalance - amountFixed).toFixed(6)),
             lastDeductionAt: now,
         });
 
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.USAGE,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,
@@ -827,8 +831,9 @@ export async function refundToWallet(
             walletId
         );
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore + amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore + amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // Update wallet balance with optimistic locking
@@ -839,7 +844,7 @@ export async function refundToWallet(
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.REFUND,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,

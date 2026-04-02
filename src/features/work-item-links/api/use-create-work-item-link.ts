@@ -24,8 +24,8 @@ export const useCreateWorkItemLink = () => {
     },
     onSuccess: (_, variables) => {
       toast.success("Link created.");
-      queryClient.invalidateQueries({ queryKey: ["work-item-links", variables.json.sourceWorkItemId] });
-      queryClient.invalidateQueries({ queryKey: ["work-item-links", variables.json.targetWorkItemId] });
+      queryClient.invalidateQueries({ queryKey: ["work-item-links", variables.json.sourceItemId] });
+      queryClient.invalidateQueries({ queryKey: ["work-item-links", variables.json.targetItemId] });
     },
     onError: (error) => {
       toast.error(error.message || "Failed to create link.");

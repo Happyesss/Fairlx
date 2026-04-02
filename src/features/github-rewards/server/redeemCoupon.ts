@@ -192,14 +192,13 @@ export async function redeemCoupon(
         // ------------------------------------------------------------------
         // 8. CREDIT WALLET (APPWRITE)
         // ------------------------------------------------------------------
-        // Convert USD to smallest unit (cents)
-        const amountCents = Math.round(freshCoupon.credit_amount * 100);
+        const creditAmountUSD = freshCoupon.credit_amount;
 
         const wallet = await getOrCreateWallet(databases, walletOptions);
-        const topupResult = await topUpWallet(databases, wallet.$id, amountCents, {
+        const topupResult = await topUpWallet(databases, wallet.$id, creditAmountUSD, {
             idempotencyKey: `github_reward:${code}`,
             paymentId: `github_reward_${freshCoupon.id}`,
-            description: `GitHub Star Reward: $${freshCoupon.credit_amount.toFixed(2)} (coupon ${code})`,
+            description: `GitHub Star Reward: ${code} ($${freshCoupon.credit_amount.toFixed(6)})`,
         });
 
         if (!topupResult.success && topupResult.error !== "already_processed") {
@@ -238,7 +237,6 @@ export async function redeemCoupon(
                 couponId: freshCoupon.id,
                 githubUsername: freshCoupon.github_username,
                 creditAmountUSD: freshCoupon.credit_amount,
-                creditAmountCents: amountCents,
                 walletId: wallet.$id,
                 transactionId: topupResult.transaction?.$id,
             },
@@ -261,7 +259,7 @@ export async function redeemCoupon(
 
         return {
             success: true,
-            creditedAmount: freshCoupon.credit_amount,
+            creditedAmount: creditAmountUSD,
             newWalletBalance: finalBalance.balance,
             transactionId: topupResult.transaction?.$id || "already_processed",
         };

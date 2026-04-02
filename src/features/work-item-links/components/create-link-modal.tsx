@@ -11,13 +11,13 @@ interface CreateLinkModalProps {
 export const CreateLinkModal = ({
   workspaceId,
 }: CreateLinkModalProps) => {
-  const { isOpen, sourceWorkItemId, setIsOpen, close } = useCreateLinkModal();
+  const { isOpen, sourceItemId, setIsOpen, close } = useCreateLinkModal();
 
   return (
     <ResponsiveModal open={isOpen} onOpenChange={setIsOpen}>
       <CreateLinkForm
         workspaceId={workspaceId}
-        sourceItemId={sourceWorkItemId || undefined}
+        sourceItemId={sourceItemId || undefined}
         onCancel={close}
         onSuccess={close}
       />

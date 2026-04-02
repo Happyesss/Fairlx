@@ -29,7 +29,7 @@ import { useDeleteSubtask } from "../api/use-delete-subtask";
 interface SubtaskItemProps {
   subtask: Subtask;
   workspaceId: string;
-  workItemId: string;
+  parentTaskId: string;
   members?: Array<{ $id: string; name: string }>;
   showDetails?: boolean;
 }
@@ -50,7 +50,7 @@ const priorityConfig: Record<SubtaskPriority, { label: string; color: string; ic
 export const SubtaskItem = ({
   subtask,
   workspaceId,
-  workItemId,
+  parentTaskId,
   members = [],
   showDetails = true
 }: SubtaskItemProps) => {
@@ -116,7 +116,7 @@ export const SubtaskItem = ({
   const handleDelete = () => {
     deleteSubtask({
       param: { subtaskId: subtask.$id },
-      context: { workspaceId, workItemId },
+      context: { workspaceId, parentTaskId },
     });
   };
 
@@ -132,13 +132,13 @@ export const SubtaskItem = ({
   const currentStatus = (subtask.status as SubtaskStatus) || SubtaskStatus.TODO;
   const currentPriority = (subtask.priority as SubtaskPriority) || SubtaskPriority.MEDIUM;
   const assignee = members.find(m => m.$id === subtask.assigneeId);
-  const isOverdue = subtask.dueDate && new Date(subtask.dueDate) < new Date() && !subtask.isCompleted && !subtask.completed;
+  const isOverdue = subtask.dueDate && new Date(subtask.dueDate) < new Date() && !subtask.isCompleted;
 
   return (
     <div className="border rounded-lg p-2 hover:bg-muted/30 group transition-colors">
       <div className="flex items-center gap-2">
         <Checkbox
-          checked={subtask.isCompleted || subtask.completed}
+          checked={subtask.isCompleted}
           onCheckedChange={handleToggleComplete}
           disabled={isUpdating || isDeleting}
           className="size-4"

@@ -9,8 +9,8 @@ type ResponseType = InferResponseType<(typeof client.api)["work-item-links"][":l
 type RequestType = InferRequestType<(typeof client.api)["work-item-links"][":linkId"]["$delete"]>;
 
 interface UseDeleteWorkItemLinkOptions {
-  sourceWorkItemId?: string;
-  targetWorkItemId?: string;
+  sourceItemId?: string;
+  targetItemId?: string;
 }
 
 export const useDeleteWorkItemLink = (options?: UseDeleteWorkItemLinkOptions) => {
@@ -31,11 +31,11 @@ export const useDeleteWorkItemLink = (options?: UseDeleteWorkItemLinkOptions) =>
     },
     onSuccess: () => {
       toast.success("Link deleted.");
-      if (options?.sourceWorkItemId) {
-        queryClient.invalidateQueries({ queryKey: ["work-item-links", options.sourceWorkItemId] });
+      if (options?.sourceItemId) {
+        queryClient.invalidateQueries({ queryKey: ["work-item-links", options.sourceItemId] });
       }
-      if (options?.targetWorkItemId) {
-        queryClient.invalidateQueries({ queryKey: ["work-item-links", options.targetWorkItemId] });
+      if (options?.targetItemId) {
+        queryClient.invalidateQueries({ queryKey: ["work-item-links", options.targetItemId] });
       }
       queryClient.invalidateQueries({ queryKey: ["work-item-links"] });
     },

@@ -83,18 +83,19 @@ export type UsageEvent = Models.Document & {
 
 export type UsageAggregation = Models.Document & {
     workspaceId: string;
-    period: string; // YYYY-MM format
-    trafficTotalGB: number;
-    storageAvgGB: number;
-    computeTotalUnits: number;
+    period: string; // YYYY-MM-DD or YYYY-MM
+    periodType: 'daily' | 'monthly';
+    trafficBytes: number;
+    storageBytes: number;
+    computeUnits: number;
+    totalCost: number;
+    currency: string;
     createdAt: string;
-    isFinalized: boolean;
     // Billing entity for organization-level aggregation
     billingEntityId?: string;      // User ID or Organization ID
     billingEntityType?: 'user' | 'organization';
     // Invoice reconciliation - links aggregation to invoice for audit trail
     invoiceId?: string;      // Reference to generated invoice
-    finalizedAt?: string;    // When period was locked for billing
 };
 
 // Time-weighted storage billing - daily snapshots for accurate GB-month calculation
@@ -112,12 +113,12 @@ export type Invoice = Models.Document & {
     invoiceId: string;       // Human-readable invoice number
     workspaceId: string;
     period: string;          // YYYY-MM billing period
-    trafficGB: number;
-    storageAvgGB: number;
+    trafficBytes: number;
+    storageBytes: number;
     computeUnits: number;
     totalCost: number;
-    aggregationSnapshotId: string;  // Links to UsageAggregation for audit
-    status: 'draft' | 'finalized' | 'paid';
+    aggregationSnapshotId?: string;  // Links to UsageAggregation for audit
+    status: 'draft' | 'finalized' | 'paid' | 'due';
     createdAt: string;
     paidAt?: string;
     // Billing entity for organization invoices

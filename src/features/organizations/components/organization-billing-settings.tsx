@@ -184,7 +184,7 @@ export function OrganizationBillingSettings({
             // Create a Cashfree order for wallet top-up
             const orderResponse = await client.api.wallet["create-order"].$post({
                 json: {
-                    amount: amount * 100, // Convert dollars to cents
+                    amount, // Amount in full dollar units (float) with 6-decimal support
                     organizationId,
                 },
             });

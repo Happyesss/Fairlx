@@ -4,8 +4,8 @@ on:
   schedule:
     # Storage snapshots — midnight UTC every day (MUST run before aggregate-daily)
     - cron: '0 0 * * *'
-    # Process billing cycle - 1st of each month at midnight UTC
-    - cron: '0 0 1 * *'
+    # Process billing cycle - 1st of each month at 3 AM UTC (MUST run after 2 AM aggregate-daily)
+    - cron: '0 3 1 * *'
     # Enforce grace periods - daily at 1 AM UTC
     - cron: '0 1 * * *'
     # Send reminders - daily at 9 AM UTC
@@ -52,13 +52,12 @@ jobs:
             
             if [ "$HOUR" == "00" ]; then
               echo "job=storage-snapshot" >> $GITHUB_OUTPUT
-              if [ "$DAY" == "01" ]; then
-                echo "run_billing_cycle=true" >> $GITHUB_OUTPUT
-              fi
             elif [ "$HOUR" == "01" ]; then
               echo "job=enforce-grace" >> $GITHUB_OUTPUT
             elif [ "$HOUR" == "02" ]; then
               echo "job=aggregate-daily" >> $GITHUB_OUTPUT
+            elif [ "$HOUR" == "03" ] && [ "$DAY" == "01" ]; then
+               echo "job=process-cycle" >> $GITHUB_OUTPUT
             elif [ "$HOUR" == "09" ]; then
               echo "job=send-reminders" >> $GITHUB_OUTPUT
             elif [ "$(date -u +%M)" == "30" ]; then

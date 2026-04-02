@@ -2530,7 +2530,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                   <div className="px-5 py-4">
                     <h3 className="text-sm font-semibold mb-3">Add subtask</h3>
                     <SubtasksList
-                      workItemId={selectedItem.$id}
+                      parentTaskId={selectedItem.$id}
                       workspaceId={workspaceId}
                     />
                   </div>
