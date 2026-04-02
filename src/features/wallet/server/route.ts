@@ -8,6 +8,7 @@ import {
     DATABASE_ID,
     BILLING_ACCOUNTS_ID,
     WALLET_DAILY_TOPUP_LIMIT,
+    WALLET_TRANSACTIONS_ID,
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
@@ -295,6 +296,29 @@ const app = new Hono()
                     const rate = await getUsdToInrRate();
                     const paymentAmountPaise = (payment.payment_amount || 0) * 100;
                     usdCentsToCredit = Math.round(paymentAmountPaise / rate);
+                }
+
+                // Step 5b: Pre-flight duplicate check by payment ID
+                // Catches all legacy key variants (webhook_, cashfree_, topup_)
+                const existingForPayment = await databases.listDocuments(
+                    DATABASE_ID,
+                    WALLET_TRANSACTIONS_ID,
+                    [
+                        Query.equal("referenceId", resolvedCfPaymentId),
+                        Query.limit(1),
+                    ]
+                );
+                if (existingForPayment.total > 0) {
+                    const balance = await getWalletBalance(databases, walletId);
+                    return c.json({
+                        data: {
+                            success: true,
+                            balance: balance.balance,
+                            availableBalance: balance.availableBalance,
+                            currency: balance.currency,
+                            alreadyProcessed: true,
+                        },
+                    });
                 }
 
                 // Step 6: Credit wallet with USD cents (idempotent via payment ID)
