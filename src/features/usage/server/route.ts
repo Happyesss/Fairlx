@@ -411,76 +411,79 @@ const app = new Hono()
                 return c.json({ error: "Either workspaceId or organizationId is required" }, 400);
             }
 
-            // Build workspace filter
-            const wsFilter = params.organizationId
-                ? Query.equal("workspaceId", orgWorkspaceIds)
+            // Build filters for Events and Aggregations
+            // Use billingEntityId if available as it's more efficient than array of IDs
+            const eventFilter = params.organizationId
+                ? Query.equal("billingEntityId", params.organizationId)
                 : Query.equal("workspaceId", params.workspaceId!);
 
-            // PARALLEL: Fetch latest aggregation + events + alerts
-            // We need to know the latest aggregated date to avoid missing "yesterday's" events
-            // if the cron hasn't run yet.
+            const aggFilter = params.organizationId
+                ? Query.equal("billingEntityId", params.organizationId)
+                : Query.equal("workspaceId", params.workspaceId!);
+
+            // 1. Get latest aggregation to determine live event range
             const latestAggResult = await databases.listDocuments<UsageAggregation>(
                 DATABASE_ID, USAGE_AGGREGATIONS_ID,
                 [
-                    ...(params.organizationId
-                        ? [Query.equal("workspaceId", orgWorkspaceIds)]
-                        : [Query.equal("workspaceId", params.workspaceId!)]),
+                    aggFilter,
                     Query.orderDesc("period"),
                     Query.limit(1),
                 ]
             ).catch(() => ({ documents: [] as UsageAggregation[] }));
 
-            const latestAggDate = latestAggResult.documents[0]?.period || monthStart.split("T")[0];
+            const latestAgg = latestAggResult.documents[0];
+            const latestAggDate = latestAgg?.period || monthStart.split("T")[0];
             const liveEventsStart = new Date(latestAggDate);
-            liveEventsStart.setDate(liveEventsStart.getDate() + 1);
+            
+            // CRITICAL FIX: Only add 1 day if we found an existing aggregation.
+            // If no aggregation exists, start from the beginning of the period (monthStart)
+            // to ensure Day 1 events are not skipped.
+            if (latestAgg) {
+                liveEventsStart.setDate(liveEventsStart.getDate() + 1);
+            }
             const liveEventsStartISO = liveEventsStart.toISOString().split("T")[0] + "T00:00:00.000Z";
             
-            const [eventsResult, dailySummariesResult, todayEventsResult, alertsResult] = await Promise.all([
-                // 1. Events (paginated, for the events table)
-                databases.listDocuments<UsageEvent>(
-                    DATABASE_ID, USAGE_EVENTS_ID,
-                    [
-                        wsFilter,
-                        Query.orderDesc("timestamp"),
-                        Query.limit(params.eventsLimit),
-                        Query.offset(params.eventsOffset),
-                        ...(params.startDate ? [Query.greaterThanEqual("timestamp", params.startDate)] : []),
-                        ...(params.endDate ? [Query.lessThanEqual("timestamp", params.endDate)] : []),
-                    ]
-                ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
-
-                // 2. Daily summaries for the month (pre-aggregated, ~30 records max)
+            const [dailySummariesResult, todayEventsResult, eventsResult, alertsResult] = await Promise.all([
+                // 1. Fetch Aggregations for the chart/KPIs (dailysummaries)
                 databases.listDocuments<UsageAggregation>(
                     DATABASE_ID, USAGE_AGGREGATIONS_ID,
                     [
-                        ...(params.organizationId
-                            ? [Query.equal("workspaceId", orgWorkspaceIds)]
-                            : [Query.equal("workspaceId", params.workspaceId!)]),
+                        aggFilter,
                         Query.greaterThanEqual("period", monthStart.split("T")[0]),
                         Query.lessThanEqual("period", monthEnd.split("T")[0]),
                         Query.orderAsc("period"),
-                        Query.limit(200),
+                        Query.limit(500),
                     ]
                 ).catch(() => ({ documents: [] as UsageAggregation[], total: 0 })),
 
-                // 3. Live events (not yet aggregated)
+                // 2. Live events (not yet aggregated)
                 databases.listDocuments<UsageEvent>(
                     DATABASE_ID, USAGE_EVENTS_ID,
                     [
-                        wsFilter,
+                        eventFilter,
                         Query.greaterThanEqual("timestamp", liveEventsStartISO),
                         Query.limit(5000),
+                    ]
+                ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
+
+                // 3. Latest events (for the table)
+                databases.listDocuments<UsageEvent>(
+                    DATABASE_ID, USAGE_EVENTS_ID,
+                    [
+                        eventFilter,
+                        Query.orderDesc("timestamp"),
+                        Query.limit(params.eventsLimit || 10),
+                        Query.offset(params.eventsOffset || 0),
                     ]
                 ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
 
                 // 4. Alerts
                 databases.listDocuments<UsageAlert>(
                     DATABASE_ID, USAGE_ALERTS_ID,
-                    [wsFilter, Query.orderDesc("$createdAt")]
+                    [eventFilter, Query.orderDesc("$createdAt")]
                 ).catch(() => ({ documents: [] as UsageAlert[], total: 0 })),
             ]);
 
-            // Compute summary from daily summaries + today's live events
             let trafficTotalGB = 0;
             let storageAvgGB = 0;
             let computeTotalUnits = 0;
@@ -1136,6 +1139,7 @@ const app = new Hono()
 
             const trafficTotalGB = bytesToGB(trafficTotalBytes);
             const storageAvgGB = bytesToGB(storageTotalBytes / Math.max(events.total, 1));
+
 
             // Create or update aggregation
             let aggregation: UsageAggregation;

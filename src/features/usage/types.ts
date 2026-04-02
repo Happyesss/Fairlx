@@ -51,7 +51,9 @@ export type UsageEvent = Models.Document & {
     workspaceId: string;
     projectId?: string;
     resourceType: ResourceType;
+    eventType: ResourceType; // Duplicates resourceType for Appwrite schema compatibility
     units: number; // bytes for traffic/storage, base units for compute
+    quantity: number; // Duplicates units for Appwrite schema compatibility
     // Compute weighting - stores both raw and weighted values for billing accuracy
     baseUnits?: number;      // Raw units before weight multiplier
     weightedUnits?: number;  // Units after applying job type weight

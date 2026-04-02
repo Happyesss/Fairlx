@@ -22,6 +22,7 @@ export async function setupUsageEvents(databases: Databases, databaseId: string)
  
     // Usage Classification
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'resourceType', ['traffic', 'storage', 'compute'], true);
+    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'eventType', ['traffic', 'storage', 'compute'], true);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'source', ['api', 'file', 'job', 'ai'], true);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'module', ['traffic', 'storage', 'docs', 'github', 'ai', 'compute'], false);
  
@@ -32,6 +33,7 @@ export async function setupUsageEvents(databases: Databases, databaseId: string)
  
     // Totals & Weights
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'units', true);
+    await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'quantity', true);
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'baseUnits', false);
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'weightedUnits', false);
  

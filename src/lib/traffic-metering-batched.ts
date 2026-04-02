@@ -38,7 +38,7 @@ function estimatePayloadSize(obj: unknown): number {
 /**
  * Extract workspace ID from request (URL or body)
  */
-function extractWorkspaceId(url: string): string | null {
+function extractWorkspaceId(url: string, body?: Record<string, unknown>): string | null {
     try {
         const urlObj = new URL(url, 'http://localhost');
         const pathname = urlObj.pathname;
@@ -54,9 +54,48 @@ function extractWorkspaceId(url: string): string | null {
 
         const queryWorkspaceId = urlObj.searchParams.get('workspaceId');
         if (queryWorkspaceId) return queryWorkspaceId;
+
+        // Try body
+        if (body && typeof body.workspaceId === 'string') {
+            return body.workspaceId;
+        }
     } catch {
         const pathMatch = url.match(/\/workspaces\/([a-zA-Z0-9_-]+)/);
         if (pathMatch) return pathMatch[1];
+    }
+
+    return null;
+}
+
+/**
+ * Extract organization ID from request (URL or body)
+ */
+function extractOrganizationId(url: string, body?: Record<string, unknown>): string | null {
+    try {
+        const urlObj = new URL(url, 'http://localhost');
+        const pathname = urlObj.pathname;
+
+        const matches = [
+            pathname.match(/\/organizations\/([a-zA-Z0-9_-]+)/),
+            pathname.match(/organizationId=([a-zA-Z0-9_-]+)/),
+            pathname.match(/orgId=([a-zA-Z0-9_-]+)/)
+        ];
+
+        for (const match of matches) {
+            if (match && match[1]) return match[1];
+        }
+
+        const queryOrgId = urlObj.searchParams.get('organizationId') || urlObj.searchParams.get('orgId');
+        if (queryOrgId) return queryOrgId;
+
+        // Try body
+        if (body) {
+            if (typeof body.organizationId === 'string') return body.organizationId;
+            if (typeof body.orgId === 'string') return body.orgId;
+        }
+    } catch {
+        const orgMatch = url.match(/\/organizations\/([a-zA-Z0-9_-]+)/);
+        if (orgMatch) return orgMatch[1];
     }
 
     return null;
@@ -98,9 +137,25 @@ export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext
         const requestUrl = c.req.url;
         const requestMethod = c.req.method;
 
-        // Estimate request size from Content-Length header ONLY
+        // Estimate request size and extract Body if applicable
+        let requestBody: Record<string, unknown> | undefined = undefined;
         const contentLength = c.req.header('content-length');
         const requestSize = contentLength ? parseInt(contentLength, 10) : 0;
+
+        // SAFELY attempt to parse body for JSON requests to extract IDs
+        // Note: For POST/PUT/PATCH we need the IDs for attribution
+        if (['POST', 'PUT', 'PATCH'].includes(requestMethod)) {
+            const contentTypeHeader = c.req.header('content-type') || '';
+            if (contentTypeHeader.includes('application/json')) {
+                try {
+                    // Clone and read JSON body
+                    const clone = c.req.raw.clone();
+                    requestBody = await clone.json().catch(() => ({}));
+                } catch {
+                    // Ignore body parsing errors
+                }
+            }
+        }
 
         // Execute route handler
         await next();
@@ -123,7 +178,8 @@ export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext
         }
 
         const duration = Date.now() - startTime;
-        let workspaceId = extractWorkspaceId(requestUrl);
+        let workspaceId = extractWorkspaceId(requestUrl, requestBody);
+        const organizationId = extractOrganizationId(requestUrl, requestBody);
         const projectId = extractProjectId(requestUrl);
         const databases = c.get('databases');
         const user = c.get('user');
@@ -132,21 +188,23 @@ export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext
 
         // Resolve Org -> First Workspace for contextless routes
         if (!workspaceId) {
-            try {
-                const orgMatch = requestUrl.match(/\/organizations\/([a-zA-Z0-9_-]+)/);
-                if (orgMatch) {
+            const targetOrgId = organizationId || extractOrganizationId(requestUrl, requestBody);
+            if (targetOrgId) {
+                try {
                     const { Query } = await import('node-appwrite');
                     const { WORKSPACES_ID } = await import('@/config');
                     const ws = await databases.listDocuments(
                         DATABASE_ID,
                         WORKSPACES_ID,
-                        [Query.equal('organizationId', orgMatch[1]), Query.limit(1)]
+                        [Query.equal('organizationId', targetOrgId), Query.limit(1)]
                     );
                     if (ws.total > 0) {
                         workspaceId = ws.documents[0].$id;
                     }
+                } catch (err) {
+                    console.warn("[TrafficMetering] Could not resolve workspace from org:", err);
                 }
-            } catch { /* skip */ }
+            }
         }
 
         if (!workspaceId) return;

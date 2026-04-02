@@ -5,6 +5,7 @@ import {
     DATABASE_ID,
     USAGE_EVENTS_ID,
     USAGE_AGGREGATIONS_ID,
+    WORKSPACES_ID,
 } from "@/config";
 import {
     UsageEvent,
@@ -186,6 +187,20 @@ export async function aggregateDailyUsage(
                 const { getBillingAccount } = await import("@/lib/billing-primitives");
                 const billingAccount = await getBillingAccount(databases, { workspaceId });
 
+                // FALLBACK: resolve billingEntityId from workspace if account missing
+                // WHY: We must aggregate usage even for users who haven't set up billing yet,
+                // so they see their "Estimated Total" and "Today's Usage" correctly.
+                let resolvedEntityId = billingAccount?.organizationId || billingAccount?.userId || null;
+                let resolvedEntityType = (billingAccount?.type === 'ORG' ? 'organization' : 'user') as "user" | "organization";
+
+                if (!resolvedEntityId) {
+                    try {
+                        const workspace = await databases.getDocument(DATABASE_ID, WORKSPACES_ID, workspaceId);
+                        resolvedEntityId = workspace.organizationId || workspace.userId;
+                        resolvedEntityType = workspace.organizationId ? 'organization' : 'user';
+                    } catch { /* ignore fallback failure */ }
+                }
+
                 // Calculate total cost for the daily summary
                 const {
                     USAGE_RATE_TRAFFIC_GB,
@@ -207,8 +222,8 @@ export async function aggregateDailyUsage(
                     {
                         workspaceId,
                         billingAccountId: billingAccount?.$id || null,
-                        billingEntityId: billingAccount?.organizationId || billingAccount?.userId || null,
-                        billingEntityType: billingAccount?.type === 'ORG' ? 'organization' : 'user',
+                        billingEntityId: resolvedEntityId || null,
+                        billingEntityType: resolvedEntityType,
                         period: targetDate,           // YYYY-MM-DD format for daily
                         periodType: "daily",
                         trafficBytes: trafficBytes,
