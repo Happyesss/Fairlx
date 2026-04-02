@@ -317,6 +317,20 @@ export async function topUpWallet(
     }
 
     try {
+        // 1b. Secondary idempotency check: verify no transaction exists with this key.
+        // This catches duplicates that slipped through due to different key prefixes
+        // (e.g., old "cashfree_" vs "webhook_" vs new "topup_" prefix).
+        const existingTxns = await databases.listDocuments(
+            DATABASE_ID,
+            WALLET_TRANSACTIONS_ID,
+            [
+                Query.equal("idempotencyKey", options.idempotencyKey),
+                Query.limit(1),
+            ]
+        );
+        if (existingTxns.total > 0) {
+            return { success: true, error: "already_processed" };
+        }
         // 2. Get current wallet
         const wallet = await databases.getDocument<Wallet>(
             DATABASE_ID,

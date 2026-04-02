@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Databases, ID, Query } from "node-appwrite";
+import crypto from "crypto";
 
 /**
  * Processed Events Registry
@@ -114,10 +115,17 @@ export async function isEventProcessed(
         }
 
         return false;
-    } catch {
-        // On error, assume not processed (fail open for idempotency check)
-        // This may cause duplicates, but that's safer than blocking operations
-        return false;
+    } catch (error) {
+        // FAIL CLOSED: On error, assume already processed to prevent duplicates.
+        // This may block a legitimate first-time event, but the webhook retry
+        // mechanism will re-deliver it. Duplicates are far more dangerous than
+        // delayed processing.
+        console.warn("[processed-events] isEventProcessed query failed, failing closed (assuming processed):", {
+            eventKey,
+            eventType,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return true;
     }
 }
 
@@ -164,12 +172,19 @@ export async function acquireProcessingLock(
             };
         }
 
+        // Generate a deterministic document ID from eventKey + eventType.
+        // This guarantees a 409 Conflict on duplicate attempts via Appwrite's
+        // primary key constraint, without relying on secondary unique indexes.
+        const deterministicId = usesDedicatedCollection()
+            ? crypto.createHash("sha256").update(`${eventKey}:${eventType}`).digest("hex").substring(0, 36)
+            : ID.unique(); // fallback collection can't use deterministic IDs
+
         // Attempt to create the lock record
         // This will fail with 409 Conflict if key already exists
         await databases.createDocument(
             DATABASE_ID,
             collectionId,
-            usesDedicatedCollection() ? ID.unique() : ID.unique(), // ID specific
+            deterministicId,
             documentData
         );
 

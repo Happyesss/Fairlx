@@ -190,6 +190,26 @@ async function handlePaymentSuccess(
         amountToCredit = amountPaise;
     }
 
+    // Pre-flight duplicate check: If ANY transaction already references this
+    // cf_payment_id (regardless of idempotency key prefix), skip.
+    // This catches all legacy key variants: webhook_, cashfree_, topup_.
+    const { WALLET_TRANSACTIONS_ID } = await import("@/config");
+    const existingForPayment = await databases.listDocuments(
+        DATABASE_ID,
+        WALLET_TRANSACTIONS_ID,
+        [
+            Query.equal("referenceId", String(payment.cf_payment_id)),
+            Query.limit(1),
+        ]
+    );
+    if (existingForPayment.total > 0) {
+        console.log("[cashfree-webhook] Payment already credited, skipping:", {
+            cfPaymentId: payment.cf_payment_id,
+            existingTxnId: existingForPayment.documents[0].$id,
+        });
+        return; // Already credited — no error, no retry
+    }
+
     // Credit the wallet (idempotent via payment ID)
     const result = await topUpWallet(databases, walletId, amountToCredit, {
         idempotencyKey: `topup_${payment.cf_payment_id}`,
