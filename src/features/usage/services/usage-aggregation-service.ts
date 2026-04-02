@@ -180,10 +180,7 @@ export async function aggregateDailyUsage(
                 // Calculate metrics
                 const trafficTotalGB = trafficBytes / (1024 * 1024 * 1024);
                 
-                // Metrics for DB schema alignment (raw bytes)
-                const storageBytes = storageAvgGB * (1024 * 1024 * 1024);
-
-                // Resolve billing account ID
+                 // Resolve billing account ID
                 const { getBillingAccount } = await import("@/lib/billing-primitives");
                 const billingAccount = await getBillingAccount(databases, { workspaceId });
 
@@ -201,20 +198,55 @@ export async function aggregateDailyUsage(
                     } catch { /* ignore fallback failure */ }
                 }
 
-                // Calculate total cost for the daily summary
+                // Calculate total cost
                 const {
                     USAGE_RATE_TRAFFIC_GB,
                     USAGE_RATE_STORAGE_GB_MONTH,
                     USAGE_RATE_COMPUTE_UNIT,
-                    BILLING_CURRENCY,
-                } = await import("@/config");
-                
-                const costTraffic = (trafficTotalGB * USAGE_RATE_TRAFFIC_GB);
-                const costStorage = (storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH);
-                const costCompute = (computeUnits * USAGE_RATE_COMPUTE_UNIT);
-                const totalCost = Number((costTraffic + costStorage + costCompute).toFixed(6));
+                } = await import('@/config');
 
-                // Create daily summary document
+                const totalCost = Number((
+                    ((trafficTotalGB * USAGE_RATE_TRAFFIC_GB) / 100) +
+                    ((storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100) +
+                    ((computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100)
+                ).toFixed(6));
+
+                // =========================================================
+                // NEW: Instant Wallet Debit
+                // =========================================================
+                let billingStatus: 'billed' | 'pending' | 'failed' = 'pending';
+                let walletTransactionId: string | undefined = undefined;
+
+                if (totalCost > 0) {
+                    try {
+                        const { getOrCreateWallet, deductFromWallet } = await import("@/features/wallet/services/wallet-service");
+                        const wallet = await getOrCreateWallet(databases, { 
+                            organizationId: billingAccount?.organizationId || undefined,
+                            userId: billingAccount?.userId || undefined,
+                            billingAccountId: billingAccount?.$id
+                        });
+
+                        const deductionResult = await deductFromWallet(databases, wallet.$id, totalCost, {
+                            referenceId: `usage_${targetDate}_${workspaceId.slice(-4)}`,
+                            idempotencyKey: `usage_billing_${workspaceId}_${targetDate}`,
+                            description: `Usage Billing for ${targetDate} (${workspaceId})`
+                        });
+
+                        if (deductionResult.success) {
+                            billingStatus = 'billed';
+                            walletTransactionId = deductionResult.transaction?.$id;
+                        } else {
+                            billingStatus = 'pending'; // Insufficient balance or other soft failure
+                        }
+                    } catch (deductErr) {
+                        console.error(`[UsageBilling] Failed to debit wallet for workspace ${workspaceId}:`, deductErr);
+                        billingStatus = 'failed';
+                    }
+                } else {
+                    // Zero cost usage is auto-billed
+                    billingStatus = 'billed';
+                }
+
                 await databases.createDocument(
                     DATABASE_ID,
                     USAGE_AGGREGATIONS_ID,
@@ -222,16 +254,17 @@ export async function aggregateDailyUsage(
                     {
                         workspaceId,
                         billingAccountId: billingAccount?.$id || null,
-                        billingEntityId: resolvedEntityId || null,
+                        billingEntityId: resolvedEntityId,
                         billingEntityType: resolvedEntityType,
-                        period: targetDate,           // YYYY-MM-DD format for daily
-                        periodType: "daily",
-                        trafficBytes: trafficBytes,
-                        storageBytes: Math.round(storageBytes),
-                        computeUnits: Math.round(computeUnits),
+                        period: targetDate,
+                        periodType: 'daily',
+                        trafficTotalGB,
+                        storageAvgGB,
+                        computeTotalUnits: computeUnits,
                         totalCost,
-                        currency: BILLING_CURRENCY || "INR",
-                        isFinalized: true,
+                        currency: 'INR',
+                        status: billingStatus,
+                        walletTransactionId: walletTransactionId || null,
                     }
                 );
 

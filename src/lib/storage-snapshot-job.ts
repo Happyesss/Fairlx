@@ -1,15 +1,13 @@
 import "server-only";
 
-import { Databases, Query, ID } from "node-appwrite";
+import { Databases, Query, ID, Models } from "node-appwrite";
 import {
     DATABASE_ID,
     STORAGE_SNAPSHOTS_ID,
-    ATTACHMENTS_BUCKET_ID,
     ATTACHMENTS_ID,
     WORKSPACES_ID,
 } from "@/config";
 import { StorageDailySnapshot } from "@/features/usage/types";
-import { getAdminStorageProvider } from "@/lib/storage";
 
 /**
  * Storage Snapshot Job
@@ -85,7 +83,7 @@ export async function captureWorkspaceStorageSnapshot(
         // WHY: Efficiently sums only files belonging to this workspace.
         let totalBytes = 0;
         try {
-            const attachments = await databases.listDocuments(
+            const attachments = await databases.listDocuments<Models.Document & { fileSize?: number }>(
                 DATABASE_ID,
                 ATTACHMENTS_ID,
                 [
@@ -94,7 +92,7 @@ export async function captureWorkspaceStorageSnapshot(
                     Query.limit(10000), // Adjust if workspace has > 10k files
                 ]
             );
-            totalBytes = attachments.documents.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+            totalBytes = attachments.documents.reduce((sum: number, doc) => sum + (doc.fileSize || 0), 0);
         } catch (err) {
             console.error("[StorageSnapshot] Failed to query attachments for workspace:", workspaceId, err);
             totalBytes = 0;
@@ -195,7 +193,7 @@ export async function calculateTimeWeightedStorageAvg(
     }
 
     // Calculate average
-    const sumGB = snapshots.documents.reduce((sum, s) => sum + s.storageGB, 0);
+    const sumGB = snapshots.documents.reduce((sum: number, s: StorageDailySnapshot) => sum + s.storageGB, 0);
 
     // Use actual snapshot count or days in month for accurate average
     // WHY: If we only have 15 snapshots, we use actual count for conservative estimate

@@ -79,6 +79,7 @@ export async function aggregateUsageForBillingPeriod(
             storage: 0,
             compute: 0,
             total: 0,
+            totalAlreadyPaid: 0,
         },
     };
 
@@ -87,24 +88,30 @@ export async function aggregateUsageForBillingPeriod(
     }
 
     // Aggregate values across all daily summaries in the period
-    let sumStorageBytes = 0;
-    let sumTrafficBytes = 0;
-    let sumComputeUnits = 0;
+    let sumStorageAvgGB = 0;
+    let sumTrafficTotalGB = 0;
+    let sumComputeTotalUnits = 0;
+    let totalAlreadyPaid = 0;
 
     for (const agg of aggregations.documents) {
-        // Metric aggregation (raw fields from schema)
-        sumTrafficBytes += Number(agg.trafficBytes) || 0;
-        sumComputeUnits += Number(agg.computeUnits) || 0;
-        sumStorageBytes += Number(agg.storageBytes) || 0;
+        // Metric aggregation (revised v3 schema fields)
+        sumTrafficTotalGB += Number(agg.trafficTotalGB) || 0;
+        sumComputeTotalUnits += Number(agg.computeTotalUnits) || 0;
+        sumStorageAvgGB += Number(agg.storageAvgGB) || 0;
+
+        // Track what has already been debited via instant billing
+        if (agg.status === 'billed') {
+            totalAlreadyPaid += Number(agg.totalCost) || 0;
+        }
     }
 
     // Calculate totals
-    breakdown.trafficGB = sumTrafficBytes / (1024 * 1024 * 1024);
-    breakdown.computeUnits = sumComputeUnits;
+    breakdown.trafficGB = sumTrafficTotalGB;
+    breakdown.computeUnits = sumComputeTotalUnits;
     
-    // Calculate period average for storage (GB)
-    const avgStorageBytes = sumStorageBytes / Math.max(1, aggregations.total);
-    breakdown.storageAvgGB = avgStorageBytes / (1024 * 1024 * 1024);
+    // Average storage for the period
+    breakdown.storageAvgGB = sumStorageAvgGB / Math.max(1, aggregations.total);
+    breakdown.costs.totalAlreadyPaid = Number(totalAlreadyPaid.toFixed(6));
 
     // Module breakdown currently not supported in daily rollups (summed into totals)
     breakdown.byModule = {
@@ -114,14 +121,18 @@ export async function aggregateUsageForBillingPeriod(
     };
 
     // Calculate costs with 6-decimal precision
-    breakdown.costs.traffic = Number((breakdown.trafficGB * USAGE_RATE_TRAFFIC_GB).toFixed(6));
-    breakdown.costs.storage = Number((breakdown.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH).toFixed(6));
-    breakdown.costs.compute = Number((breakdown.computeUnits * USAGE_RATE_COMPUTE_UNIT).toFixed(6));
-    breakdown.costs.total = Number((
+    breakdown.costs.traffic = Number((breakdown.trafficGB * USAGE_RATE_TRAFFIC_GB / 100).toFixed(6));
+    breakdown.costs.storage = Number((breakdown.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH / 100).toFixed(6));
+    breakdown.costs.compute = Number((breakdown.computeUnits * USAGE_RATE_COMPUTE_UNIT / 100).toFixed(6));
+    
+    // Final total for invoice = (Full Monthly Cost) - (Already Paid via Instant)
+    const monthlyGross = (
         breakdown.costs.traffic +
         breakdown.costs.storage +
         breakdown.costs.compute
-    ).toFixed(6));
+    );
+    
+    breakdown.costs.total = Number(Math.max(0, monthlyGross - breakdown.costs.totalAlreadyPaid).toFixed(6));
 
     return breakdown;
 }
