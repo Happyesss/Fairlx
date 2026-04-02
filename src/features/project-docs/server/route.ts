@@ -366,7 +366,10 @@ const app = new Hono()
         // Delete old file
         const storageProvider = getStorageProvider(storage);
         try {
-          await storageProvider.deleteFile(PROJECT_DOCS_BUCKET_ID, document.fileId);
+          await storageProvider.deleteFile(PROJECT_DOCS_BUCKET_ID, document.fileId, {
+            workspaceId: document.workspaceId,
+            sizeBytes: document.size,
+          });
         } catch {
           // Ignore deletion errors
         }
@@ -447,7 +450,10 @@ const app = new Hono()
         // Delete file from storage (R2 or Appwrite)
         try {
           const storageProvider = getStorageProvider(storage);
-          await storageProvider.deleteFile(PROJECT_DOCS_BUCKET_ID, document.fileId);
+          await storageProvider.deleteFile(PROJECT_DOCS_BUCKET_ID, document.fileId, {
+            workspaceId: document.workspaceId,
+            sizeBytes: document.size,
+          });
         } catch {
           // Ignore deletion errors
         }

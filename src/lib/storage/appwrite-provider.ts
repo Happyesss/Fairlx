@@ -55,7 +55,7 @@ export class AppwriteStorageProvider implements StorageProvider {
     );
   }
 
-  async deleteFile(bucketId: string, fileId: string): Promise<void> {
+  async deleteFile(bucketId: string, fileId: string, _context?: { workspaceId?: string; sizeBytes?: number }): Promise<void> {
     await this.storage.deleteFile(bucketId, fileId);
   }
 

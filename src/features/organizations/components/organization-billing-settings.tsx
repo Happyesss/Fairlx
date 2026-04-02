@@ -517,7 +517,9 @@ export function OrganizationBillingSettings({
                                         {new Intl.NumberFormat("en-US", {
                                             style: "currency",
                                             currency: walletCurrency,
-                                        }).format(walletBalance / 100)}
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 6,
+                                        }).format(walletBalance)}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
                                         Available Balance
@@ -527,7 +529,7 @@ export function OrganizationBillingSettings({
                         </div>
 
                         {/* Low balance warning */}
-                        {walletBalance < 10000 && (
+                        {walletBalance < 100 && (
                             <Alert className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30">
                                 <AlertTriangle className="h-4 w-4 text-orange-600" />
                                 <AlertDescription className="text-orange-700 dark:text-orange-400">
@@ -559,7 +561,7 @@ export function OrganizationBillingSettings({
 
                                 {/* Quick top-up amounts */}
                                 <div className="flex flex-wrap gap-2">
-                                    {[5, 10, 25, 50].map((amt) => (
+                                    {[1, 5, 10, 25, 50].map((amt) => (
                                         <Button
                                             key={amt}
                                             variant="outline"
@@ -659,6 +661,8 @@ export function OrganizationBillingSettings({
                                                     {new Intl.NumberFormat("en-US", {
                                                         style: "currency",
                                                         currency: "USD",
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 6,
                                                     }).format(invoice.totalCost)}
                                                 </div>
                                                 <Badge

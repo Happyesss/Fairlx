@@ -65,12 +65,16 @@ function generateTransactionSignature(fields: {
     referenceId: string;
     timestamp: string;
 }): string {
+    // USE FIXED PRECISION (6 DECIMALS) FOR SIGNATURE PAYLOAD
+    // WHY: Floats can have variable string representations (s.g. 0.1 vs 0.100).
+    // Using a fixed number of decimals ensures deterministic signatures and prevents
+    // audit trail validation failures for micro-deductions.
     const payload = [
         fields.walletId,
         fields.type,
-        fields.amount,
-        fields.balanceBefore,
-        fields.balanceAfter,
+        fields.amount.toFixed(6),
+        fields.balanceBefore.toFixed(6),
+        fields.balanceAfter.toFixed(6),
         fields.referenceId,
         fields.timestamp,
     ].join("|");
@@ -144,7 +148,7 @@ async function checkDebitRateLimit(
 
 /**
  * Check daily top-up limit to prevent fraud/money laundering
- * @param newAmount - Amount in USD cents (must match WALLET_DAILY_TOPUP_LIMIT units)
+ * @param newAmount - Amount in USD (supports high precision)
  */
 async function checkDailyTopupLimit(
     databases: Databases,

@@ -108,11 +108,12 @@ const app = new Hono()
                 organizationId,
             });
 
-            // Fraud check: Daily top-up limit
-            if (amount > WALLET_DAILY_TOPUP_LIMIT) {
+            // Fraud check: Daily top-up limit (converted from cents to USD)
+            const limitUsd = WALLET_DAILY_TOPUP_LIMIT / 100;
+            if (amount > limitUsd) {
                 return c.json({
                     error: "Amount exceeds daily top-up limit",
-                    maxAllowed: WALLET_DAILY_TOPUP_LIMIT,
+                    maxAllowed: limitUsd,
                 }, 400);
             }
 
@@ -137,11 +138,11 @@ const app = new Hono()
             }
 
             // ── USD → INR Conversion ──
-            // Frontend sends amount in USD cents. Cashfree charges in INR (major units).
+            // Frontend sends amount in USD (float). Cashfree charges in INR (major units).
             // We convert using the live exchange rate and store metadata for reverse conversion.
             const { getUsdToInrRate } = await import("@/lib/currency");
             const exchangeRate = await getUsdToInrRate();
-            const amountInrPaise = Math.round(amount * exchangeRate); // USD cents × rate = INR paise
+            const amountInrPaise = Math.round(amount * 100 * exchangeRate); // USD × 100 (cents) × rate = INR paise
 
             // Generate order ID upfront (Cashfree requires it)
             const orderId = `topup_${wallet.$id}_${Date.now()}`;
@@ -164,7 +165,7 @@ const app = new Hono()
                     fairlx_billing_account_id: billingAccountId || "",
                     fairlx_user_id: user.$id,
                     fairlx_purpose: "wallet_topup",
-                    fairlx_usd_amount: String(amount), // Original USD cents
+                    fairlx_usd_amount: String(amount), // Original USD (float)
                     fairlx_exchange_rate: String(exchangeRate), // Rate used
                 },
             });
@@ -285,17 +286,17 @@ const app = new Hono()
                 const { databases } = await createAdminClient();
 
                 // Step 5: Determine USD amount to credit
-                let usdCentsToCredit: number;
-
+                let usdToCredit: number;
+ 
                 if (orderTags?.fairlx_usd_amount) {
                     // Use the exact USD amount from order creation
-                    usdCentsToCredit = Number(orderTags.fairlx_usd_amount);
+                    usdToCredit = Number(orderTags.fairlx_usd_amount);
                 } else {
-                    // Fallback: convert INR (major units) back to USD cents using live rate
+                    // Fallback: convert INR (major units) back to USD using live rate
                     const { getUsdToInrRate } = await import("@/lib/currency");
                     const rate = await getUsdToInrRate();
-                    const paymentAmountPaise = (payment.payment_amount || 0) * 100;
-                    usdCentsToCredit = Math.round(paymentAmountPaise / rate);
+                    const paymentAmountRupees = payment.payment_amount || 0;
+                    usdToCredit = paymentAmountRupees / rate;
                 }
 
                 // Step 5b: Pre-flight duplicate check by payment ID
@@ -321,11 +322,11 @@ const app = new Hono()
                     });
                 }
 
-                // Step 6: Credit wallet with USD cents (idempotent via payment ID)
-                const result = await topUpWallet(databases, walletId, usdCentsToCredit, {
+                // Step 6: Credit wallet with USD (idempotent via payment ID)
+                const result = await topUpWallet(databases, walletId, usdToCredit, {
                     idempotencyKey: `topup_${resolvedCfPaymentId}`,
                     paymentId: resolvedCfPaymentId,
-                    description: `Wallet top-up via Cashfree — $${(usdCentsToCredit / 100).toFixed(2)} USD`,
+                    description: `Wallet top-up via Cashfree — $${usdToCredit.toFixed(2)} USD`,
                 });
 
                 if (!result.success && result.error !== "already_processed") {

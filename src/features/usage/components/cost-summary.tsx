@@ -36,8 +36,8 @@ export function CostSummary({
         return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency,
-            minimumFractionDigits: currency === "USD" ? 4 : 2,
-            maximumFractionDigits: currency === "USD" ? 4 : 2,
+            minimumFractionDigits: currency === "USD" ? 2 : 2,
+            maximumFractionDigits: currency === "USD" ? 6 : 2,
         }).format(converted);
     };
 
@@ -91,15 +91,15 @@ export function CostSummary({
                         <div className="grid grid-cols-3 gap-2 text-xs">
                             <div>
                                 <p className="text-muted-foreground">Traffic</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_TRAFFIC_GB)}/GB</p>
+                                <p className="font-mono">{formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}/GB</p>
                             </div>
                             <div>
                                 <p className="text-muted-foreground">Storage</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_STORAGE_GB_MONTH)}/GB-mo</p>
+                                <p className="font-mono">{formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}/GB-mo</p>
                             </div>
                             <div>
                                 <p className="text-muted-foreground">Compute</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_COMPUTE_UNIT)}/unit</p>
+                                <p className="font-mono">{formatCurrency(USAGE_RATE_COMPUTE_UNIT / 100)}/unit</p>
                             </div>
                         </div>
                     </div>
@@ -111,7 +111,7 @@ export function CostSummary({
                                 <p className="font-medium">Traffic</p>
                                 <p className="text-sm text-muted-foreground">
                                     {summary?.trafficTotalGB.toFixed(4) || "0"} GB ×{" "}
-                                    {formatCurrency(USAGE_RATE_TRAFFIC_GB)}
+                                    {formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -124,7 +124,7 @@ export function CostSummary({
                                 <p className="font-medium">Storage</p>
                                 <p className="text-sm text-muted-foreground">
                                     {summary?.storageAvgGB.toFixed(4) || "0"} GB-mo ×{" "}
-                                    {formatCurrency(USAGE_RATE_STORAGE_GB_MONTH)}
+                                    {formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -137,7 +137,7 @@ export function CostSummary({
                                 <p className="font-medium">Compute</p>
                                 <p className="text-sm text-muted-foreground">
                                     {summary?.computeTotalUnits.toLocaleString() || "0"} units ×{" "}
-                                    {formatCurrency(USAGE_RATE_COMPUTE_UNIT)}
+                                    {formatCurrency(USAGE_RATE_COMPUTE_UNIT / 100)}
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
