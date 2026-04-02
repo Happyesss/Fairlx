@@ -98,18 +98,7 @@ export async function findByIdempotencyKey(
         );
 
         if (events.total > 0) {
-            // Verify it's an exact match by parsing metadata
-            const event = events.documents[0];
-            try {
-                const meta = typeof event.metadata === "string"
-                    ? JSON.parse(event.metadata)
-                    : event.metadata;
-                if (meta?.idempotencyKey === idempotencyKey) {
-                    return event;
-                }
-            } catch {
-                // Metadata parse failed, not a match
-            }
+            return events.documents[0];
         }
 
         return null;

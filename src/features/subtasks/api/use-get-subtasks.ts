@@ -12,7 +12,7 @@ export const useGetSubtasks = ({ workspaceId, parentTaskId }: UseGetSubtasksProp
     queryKey: ["subtasks", workspaceId, parentTaskId],
     queryFn: async () => {
       const response = await client.api.subtasks.$get({
-        query: { workspaceId, workItemId: parentTaskId },
+        query: { workspaceId, parentTaskId },
       });
 
       if (!response.ok) {

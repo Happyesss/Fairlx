@@ -84,7 +84,7 @@ export const WorkItemLinksSection = ({ workItemId }: WorkItemLinksSectionProps) 
                       {LINK_TYPE_METADATA[link.linkType]?.label || link.linkType}
                     </Badge>
                     <ArrowRight className="size-3 text-muted-foreground" />
-                    <span className="font-mono text-xs">{link.targetWorkItemId.slice(0, 8)}...</span>
+                    <span className="font-mono text-xs">{link.targetItemId.slice(0, 8)}...</span>
                   </div>
                   <Button
                     variant="ghost"
@@ -106,7 +106,7 @@ export const WorkItemLinksSection = ({ workItemId }: WorkItemLinksSectionProps) 
                       {LINK_TYPE_METADATA[link.linkType]?.label || link.linkType}
                     </Badge>
                     <ArrowLeft className="size-3 text-muted-foreground" />
-                    <span className="font-mono text-xs">{link.sourceWorkItemId.slice(0, 8)}...</span>
+                    <span className="font-mono text-xs">{link.sourceItemId.slice(0, 8)}...</span>
                   </div>
                   <Button
                     variant="ghost"

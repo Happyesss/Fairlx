@@ -32,7 +32,7 @@ export const TaskTimeLogs = ({ taskId, taskName, workspaceId }: TaskTimeLogsProp
     }
   };
 
-  const totalHours = timeLogs?.documents.reduce((sum, log) => sum + log.hours, 0) || 0;
+  const totalHours = timeLogs?.documents.reduce((sum, log) => sum + log.loggedHours, 0) || 0;
 
   if (isLoading) {
     return (
@@ -89,10 +89,10 @@ export const TaskTimeLogs = ({ taskId, taskName, workspaceId }: TaskTimeLogsProp
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center gap-3">
                       <span className="font-medium text-sm">
-                        {format(parseISO(log.date), "MMM d, yyyy")}
+                        {format(parseISO(log.logDate), "MMM d, yyyy")}
                       </span>
                       <Badge variant="outline" className="text-xs">
-                        {log.hours}h
+                        {log.loggedHours}h
                       </Badge>
                       {log.startTime && log.endTime && (
                         <span className="text-xs text-gray-500">
@@ -104,7 +104,7 @@ export const TaskTimeLogs = ({ taskId, taskName, workspaceId }: TaskTimeLogsProp
                       <p className="text-sm text-gray-600">{log.description}</p>
                     )}
                     <p className="text-xs text-gray-400">
-                      Logged by {(log as { user?: { name: string } }).user?.name || "Unknown User"}
+                      Logged by {log.user?.name || "Unknown User"}
                     </p>
                   </div>
                   <Button

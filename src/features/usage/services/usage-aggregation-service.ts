@@ -176,8 +176,28 @@ export async function aggregateDailyUsage(
                 const storagePeriod = targetDate.slice(0, 7); // e.g. "2025-03"
                 const storageAvgGB = await calculateTimeWeightedStorageAvg(databases, workspaceId, storagePeriod);
 
-                // Convert traffic to GB
+                // Calculate metrics
                 const trafficTotalGB = trafficBytes / (1024 * 1024 * 1024);
+                
+                // Metrics for DB schema alignment (raw bytes)
+                const storageBytes = storageAvgGB * (1024 * 1024 * 1024);
+
+                // Resolve billing account ID
+                const { getBillingAccount } = await import("@/lib/billing-primitives");
+                const billingAccount = await getBillingAccount(databases, { workspaceId });
+
+                // Calculate total cost for the daily summary
+                const {
+                    USAGE_RATE_TRAFFIC_GB,
+                    USAGE_RATE_STORAGE_GB_MONTH,
+                    USAGE_RATE_COMPUTE_UNIT,
+                    BILLING_CURRENCY,
+                } = await import("@/config");
+                
+                const costTraffic = (trafficTotalGB * USAGE_RATE_TRAFFIC_GB);
+                const costStorage = (storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH);
+                const costCompute = (computeUnits * USAGE_RATE_COMPUTE_UNIT);
+                const totalCost = Number((costTraffic + costStorage + costCompute).toFixed(6));
 
                 // Create daily summary document
                 await databases.createDocument(
@@ -186,11 +206,17 @@ export async function aggregateDailyUsage(
                     ID.unique(),
                     {
                         workspaceId,
+                        billingAccountId: billingAccount?.$id || null,
+                        billingEntityId: billingAccount?.organizationId || billingAccount?.userId || null,
+                        billingEntityType: billingAccount?.type === 'ORG' ? 'organization' : 'user',
                         period: targetDate,           // YYYY-MM-DD format for daily
-                        trafficTotalGB,
-                        storageAvgGB,
-                        computeTotalUnits: computeUnits,
-                        isFinalized: true,            // Daily summaries are immutable once created
+                        periodType: "daily",
+                        trafficBytes: trafficBytes,
+                        storageBytes: Math.round(storageBytes),
+                        computeUnits: Math.round(computeUnits),
+                        totalCost,
+                        currency: BILLING_CURRENCY || "INR",
+                        isFinalized: true,
                     }
                 );
 

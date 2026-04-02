@@ -33,7 +33,7 @@ export function calculateEventCostUSD(
         case ResourceType.TRAFFIC:
             // units = bytes. convert to GB.
             const trafficGB = units / (1024 * 1024 * 1024);
-            return (trafficGB * USAGE_RATE_TRAFFIC_GB) / 100;
+            return (trafficGB * USAGE_RATE_TRAFFIC_GB);
 
         case ResourceType.STORAGE:
             /**
@@ -50,7 +50,7 @@ export function calculateEventCostUSD(
 
         case ResourceType.COMPUTE:
             // units = weighted units.
-            return (computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100;
+            return (computeUnits * USAGE_RATE_COMPUTE_UNIT);
 
         default:
             return 0;
@@ -61,5 +61,5 @@ export function calculateEventCostUSD(
  * Calculate the monthly cost of storage (GB-month)
  */
 export function calculateStorageMonthlyCostUSD(storageAvgGB: number): number {
-    return (storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100;
+    return (storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH);
 }

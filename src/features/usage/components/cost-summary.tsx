@@ -36,8 +36,8 @@ export function CostSummary({
         return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency,
-            minimumFractionDigits: currency === "USD" ? 2 : 2,
-            maximumFractionDigits: currency === "USD" ? 6 : 2,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 6,
         }).format(converted);
     };
 
