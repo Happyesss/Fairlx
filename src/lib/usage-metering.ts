@@ -77,8 +77,11 @@ export async function logTrafficUsage(
                 },
             },
         });
-    } catch {
-        // Metering should not block operations
+    } catch (err) {
+        console.error("[UsageMetering] logTrafficUsage failed:", {
+            workspaceId: options.workspaceId,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 
@@ -121,8 +124,12 @@ export async function logStorageUsage(
                 },
             },
         });
-    } catch {
-        // Metering should not block operations
+    } catch (err) {
+        console.error("[UsageMetering] logStorageUsage failed:", {
+            workspaceId: options.workspaceId,
+            operation: options.operation,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 
@@ -187,8 +194,12 @@ export async function logComputeUsage(
                     },
                 },
             });
-        } catch {
-            // Metering should never block operations
+        } catch (err) {
+            console.error("[UsageMetering] logComputeUsage failed:", {
+                workspaceId: options.workspaceId,
+                jobType: options.jobType,
+                error: err instanceof Error ? err.message : String(err),
+            });
         }
     }); // Immediate background execution
 }
@@ -225,8 +236,12 @@ export async function logAIUsage(
                 },
             },
         });
-    } catch {
-        // Metering should not block operations
+    } catch (err) {
+        console.error("[UsageMetering] logAIUsage failed:", {
+            workspaceId: options.workspaceId,
+            model: options.model,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 

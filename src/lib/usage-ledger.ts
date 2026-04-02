@@ -4,7 +4,7 @@ import { Databases, ID, Query } from "node-appwrite";
 import { DATABASE_ID, USAGE_EVENTS_ID } from "@/config";
 import { ResourceType, UsageSource, UsageModule, UsageEvent, OwnerType } from "@/features/usage/types";
 import { assertBillingNotSuspended, adjustEventForLockedCycle, getBillingAccount } from "./billing-primitives";
-import { setIfNotExists, CK, TTL } from "@/lib/redis";
+import { setIfNotExists, invalidateCache, CK, TTL } from "@/lib/redis";
 
 /**
  * Usage Ledger - Immutable Usage Event Writer
@@ -133,10 +133,12 @@ export async function writeUsageEvent(
     }
 
     // 1. Check idempotency key FIRST using Redis (fast path - avoids DB query)
+    // NOTE: setIfNotExists returns true when Redis is unavailable (fail-open).
+    // True duplicates are caught by the DB check below.
     const redisKey = CK.idempotency(params.idempotencyKey);
     const isNew = await setIfNotExists(redisKey, "1", TTL.IDEMPOTENCY);
     if (!isNew) {
-        // Key already exists in Redis — this is a duplicate
+        // Key already exists in Redis — confirmed duplicate
         return {
             written: false,
             reason: "DUPLICATE",
@@ -160,6 +162,10 @@ export async function writeUsageEvent(
         await assertBillingNotSuspended(databases, { workspaceId: params.workspaceId });
     } catch (error) {
         if (error instanceof Error && error.message.includes("suspended")) {
+            // CRITICAL FIX: Clear idempotency key on suspension
+            // WHY: If we block usage due to suspension, we must clear the key 
+            // so retries work once the suspension is lifted.
+            await invalidateCache(redisKey);
             return {
                 written: false,
                 reason: "SUSPENDED",
@@ -224,8 +230,9 @@ export async function writeUsageEvent(
                 resolvedBillingEntityId = workspace.userId;
                 resolvedBillingEntityType = "user";
             }
-        } catch {
+        } catch (err) {
             // Non-fatal — leave billing entity unset rather than block the write
+            console.warn("[UsageLedger] Could not resolve billing entity:", err);
         }
     }
 
@@ -304,6 +311,11 @@ export async function writeUsageEvent(
         }
 
         console.error("[UsageLedger] Failed to write usage event:", error);
+        
+        // CRITICAL FIX: Clear idempotency key on failure
+        // WHY: If DB write fails, we MUST allow retries. Leaving the key in Redis
+        // would block all future attempts for this operation.
+        await invalidateCache(redisKey);
         return {
             written: false,
             reason: "ERROR",

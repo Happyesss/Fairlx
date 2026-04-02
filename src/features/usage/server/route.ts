@@ -328,9 +328,10 @@ function calculateCost(
     storageAvgGB: number,
     computeUnits: number
 ) {
-    const traffic = Number((trafficGB * USAGE_RATE_TRAFFIC_GB).toFixed(6));
-    const storage = Number((storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH).toFixed(6));
-    const compute = Number((computeUnits * USAGE_RATE_COMPUTE_UNIT).toFixed(6));
+    // Rates are in cents, so we divide by 100 to get USD
+    const traffic = Number(((trafficGB * USAGE_RATE_TRAFFIC_GB) / 100).toFixed(6));
+    const storage = Number(((storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100).toFixed(6));
+    const compute = Number(((computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100).toFixed(6));
     
     return {
         traffic,
@@ -411,76 +412,79 @@ const app = new Hono()
                 return c.json({ error: "Either workspaceId or organizationId is required" }, 400);
             }
 
-            // Build workspace filter
-            const wsFilter = params.organizationId
-                ? Query.equal("workspaceId", orgWorkspaceIds)
+            // Build filters for Events and Aggregations
+            // Use billingEntityId if available as it's more efficient than array of IDs
+            const eventFilter = params.organizationId
+                ? Query.equal("billingEntityId", params.organizationId)
                 : Query.equal("workspaceId", params.workspaceId!);
 
-            // PARALLEL: Fetch latest aggregation + events + alerts
-            // We need to know the latest aggregated date to avoid missing "yesterday's" events
-            // if the cron hasn't run yet.
+            const aggFilter = params.organizationId
+                ? Query.equal("billingEntityId", params.organizationId)
+                : Query.equal("workspaceId", params.workspaceId!);
+
+            // 1. Get latest aggregation to determine live event range
             const latestAggResult = await databases.listDocuments<UsageAggregation>(
                 DATABASE_ID, USAGE_AGGREGATIONS_ID,
                 [
-                    ...(params.organizationId
-                        ? [Query.equal("workspaceId", orgWorkspaceIds)]
-                        : [Query.equal("workspaceId", params.workspaceId!)]),
+                    aggFilter,
                     Query.orderDesc("period"),
                     Query.limit(1),
                 ]
             ).catch(() => ({ documents: [] as UsageAggregation[] }));
 
-            const latestAggDate = latestAggResult.documents[0]?.period || monthStart.split("T")[0];
+            const latestAgg = latestAggResult.documents[0];
+            const latestAggDate = latestAgg?.period || monthStart.split("T")[0];
             const liveEventsStart = new Date(latestAggDate);
-            liveEventsStart.setDate(liveEventsStart.getDate() + 1);
+            
+            // CRITICAL FIX: Only add 1 day if we found an existing aggregation.
+            // If no aggregation exists, start from the beginning of the period (monthStart)
+            // to ensure Day 1 events are not skipped.
+            if (latestAgg) {
+                liveEventsStart.setDate(liveEventsStart.getDate() + 1);
+            }
             const liveEventsStartISO = liveEventsStart.toISOString().split("T")[0] + "T00:00:00.000Z";
             
-            const [eventsResult, dailySummariesResult, todayEventsResult, alertsResult] = await Promise.all([
-                // 1. Events (paginated, for the events table)
-                databases.listDocuments<UsageEvent>(
-                    DATABASE_ID, USAGE_EVENTS_ID,
-                    [
-                        wsFilter,
-                        Query.orderDesc("timestamp"),
-                        Query.limit(params.eventsLimit),
-                        Query.offset(params.eventsOffset),
-                        ...(params.startDate ? [Query.greaterThanEqual("timestamp", params.startDate)] : []),
-                        ...(params.endDate ? [Query.lessThanEqual("timestamp", params.endDate)] : []),
-                    ]
-                ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
-
-                // 2. Daily summaries for the month (pre-aggregated, ~30 records max)
+            const [dailySummariesResult, todayEventsResult, eventsResult, alertsResult] = await Promise.all([
+                // 1. Fetch Aggregations for the chart/KPIs (dailysummaries)
                 databases.listDocuments<UsageAggregation>(
                     DATABASE_ID, USAGE_AGGREGATIONS_ID,
                     [
-                        ...(params.organizationId
-                            ? [Query.equal("workspaceId", orgWorkspaceIds)]
-                            : [Query.equal("workspaceId", params.workspaceId!)]),
+                        aggFilter,
                         Query.greaterThanEqual("period", monthStart.split("T")[0]),
                         Query.lessThanEqual("period", monthEnd.split("T")[0]),
                         Query.orderAsc("period"),
-                        Query.limit(200),
+                        Query.limit(500),
                     ]
                 ).catch(() => ({ documents: [] as UsageAggregation[], total: 0 })),
 
-                // 3. Live events (not yet aggregated)
+                // 2. Live events (not yet aggregated)
                 databases.listDocuments<UsageEvent>(
                     DATABASE_ID, USAGE_EVENTS_ID,
                     [
-                        wsFilter,
+                        eventFilter,
                         Query.greaterThanEqual("timestamp", liveEventsStartISO),
                         Query.limit(5000),
+                    ]
+                ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
+
+                // 3. Latest events (for the table)
+                databases.listDocuments<UsageEvent>(
+                    DATABASE_ID, USAGE_EVENTS_ID,
+                    [
+                        eventFilter,
+                        Query.orderDesc("timestamp"),
+                        Query.limit(params.eventsLimit || 10),
+                        Query.offset(params.eventsOffset || 0),
                     ]
                 ).catch(() => ({ documents: [] as UsageEvent[], total: 0 })),
 
                 // 4. Alerts
                 databases.listDocuments<UsageAlert>(
                     DATABASE_ID, USAGE_ALERTS_ID,
-                    [wsFilter, Query.orderDesc("$createdAt")]
+                    [eventFilter, Query.orderDesc("$createdAt")]
                 ).catch(() => ({ documents: [] as UsageAlert[], total: 0 })),
             ]);
 
-            // Compute summary from daily summaries + today's live events
             let trafficTotalGB = 0;
             let storageAvgGB = 0;
             let computeTotalUnits = 0;
@@ -492,12 +496,13 @@ const app = new Hono()
             //       bytes and auto-scales to KB/MB/GB. So we convert GB→bytes here.
 
             for (const summary of dailySummariesResult.documents) {
-                const sTrafficGB = bytesToGB(summary.trafficBytes || 0);
-                const sStorageGB = bytesToGB(summary.storageBytes || 0);
-                const sComputeUnits = summary.computeUnits || 0;
+                // Now using standardized GB fields from v3 schema
+                const sTrafficGB = summary.trafficTotalGB || 0;
+                const sStorageAvgGB = summary.storageAvgGB || 0;
+                const sComputeUnits = summary.computeTotalUnits || 0;
 
                 trafficTotalGB += sTrafficGB;
-                storageAvgGB += sStorageGB;
+                storageAvgGB += sStorageAvgGB;
                 computeTotalUnits += sComputeUnits;
 
                 // Per-workspace breakdown (kept in GB for KPI cards)
@@ -506,7 +511,7 @@ const app = new Hono()
                     byWorkspace[wsId] = { traffic: 0, storage: 0, compute: 0 };
                 }
                 byWorkspace[wsId].traffic += sTrafficGB;
-                byWorkspace[wsId].storage += sStorageGB;
+                byWorkspace[wsId].storage += sStorageAvgGB;
                 byWorkspace[wsId].compute += sComputeUnits;
 
                 // Daily chart data — converted to BYTES for chart component
@@ -514,8 +519,9 @@ const app = new Hono()
                 if (!dailyUsageMap[date]) {
                     dailyUsageMap[date] = { date, traffic: 0, storage: 0, compute: 0 };
                 }
-                dailyUsageMap[date].traffic = (dailyUsageMap[date].traffic as number) + (summary.trafficBytes || 0);
-                dailyUsageMap[date].storage = (dailyUsageMap[date].storage as number) + (summary.storageBytes || 0);
+                // Convert GB back to bytes for the chart component which expects raw bytes
+                dailyUsageMap[date].traffic = (dailyUsageMap[date].traffic as number) + (sTrafficGB * 1024 * 1024 * 1024);
+                dailyUsageMap[date].storage = (dailyUsageMap[date].storage as number) + (sStorageAvgGB * 1024 * 1024 * 1024);
                 dailyUsageMap[date].compute = (dailyUsageMap[date].compute as number) + sComputeUnits;
             }
 
@@ -525,7 +531,17 @@ const app = new Hono()
             for (const event of todayEventsResult.documents) {
                 const eventUnits = event.units ?? 0;
                 const weightedUnits = event.weightedUnits || eventUnits;
+                const eventGB = bytesToGB(eventUnits);
                 
+                // ACCUMULATE LIVE TOTALS (Ensures top KPI cards show data for today)
+                if (event.resourceType === ResourceType.TRAFFIC) {
+                    trafficTotalGB += eventGB;
+                } else if (event.resourceType === ResourceType.STORAGE) {
+                    storageAvgGB += eventGB;
+                } else if (event.resourceType === ResourceType.COMPUTE) {
+                    computeTotalUnits += weightedUnits;
+                }
+
                 bySource[event.source] = (bySource[event.source] || 0) + weightedUnits;
                 byResourceType[event.resourceType] = (byResourceType[event.resourceType] || 0) + weightedUnits;
 
@@ -535,10 +551,10 @@ const app = new Hono()
                     }
                     switch (event.resourceType) {
                         case ResourceType.TRAFFIC:
-                            byWorkspace[event.workspaceId].traffic += bytesToGB(eventUnits);
+                            byWorkspace[event.workspaceId].traffic += eventGB;
                             break;
                         case ResourceType.STORAGE:
-                            byWorkspace[event.workspaceId].storage += bytesToGB(eventUnits);
+                            byWorkspace[event.workspaceId].storage += eventGB;
                             break;
                         case ResourceType.COMPUTE:
                             byWorkspace[event.workspaceId].compute += weightedUnits;
@@ -1137,6 +1153,7 @@ const app = new Hono()
             const trafficTotalGB = bytesToGB(trafficTotalBytes);
             const storageAvgGB = bytesToGB(storageTotalBytes / Math.max(events.total, 1));
 
+
             // Create or update aggregation
             let aggregation: UsageAggregation;
             if (existing.total > 0) {
@@ -1409,10 +1426,11 @@ const app = new Hono()
         }
 
         // Calculate total cost
-        const totalCost =
-            aggregation.trafficTotalGB * USAGE_RATE_TRAFFIC_GB +
-            aggregation.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH +
-            aggregation.computeTotalUnits * USAGE_RATE_COMPUTE_UNIT;
+        const totalCost = Number((
+            ((aggregation.trafficTotalGB * USAGE_RATE_TRAFFIC_GB) / 100) +
+            ((aggregation.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100) +
+            ((aggregation.computeTotalUnits * USAGE_RATE_COMPUTE_UNIT) / 100)
+        ).toFixed(6));
 
         // Generate invoice ID (human-readable format)
         const invoiceNumber = `INV-${workspaceId.slice(-6).toUpperCase()}-${period.replace('-', '')}`;

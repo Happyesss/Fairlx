@@ -2,16 +2,16 @@ name: Billing & Usage Cron Jobs
 
 on:
   schedule:
+    # Aggregate & Debit Usage - Every 15 minutes (Instant Billing)
+    - cron: '*/15 * * * *'
     # Storage snapshots — midnight UTC every day (MUST run before aggregate-daily)
     - cron: '0 0 * * *'
-    # Process billing cycle - 1st of each month at 3 AM UTC (MUST run after 2 AM aggregate-daily)
+    # Process billing cycle - 1st of each month at 3 AM UTC
     - cron: '0 3 1 * *'
     # Enforce grace periods - daily at 1 AM UTC
     - cron: '0 1 * * *'
     # Send reminders - daily at 9 AM UTC
     - cron: '0 9 * * *'
-    # Aggregate daily usage - daily at 2 AM UTC
-    - cron: '0 2 * * *'
     # Evaluate usage alerts - hourly at the 30th minute
     - cron: '30 * * * *'
   workflow_dispatch:
@@ -48,20 +48,32 @@ jobs:
           else
             # Determine based on schedule
             HOUR=$(date -u +%H)
+            MINUTE=$(date -u +%M)
             DAY=$(date -u +%d)
             
-            if [ "$HOUR" == "00" ]; then
-              echo "job=storage-snapshot" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" == "01" ]; then
-              echo "job=enforce-grace" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" == "02" ]; then
-              echo "job=aggregate-daily" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" == "03" ] && [ "$DAY" == "01" ]; then
-               echo "job=process-cycle" >> $GITHUB_OUTPUT
-            elif [ "$HOUR" == "09" ]; then
-              echo "job=send-reminders" >> $GITHUB_OUTPUT
-            elif [ "$(date -u +%M)" == "30" ]; then
+            # 1. MAINTENANCE JOBS (Prioritized at specific hours)
+            if [ "$MINUTE" == "00" ]; then
+              if [ "$HOUR" == "00" ]; then
+                echo "job=storage-snapshot" >> $GITHUB_OUTPUT
+              elif [ "$HOUR" == "01" ]; then
+                echo "job=enforce-grace" >> $GITHUB_OUTPUT
+              elif [ "$HOUR" == "03" ] && [ "$DAY" == "01" ]; then
+                echo "job=process-cycle" >> $GITHUB_OUTPUT
+              elif [ "$HOUR" == "09" ]; then
+                echo "job=send-reminders" >> $GITHUB_OUTPUT
+              else
+                # Default to aggregation at top of most hours
+                echo "job=aggregate-daily" >> $GITHUB_OUTPUT
+              fi
+            
+            # 2. EVALUATE ALERTS (Every hour at :30)
+            elif [ "$MINUTE" == "30" ]; then
               echo "job=evaluate-alerts" >> $GITHUB_OUTPUT
+              
+            # 3. INSTANT AGGREGATION & DEBIT (Every 15, 45 minutes)
+            elif [ "$MINUTE" == "15" ] || [ "$MINUTE" == "45" ]; then
+              echo "job=aggregate-daily" >> $GITHUB_OUTPUT
+            
             else
               echo "job=none" >> $GITHUB_OUTPUT
             fi

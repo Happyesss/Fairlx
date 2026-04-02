@@ -85,15 +85,18 @@ export type UsageAggregation = Models.Document & {
     workspaceId: string;
     period: string; // YYYY-MM-DD or YYYY-MM
     periodType: 'daily' | 'monthly';
-    trafficBytes: number;
-    storageBytes: number;
-    computeUnits: number;
+    trafficTotalGB: number;
+    storageAvgGB: number;
+    computeTotalUnits: number;
     totalCost: number;
     currency: string;
     createdAt: string;
     // Billing entity for organization-level aggregation
     billingEntityId?: string;      // User ID or Organization ID
     billingEntityType?: 'user' | 'organization';
+    // Billing status for instant wallet debiting
+    status: 'pending' | 'billed' | 'failed';
+    walletTransactionId?: string;
     // Invoice reconciliation - links aggregation to invoice for audit trail
     invoiceId?: string;      // Reference to generated invoice
 };
@@ -113,9 +116,9 @@ export type Invoice = Models.Document & {
     invoiceId: string;       // Human-readable invoice number
     workspaceId: string;
     period: string;          // YYYY-MM billing period
-    trafficBytes: number;
-    storageBytes: number;
-    computeUnits: number;
+    trafficTotalGB: number;
+    storageAvgGB: number;
+    computeTotalUnits: number;
     totalCost: number;
     aggregationSnapshotId?: string;  // Links to UsageAggregation for audit
     status: 'draft' | 'finalized' | 'paid' | 'due';

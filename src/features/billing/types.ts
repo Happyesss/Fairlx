@@ -266,6 +266,8 @@ export type UsageBreakdown = {
         storage: number;
         compute: number;
         total: number;
+        /** Total amount already debited from wallet via instant billing */
+        totalAlreadyPaid: number;
     };
 };
 

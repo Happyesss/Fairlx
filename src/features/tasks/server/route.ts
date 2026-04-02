@@ -23,6 +23,7 @@ import {
 } from "@/lib/notifications/events";
 import { extractMentions, extractSnippet } from "@/lib/mentions";
 import { invalidateCachePattern, CKPattern } from "@/lib/redis";
+import { logComputeUsage } from "@/lib/usage-metering";
 
 
 import { getMember } from "@/features/members/utils";
@@ -277,6 +278,15 @@ const app = new Hono()
 
       // Delete the task
       await databases.deleteDocument(DATABASE_ID, TASKS_ID, taskId);
+
+      // LOG COMPUTE USAGE: Task Deletion
+      logComputeUsage({
+        databases,
+        workspaceId: task.workspaceId,
+        projectId: task.projectId,
+        units: 1,
+        jobType: "task_delete",
+      });
 
       // Invalidate task list caches for this workspace
       await invalidateCachePattern(CKPattern.taskLists(task.workspaceId));
@@ -636,6 +646,15 @@ const app = new Hono()
         }
       ) as Task;
 
+      // LOG COMPUTE USAGE: Task Creation
+      logComputeUsage({
+        databases,
+        workspaceId,
+        projectId,
+        units: 1,
+        jobType: "task_create",
+      });
+
       const userName = user.name || user.email || "Someone";
 
       // Emit domain event for task creation (webhooks, etc.)
@@ -887,6 +906,15 @@ const app = new Hono()
           });
         }
       }
+
+      // LOG COMPUTE USAGE: Task Update
+      logComputeUsage({
+        databases,
+        workspaceId: existingTask.workspaceId,
+        projectId: existingTask.projectId,
+        units: 1,
+        jobType: "task_update",
+      });
 
       // Invalidate task list caches for this workspace after update
       await invalidateCachePattern(CKPattern.taskLists(existingTask.workspaceId));
@@ -1225,6 +1253,14 @@ const app = new Hono()
           }
         }
       })().catch(() => { /* Silent failure for non-critical event dispatch */ });
+
+      // LOG COMPUTE USAGE: Bulk Task Update
+      logComputeUsage({
+        databases,
+        workspaceId: workspaceId,
+        units: updatedTasks.length,
+        jobType: "task_bulk_update",
+      });
 
       // Return success with any partial failures noted
       return c.json({

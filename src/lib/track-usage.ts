@@ -134,8 +134,9 @@ export async function trackUsageAsync(params: TrackUsageParams): Promise<void> {
         if (!result.written) {
             // Silent - duplicates are expected for retries
         }
-    } catch {
-        // Never throw from usage tracking
+    } catch (error) {
+        // Never throw from usage tracking, but log it so failures are visible
+        console.error("[TrackUsage] Failed to record usage:", error);
     }
 }
 
