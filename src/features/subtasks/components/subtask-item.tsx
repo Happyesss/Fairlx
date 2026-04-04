@@ -29,7 +29,7 @@ import { useDeleteSubtask } from "../api/use-delete-subtask";
 interface SubtaskItemProps {
   subtask: Subtask;
   workspaceId: string;
-  workItemId: string;
+  parentTaskId: string;
   members?: Array<{ $id: string; name: string }>;
   showDetails?: boolean;
 }
@@ -50,7 +50,7 @@ const priorityConfig: Record<SubtaskPriority, { label: string; color: string; ic
 export const SubtaskItem = ({
   subtask,
   workspaceId,
-  workItemId,
+  parentTaskId,
   members = [],
   showDetails = true
 }: SubtaskItemProps) => {
@@ -62,12 +62,12 @@ export const SubtaskItem = ({
   const { mutate: deleteSubtask, isPending: isDeleting } = useDeleteSubtask();
 
   const handleToggleComplete = () => {
-    const newCompleted = !subtask.completed;
+    const newIsCompleted = !subtask.isCompleted;
     updateSubtask({
       param: { subtaskId: subtask.$id },
       json: {
-        completed: newCompleted,
-        status: newCompleted ? "DONE" : (subtask.status === "DONE" ? "TODO" : subtask.status)
+        isCompleted: newIsCompleted,
+        status: newIsCompleted ? "DONE" : (subtask.status === "DONE" ? "TODO" : subtask.status)
       },
     });
   };
@@ -87,7 +87,7 @@ export const SubtaskItem = ({
       param: { subtaskId: subtask.$id },
       json: {
         status,
-        completed: status === SubtaskStatus.DONE
+        isCompleted: status === SubtaskStatus.DONE
       },
     });
   };
@@ -116,7 +116,7 @@ export const SubtaskItem = ({
   const handleDelete = () => {
     deleteSubtask({
       param: { subtaskId: subtask.$id },
-      context: { workspaceId, workItemId },
+      context: { workspaceId, parentTaskId },
     });
   };
 
@@ -132,13 +132,13 @@ export const SubtaskItem = ({
   const currentStatus = (subtask.status as SubtaskStatus) || SubtaskStatus.TODO;
   const currentPriority = (subtask.priority as SubtaskPriority) || SubtaskPriority.MEDIUM;
   const assignee = members.find(m => m.$id === subtask.assigneeId);
-  const isOverdue = subtask.dueDate && new Date(subtask.dueDate) < new Date() && !subtask.completed;
+  const isOverdue = subtask.dueDate && new Date(subtask.dueDate) < new Date() && !subtask.isCompleted;
 
   return (
     <div className="border rounded-lg p-2 hover:bg-muted/30 group transition-colors">
       <div className="flex items-center gap-2">
         <Checkbox
-          checked={subtask.completed}
+          checked={subtask.isCompleted}
           onCheckedChange={handleToggleComplete}
           disabled={isUpdating || isDeleting}
           className="size-4"
@@ -159,7 +159,7 @@ export const SubtaskItem = ({
             onClick={() => setIsEditing(true)}
             className={cn(
               "text-sm flex-1 cursor-text",
-              subtask.completed && "line-through text-muted-foreground"
+              (subtask.isCompleted || subtask.completed) && "line-through text-muted-foreground"
             )}
           >
             {subtask.title}

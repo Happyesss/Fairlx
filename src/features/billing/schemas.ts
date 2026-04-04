@@ -20,7 +20,7 @@ export const setupBillingSchema = z.object({
     type: billingAccountTypeSchema,
     userId: z.string().optional(),
     organizationId: z.string().optional(),
-    billingEmail: z.string().email(),
+    billingEmail: z.string().email().optional(),
     contactName: z.string().min(1).max(255),
     contactPhone: z.string().optional(),
 }).refine(
@@ -89,33 +89,41 @@ export const getInvoiceSchema = z.object({
 // ===============================
 
 /**
- * Schema for Razorpay webhook header validation
+ * Schema for Cashfree webhook header validation
  */
 export const webhookHeadersSchema = z.object({
-    "x-razorpay-signature": z.string().min(1),
+    "x-webhook-signature": z.string().min(1),
+    "x-webhook-timestamp": z.string().min(1),
 });
 
 /**
- * Schema for Razorpay webhook event (one-time payment events only)
+ * Schema for Cashfree webhook event (one-time payment events only)
  */
 export const webhookEventSchema = z.object({
-    entity: z.literal("event"),
-    account_id: z.string(),
-    event: z.string(),
-    contains: z.array(z.string()),
-    payload: z.object({
+    type: z.string(),
+    event_time: z.string(),
+    data: z.object({
+        order: z.object({
+            order_id: z.string(),
+            order_amount: z.number(),
+            order_currency: z.string(),
+            order_tags: z.record(z.string()).optional(),
+        }),
         payment: z.object({
-            entity: z.object({
-                id: z.string(),
-                amount: z.number(),
-                currency: z.string(),
-                status: z.enum(["captured", "failed", "authorized"]),
-                method: z.string(),
-                notes: z.record(z.string()).optional(),
-            }),
+            cf_payment_id: z.string(),
+            payment_status: z.enum(["SUCCESS", "FAILED", "USER_DROPPED", "PENDING"]),
+            payment_amount: z.number(),
+            payment_currency: z.string(),
+            payment_method: z.record(z.unknown()).optional(),
+            payment_message: z.string().optional(),
+        }).optional(),
+        refund: z.object({
+            refund_id: z.string(),
+            cf_payment_id: z.string(),
+            refund_amount: z.number(),
+            refund_status: z.enum(["SUCCESS", "FAILED", "PENDING"]),
         }).optional(),
     }),
-    created_at: z.number(),
 });
 
 // ===============================

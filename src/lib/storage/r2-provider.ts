@@ -123,6 +123,31 @@ export class R2StorageProvider implements StorageProvider {
       })
     );
 
+    // BILLING FIX: Emit a STORAGE usage event for R2 uploads.
+    // Without this, workspaces using R2 show 0 storage in the usage dashboard
+    // because only Appwrite-native storage emits these events automatically.
+    // Fire-and-forget — never block the upload response.
+    if (metadata && (metadata as Record<string, unknown>).workspaceId) {
+      const workspaceId = (metadata as Record<string, unknown>).workspaceId as string;
+      setImmediate(async () => {
+        try {
+          const { createAdminClient } = await import("@/lib/appwrite");
+          const { databases } = await createAdminClient();
+          const { logStorageUsage } = await import("@/lib/usage-metering");
+          await logStorageUsage({
+            databases,
+            workspaceId,
+            units: size,
+            operation: "upload",
+            fileId,
+            metadata: { fileName, fileType: mimeType, bucketId },
+          });
+        } catch {
+          // Never let billing errors affect storage operations
+        }
+      });
+    }
+
     return {
       id: fileId,
       name: fileName,
@@ -171,7 +196,7 @@ export class R2StorageProvider implements StorageProvider {
     return new Uint8Array(buffer).buffer as ArrayBuffer;
   }
 
-  async deleteFile(bucketId: string, fileId: string): Promise<void> {
+  async deleteFile(bucketId: string, fileId: string, context?: { workspaceId?: string; sizeBytes?: number }): Promise<void> {
     const client = getS3Client();
     const bucket = getBucketName();
     const key = buildKey(bucketId, fileId);
@@ -182,6 +207,28 @@ export class R2StorageProvider implements StorageProvider {
         Key: key,
       })
     );
+
+    // BILLING FIX: Emit a negative STORAGE usage event for R2 deletes.
+    // Negative units = storage released, which correctly reduces the running total.
+    if (context?.workspaceId) {
+      setImmediate(async () => {
+        try {
+          const { createAdminClient } = await import("@/lib/appwrite");
+          const { databases } = await createAdminClient();
+          const { logStorageUsage } = await import("@/lib/usage-metering");
+          await logStorageUsage({
+            databases,
+            workspaceId: context.workspaceId!,
+            units: -(context.sizeBytes || 0), // Negative = storage freed
+            operation: "delete",
+            fileId,
+            metadata: { bucketId },
+          });
+        } catch {
+          // Never let billing errors affect storage operations
+        }
+      });
+    }
   }
 
   async listFiles(

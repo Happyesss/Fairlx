@@ -27,6 +27,7 @@ export const createAttachment = async (data: {
   mimeType: string;
   fileId: string;
   taskId: string;
+  projectId: string;
   workspaceId: string;
   uploadedBy: string;
   uploaderName?: string;
@@ -38,14 +39,14 @@ export const createAttachment = async (data: {
     ATTACHMENTS_ID,
     ID.unique(),
     {
-      name: data.name,
-      size: data.size,
+      fileName: data.name,
+      fileSize: data.size,
       mimeType: data.mimeType,
       fileId: data.fileId,
       taskId: data.taskId,
+      projectId: data.projectId,
       workspaceId: data.workspaceId,
       uploadedBy: data.uploadedBy,
-      uploadedAt: new Date().toISOString(),
     }
   );
 
@@ -61,7 +62,7 @@ export const createAttachment = async (data: {
       data.uploadedBy,
       uploaderName,
       attachment.$id,
-      attachment.name
+      data.name
     );
 
     dispatchWorkitemEvent(event).catch((err) => {
@@ -101,7 +102,10 @@ export const deleteAttachment = async (
   // Delete the file from storage (R2 or Appwrite)
   try {
     const storageProvider = await getAdminStorageProvider();
-    await storageProvider.deleteFile(ATTACHMENTS_BUCKET_ID, attachment.fileId);
+    await storageProvider.deleteFile(ATTACHMENTS_BUCKET_ID, attachment.fileId, {
+      workspaceId: attachment.workspaceId,
+      sizeBytes: attachment.fileSize,
+    });
   } catch {
     // Continue with database deletion even if file deletion fails
   }
@@ -125,7 +129,7 @@ export const deleteAttachment = async (
         deletedBy,
         userName,
         attachmentId,
-        attachment.name
+        (attachment as { fileName?: string }).fileName || attachment.name || 'file'
       );
 
       dispatchWorkitemEvent(event).catch((err) => {

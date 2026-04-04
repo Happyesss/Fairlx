@@ -167,20 +167,20 @@ export const RedeemCouponCard = ({ workspaceId, organizationId }: RedeemCouponCa
                                 Coupon Redeemed!
                             </h3>
                             <p className="text-sm text-green-600 dark:text-green-400 mb-4">
-                                ${result.creditedAmount.toFixed(2)} has been credited to your wallet
+                                ${result.creditedAmount.toFixed(6)} has been credited to your wallet
                             </p>
 
                             <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
                                 <div className="text-center p-3 bg-white/60 dark:bg-gray-900/40 rounded-lg">
                                     <p className="text-xs text-muted-foreground mb-1">Credited</p>
                                     <p className="text-lg font-bold text-green-600">
-                                        ${result.creditedAmount.toFixed(2)}
+                                        ${result.creditedAmount.toFixed(6)}
                                     </p>
                                 </div>
                                 <div className="text-center p-3 bg-white/60 dark:bg-gray-900/40 rounded-lg">
                                     <p className="text-xs text-muted-foreground mb-1">Balance</p>
                                     <p className="text-lg font-bold text-foreground">
-                                        ${(result.newWalletBalance / 100).toFixed(2)}
+                                        ${result.newWalletBalance.toFixed(6)}
                                     </p>
                                 </div>
                             </div>

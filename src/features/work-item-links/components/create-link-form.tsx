@@ -49,8 +49,8 @@ export const CreateLinkForm = ({
     resolver: zodResolver(formSchema),
     defaultValues: {
       workspaceId,
-      sourceWorkItemId: sourceItemId || "",
-      targetWorkItemId: "",
+      sourceItemId: sourceItemId || "",
+      targetItemId: "",
       linkType: WorkItemLinkType.RELATES_TO,
       description: "",
       createInverse: true,
@@ -110,7 +110,7 @@ export const CreateLinkForm = ({
 
             <FormField
               control={form.control}
-              name="sourceWorkItemId"
+              name="sourceItemId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Source Item ID</FormLabel>
@@ -128,7 +128,7 @@ export const CreateLinkForm = ({
 
             <FormField
               control={form.control}
-              name="targetWorkItemId"
+              name="targetItemId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Target Item ID</FormLabel>

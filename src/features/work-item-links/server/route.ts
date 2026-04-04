@@ -39,8 +39,8 @@ const app = new Hono()
 
       const {
         workspaceId,
-        sourceWorkItemId,
-        targetWorkItemId,
+        sourceItemId,
+        targetItemId,
         linkType,
         description,
         createInverse,
@@ -58,8 +58,8 @@ const app = new Hono()
 
       // Verify both work items exist and belong to the same workspace
       const [sourceItem, targetItem] = await Promise.all([
-        databases.getDocument<WorkItem>(DATABASE_ID, WORK_ITEMS_ID, sourceWorkItemId),
-        databases.getDocument<WorkItem>(DATABASE_ID, WORK_ITEMS_ID, targetWorkItemId),
+        databases.getDocument<WorkItem>(DATABASE_ID, WORK_ITEMS_ID, sourceItemId),
+        databases.getDocument<WorkItem>(DATABASE_ID, WORK_ITEMS_ID, targetItemId),
       ]);
 
       if (sourceItem.workspaceId !== workspaceId || targetItem.workspaceId !== workspaceId) {
@@ -71,8 +71,8 @@ const app = new Hono()
         DATABASE_ID,
         WORK_ITEM_LINKS_ID,
         [
-          Query.equal("sourceWorkItemId", sourceWorkItemId),
-          Query.equal("targetWorkItemId", targetWorkItemId),
+          Query.equal("sourceItemId", sourceItemId),
+          Query.equal("targetItemId", targetItemId),
           Query.equal("linkType", linkType),
         ]
       );
@@ -85,8 +85,8 @@ const app = new Hono()
       if (linkType === WorkItemLinkType.BLOCKS) {
         const wouldCreateCycle = await checkForCycle(
           databases,
-          targetWorkItemId,
-          sourceWorkItemId,
+          targetItemId,
+          sourceItemId,
           WorkItemLinkType.BLOCKS
         );
         if (wouldCreateCycle) {
@@ -101,8 +101,8 @@ const app = new Hono()
         ID.unique(),
         {
           workspaceId,
-          sourceWorkItemId,
-          targetWorkItemId,
+          sourceItemId,
+          targetItemId,
           linkType,
           description: description || null,
           createdBy: user.$id,
@@ -118,8 +118,8 @@ const app = new Hono()
           ID.unique(),
           {
             workspaceId,
-            sourceWorkItemId: targetWorkItemId,
-            targetWorkItemId: sourceWorkItemId,
+            sourceItemId: targetItemId,
+            targetItemId: sourceItemId,
             linkType: inverseType,
             description: description || null,
             createdBy: user.$id,
@@ -167,8 +167,8 @@ const app = new Hono()
       }
 
       // Build queries
-      const outgoingQueries = [Query.equal("sourceWorkItemId", workItemId)];
-      const incomingQueries = [Query.equal("targetWorkItemId", workItemId)];
+      const outgoingQueries = [Query.equal("sourceItemId", workItemId)];
+      const incomingQueries = [Query.equal("targetItemId", workItemId)];
 
       if (linkTypes) {
         const types = linkTypes.split(",") as WorkItemLinkType[];
@@ -200,8 +200,8 @@ const app = new Hono()
 
       // Populate work item details
       const allWorkItemIds = new Set<string>();
-      outgoingLinks.forEach((l) => allWorkItemIds.add(l.targetWorkItemId));
-      incomingLinks.forEach((l) => allWorkItemIds.add(l.sourceWorkItemId));
+      outgoingLinks.forEach((l) => allWorkItemIds.add(l.targetItemId));
+      incomingLinks.forEach((l) => allWorkItemIds.add(l.sourceItemId));
 
       const workItemsMap = new Map<string, { key: string; title: string; type: string; status: string }>();
 
@@ -226,16 +226,16 @@ const app = new Hono()
       const populatedOutgoing: PopulatedWorkItemLink[] = outgoingLinks.map((l) => ({
         ...l,
         targetWorkItem: {
-          $id: l.targetWorkItemId,
-          ...workItemsMap.get(l.targetWorkItemId),
+          $id: l.targetItemId,
+          ...workItemsMap.get(l.targetItemId),
         } as PopulatedWorkItemLink["targetWorkItem"],
       }));
 
       const populatedIncoming: PopulatedWorkItemLink[] = incomingLinks.map((l) => ({
         ...l,
         sourceWorkItem: {
-          $id: l.sourceWorkItemId,
-          ...workItemsMap.get(l.sourceWorkItemId),
+          $id: l.sourceItemId,
+          ...workItemsMap.get(l.sourceItemId),
         } as PopulatedWorkItemLink["sourceWorkItem"],
       }));
 
@@ -347,8 +347,8 @@ const app = new Hono()
           DATABASE_ID,
           WORK_ITEM_LINKS_ID,
           [
-            Query.equal("sourceWorkItemId", link.targetWorkItemId),
-            Query.equal("targetWorkItemId", link.sourceWorkItemId),
+            Query.equal("sourceItemId", link.targetItemId),
+            Query.equal("targetItemId", link.sourceItemId),
             Query.equal("linkType", inverseType),
           ]
         );
@@ -372,7 +372,6 @@ const app = new Hono()
     async (c) => {
       const databases = c.get("databases");
       const user = c.get("user");
-
       const { workspaceId, links, createInverses } = c.req.valid("json");
 
       const member = await getMember({
@@ -393,8 +392,8 @@ const app = new Hono()
           DATABASE_ID,
           WORK_ITEM_LINKS_ID,
           [
-            Query.equal("sourceWorkItemId", linkData.sourceWorkItemId),
-            Query.equal("targetWorkItemId", linkData.targetWorkItemId),
+            Query.equal("sourceItemId", linkData.sourceItemId),
+            Query.equal("targetItemId", linkData.targetItemId),
             Query.equal("linkType", linkData.linkType),
           ]
         );
@@ -406,8 +405,8 @@ const app = new Hono()
             ID.unique(),
             {
               workspaceId,
-              sourceWorkItemId: linkData.sourceWorkItemId,
-              targetWorkItemId: linkData.targetWorkItemId,
+              sourceItemId: linkData.sourceItemId,
+              targetItemId: linkData.targetItemId,
               linkType: linkData.linkType,
               description: linkData.description || null,
               createdBy: user.$id,
@@ -424,8 +423,8 @@ const app = new Hono()
               ID.unique(),
               {
                 workspaceId,
-                sourceWorkItemId: linkData.targetWorkItemId,
-                targetWorkItemId: linkData.sourceWorkItemId,
+                sourceItemId: linkData.targetItemId,
+                targetItemId: linkData.sourceItemId,
                 linkType: inverseType,
                 description: linkData.description || null,
                 createdBy: user.$id,
@@ -469,7 +468,7 @@ const app = new Hono()
         DATABASE_ID,
         WORK_ITEM_LINKS_ID,
         [
-          Query.equal("targetWorkItemId", workItemId),
+          Query.equal("targetItemId", workItemId),
           Query.equal("linkType", WorkItemLinkType.BLOCKS),
         ]
       );
@@ -484,7 +483,7 @@ const app = new Hono()
       }
 
       // Get blocking work items that are not done
-      const blockingItemIds = blockingLinks.documents.map((l) => l.sourceWorkItemId);
+      const blockingItemIds = blockingLinks.documents.map((l) => l.sourceItemId);
       const blockingItems = await databases.listDocuments<WorkItem>(
         DATABASE_ID,
         WORK_ITEMS_ID,
@@ -571,7 +570,7 @@ const app = new Hono()
         databases.listDocuments<WorkItemLink>(
           DATABASE_ID,
           WORK_ITEM_LINKS_ID,
-          [Query.equal("sourceWorkItemId", workItemIds), Query.limit(500)]
+          [Query.equal("sourceItemId", workItemIds), Query.limit(500)]
         ),
         databases.listDocuments<WorkItemLink>(
           DATABASE_ID,
@@ -592,7 +591,7 @@ const app = new Hono()
 
       incomingLinks.documents.forEach((link) => {
         // Only include if source is also in the project
-        if (workItemIds.includes(link.sourceWorkItemId)) {
+        if (workItemIds.includes(link.sourceItemId)) {
           allLinks.set(link.$id, link);
         }
       });
@@ -622,7 +621,7 @@ async function checkForCycle(
   const links = await databases.listDocuments(
     DATABASE_ID,
     WORK_ITEM_LINKS_ID,
-    [Query.equal("sourceWorkItemId", startId), Query.equal("linkType", linkType)]
+    [Query.equal("sourceItemId", startId), Query.equal("linkType", linkType)]
   );
 
   for (const link of links.documents) {

@@ -1,7 +1,6 @@
 import "server-only";
 
-import { Databases, ID } from "node-appwrite";
-import { DATABASE_ID, USAGE_EVENTS_ID } from "@/config";
+import { Databases } from "node-appwrite";
 import { ResourceType, UsageSource, UsageEventMetadata } from "@/features/usage/types";
 
 /**
@@ -78,8 +77,11 @@ export async function logTrafficUsage(
                 },
             },
         });
-    } catch {
-        // Metering should not block operations
+    } catch (err) {
+        console.error("[UsageMetering] logTrafficUsage failed:", {
+            workspaceId: options.workspaceId,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 
@@ -122,8 +124,12 @@ export async function logStorageUsage(
                 },
             },
         });
-    } catch {
-        // Metering should not block operations
+    } catch (err) {
+        console.error("[UsageMetering] logStorageUsage failed:", {
+            workspaceId: options.workspaceId,
+            operation: options.operation,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 
@@ -150,8 +156,9 @@ export async function logComputeUsage(
     }
 ): Promise<void> {
     // Defer the metering call to avoid blocking main operations
-    // This prevents connection pool exhaustion during high-frequency updates
-    setTimeout(async () => {
+    // This prevents connection pool exhaustion during high-frequency updates.
+    // Using setImmediate for better serverless execution lifecycle compatibility.
+    setImmediate(async () => {
         try {
             const { writeUsageEvent, generateComputeIdempotencyKey } = await import("./usage-ledger");
 
@@ -187,10 +194,14 @@ export async function logComputeUsage(
                     },
                 },
             });
-        } catch {
-            // Metering should never block operations
+        } catch (err) {
+            console.error("[UsageMetering] logComputeUsage failed:", {
+                workspaceId: options.workspaceId,
+                jobType: options.jobType,
+                error: err instanceof Error ? err.message : String(err),
+            });
         }
-    }, 100); // Small delay to let main operation complete first
+    }); // Immediate background execution
 }
 
 /**
@@ -203,27 +214,34 @@ export async function logAIUsage(
     }
 ): Promise<void> {
     try {
-        await options.databases.createDocument(
-            DATABASE_ID,
-            USAGE_EVENTS_ID,
-            ID.unique(),
-            {
-                workspaceId: options.workspaceId,
-                projectId: options.projectId || null,
-                resourceType: ResourceType.COMPUTE,
-                units: options.units,
-                metadata: JSON.stringify({
-                    ...options.metadata,
-                    model: options.model,
-                    tokensUsed: options.tokensUsed,
-                    isAI: true,
-                }),
-                timestamp: new Date().toISOString(),
-                source: UsageSource.AI,
-            }
-        );
-    } catch {
-        // Metering should not block operations
+        const { writeUsageEvent } = await import("./usage-ledger");
+        
+        await writeUsageEvent(options.databases, {
+            idempotencyKey: `ai:${options.model}:${options.workspaceId}:${Date.now()}`,
+            workspaceId: options.workspaceId,
+            projectId: options.projectId,
+            resourceType: ResourceType.COMPUTE,
+            units: options.units,
+            source: UsageSource.AI,
+            billingEntityId: options.billingEntityId,
+            billingEntityType: options.billingEntityType,
+            metadata: {
+                ...options.metadata,
+                model: options.model,
+                tokensUsed: options.tokensUsed,
+                isAI: true,
+                sourceContext: options.sourceContext ?? {
+                    type: options.projectId ? 'project' : 'workspace',
+                    displayName: 'AI Motion Call',
+                },
+            },
+        });
+    } catch (err) {
+        console.error("[UsageMetering] logAIUsage failed:", {
+            workspaceId: options.workspaceId,
+            model: options.model,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 

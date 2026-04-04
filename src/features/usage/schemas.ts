@@ -57,8 +57,9 @@ export const exportUsageSchema = z.object({
 export const getUsageAggregationsSchema = z.object({
     workspaceId: z.string().optional(),
     organizationId: z.string().optional(),
-    startPeriod: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-    endPeriod: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    startPeriod: z.string().optional(), // YYYY-MM-DD or YYYY-MM
+    endPeriod: z.string().optional(),
+    periodType: z.enum(["daily", "monthly"]).optional(),
 }).refine(
     data => data.workspaceId || data.organizationId,
     { message: "Either workspaceId or organizationId is required" }
@@ -66,7 +67,8 @@ export const getUsageAggregationsSchema = z.object({
 
 export const calculateAggregationSchema = z.object({
     workspaceId: z.string().min(1),
-    period: z.string().regex(/^\d{4}-\d{2}$/),
+    period: z.string(), // YYYY-MM-DD or YYYY-MM
+    periodType: z.enum(["daily", "monthly"]),
     billingEntityId: z.string().optional(),
 });
 

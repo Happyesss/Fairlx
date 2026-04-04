@@ -171,7 +171,7 @@ const app = new Hono()
     async (c) => {
       const user = c.get("user");
       const databases = c.get("databases");
-      const { taskId, date, hours, description, startTime, endTime } =
+      const { taskId, logDate, loggedHours, description, startTime, endTime } =
         c.req.valid("json");
 
       // Get task to validate workspace access
@@ -200,8 +200,8 @@ const app = new Hono()
           userId: user.$id,
           workspaceId: task.workspaceId,
           projectId: task.projectId,
-          date: format(date, "yyyy-MM-dd"),
-          hours,
+          logDate: format(logDate, "yyyy-MM-dd"),
+          loggedHours,
           description,
           startTime,
           endTime,
@@ -218,7 +218,7 @@ const app = new Hono()
     async (c) => {
       const user = c.get("user");
       const databases = c.get("databases");
-      const { date, hours, description, startTime, endTime } =
+      const { logDate, loggedHours, description, startTime, endTime } =
         c.req.valid("json");
 
       const { timeLogId } = c.req.param();
@@ -246,8 +246,8 @@ const app = new Hono()
 
       const updateData: Partial<TimeLog> = {};
 
-      if (date !== undefined) updateData.date = format(date, "yyyy-MM-dd");
-      if (hours !== undefined) updateData.hours = hours;
+      if (logDate !== undefined) updateData.logDate = format(logDate, "yyyy-MM-dd");
+      if (loggedHours !== undefined) updateData.loggedHours = loggedHours;
       if (description !== undefined) updateData.description = description;
       if (startTime !== undefined) updateData.startTime = startTime;
       if (endTime !== undefined) updateData.endTime = endTime;
@@ -291,9 +291,9 @@ const app = new Hono()
 
       const query = [
         Query.equal("workspaceId", workspaceId),
-        Query.greaterThanEqual("date", format(start, "yyyy-MM-dd")),
-        Query.lessThanEqual("date", format(end, "yyyy-MM-dd")),
-        Query.orderDesc("date"),
+        Query.greaterThanEqual("logDate", format(start, "yyyy-MM-dd")),
+        Query.lessThanEqual("logDate", format(end, "yyyy-MM-dd")),
+        Query.orderDesc("logDate"),
       ];
 
       if (userId) {
@@ -351,7 +351,7 @@ const app = new Hono()
         const weeks: { [key: string]: TimeEntry[] } = {};
 
         userLogs.forEach(log => {
-          const logDate = parseISO(log.date);
+          const logDate = parseISO(log.logDate);
           const weekStart = startOfWeek(logDate);
           const weekKey = format(weekStart, "yyyy-MM-dd");
 
@@ -368,8 +368,8 @@ const app = new Hono()
             taskName: task?.name || "Unknown Task",
             projectId: log.projectId,
             projectName: project?.name || "Unknown Project",
-            date: log.date,
-            hours: log.hours,
+            logDate: log.logDate,
+            loggedHours: log.loggedHours,
             description: log.description,
             userName: userDetail.name,
             userEmail: userDetail.email,
@@ -383,12 +383,12 @@ const app = new Hono()
           return {
             weekStart: format(weekStart, "yyyy-MM-dd"),
             weekEnd: format(weekEnd, "yyyy-MM-dd"),
-            totalHours: entries.reduce((sum, entry) => sum + entry.hours, 0),
+            totalHours: entries.reduce((sum, entry) => sum + entry.loggedHours, 0),
             entries,
           };
         });
 
-        const totalHours = userLogs.reduce((sum, log) => sum + log.hours, 0);
+        const totalHours = userLogs.reduce((sum, log) => sum + log.loggedHours, 0);
 
         userTimesheets.push({
           userId: userDetail.userId,
@@ -449,11 +449,11 @@ const app = new Hono()
       ];
 
       if (startDate) {
-        timeLogQuery.push(Query.greaterThanEqual("date", startDate));
+        timeLogQuery.push(Query.greaterThanEqual("logDate", startDate));
       }
 
       if (endDate) {
-        timeLogQuery.push(Query.lessThanEqual("date", endDate));
+        timeLogQuery.push(Query.lessThanEqual("logDate", endDate));
       }
 
       const timeLogs = await databases.listDocuments<TimeLog>(
@@ -492,7 +492,7 @@ const app = new Hono()
       // Calculate estimates vs actuals
       const estimatesVsActuals: EstimateVsActual[] = tasks.documents.map(task => {
         const taskTimeLogs = timeLogs.documents.filter(log => log.taskId === task.$id);
-        const actualHours = taskTimeLogs.reduce((sum, log) => sum + log.hours, 0);
+        const actualHours = taskTimeLogs.reduce((sum, log) => sum + log.loggedHours, 0);
         const estimatedHours = task.estimatedHours || 0;
         const variance = actualHours - estimatedHours;
         const variancePercent = estimatedHours > 0 ? (variance / estimatedHours) * 100 : 0;

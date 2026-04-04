@@ -12,6 +12,7 @@ import { WorkflowInheritanceMode, Space } from "@/features/spaces/types";
 import { DATABASE_ID, PROJECTS_ID, TASKS_ID, TIME_LOGS_ID, SPACES_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { cached, invalidateCache, invalidateCachePattern, CK, CKPattern, TTL } from "@/lib/redis";
+import { logComputeUsage } from "@/lib/usage-metering";
 import { uploadImageAndGetUrl } from "@/lib/storage/helpers";
 import {
   dispatchWorkitemEvent,
@@ -150,6 +151,14 @@ const app = new Hono()
       if (normalizedSpaceId) {
         await invalidateCache(CK.spaceProjectCount(normalizedSpaceId));
       }
+
+      // LOG COMPUTE USAGE: Project Creation
+      logComputeUsage({
+        databases,
+        workspaceId,
+        units: 1,
+        jobType: "project_create",
+      });
 
       return c.json({ data: transformProject(project) });
     }
@@ -340,6 +349,15 @@ const app = new Hono()
 
       await invalidateCache(CK.project(projectId), CK.projectList(existingProject.workspaceId));
 
+      // LOG COMPUTE USAGE: Project Update
+      logComputeUsage({
+        databases,
+        workspaceId: existingProject.workspaceId,
+        projectId: projectId,
+        units: 1,
+        jobType: "project_update",
+      });
+
       return c.json({ data: transformProject(project) });
     }
   )
@@ -471,6 +489,15 @@ const app = new Hono()
       );
       await invalidateCachePattern(CKPattern.projectPerms(projectId));
       await invalidateCachePattern(CKPattern.taskLists(existingProject.workspaceId));
+
+      // LOG COMPUTE USAGE: Project Deletion
+      logComputeUsage({
+        databases,
+        workspaceId: existingProject.workspaceId,
+        projectId: projectId,
+        units: 1,
+        jobType: "project_delete",
+      });
 
       return c.json({ data: { $id: existingProject.$id } });
     } catch {

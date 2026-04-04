@@ -87,6 +87,10 @@ const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemPr
 
   const { mutate: deleteAttachment, isPending } = useDeleteAttachment();
 
+  // Use fileName with fallback to legacy name field
+  const displayName = attachment.fileName || attachment.name || 'download';
+  const displaySize = attachment.fileSize || attachment.size || 0;
+
   const handleDelete = async () => {
     const ok = await confirm();
     if (!ok) return;
@@ -109,7 +113,7 @@ const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemPr
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = attachment.name;
+      link.download = displayName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -145,10 +149,10 @@ const AttachmentItem = ({ attachment, workspaceId, onPreview }: AttachmentItemPr
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-normal text-foreground truncate leading-tight">
-              {attachment.name}
+              {displayName}
             </p>
             <p className="text-[11px] text-muted-foreground leading-tight">
-              {formatFileSize(attachment.size)} · {getFileExtension(attachment.name)}
+              {formatFileSize(displaySize)} · {getFileExtension(displayName)}
             </p>
           </div>
         </button>

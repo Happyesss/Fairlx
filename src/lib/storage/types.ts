@@ -54,8 +54,9 @@ export interface StorageProvider {
 
   /**
    * Delete a file from storage.
+   * Pass context.workspaceId + context.sizeBytes to emit a billing event.
    */
-  deleteFile(bucketId: string, fileId: string): Promise<void>;
+  deleteFile(bucketId: string, fileId: string, context?: { workspaceId?: string; sizeBytes?: number }): Promise<void>;
 
   /**
    * List files in a bucket (for billing snapshots).

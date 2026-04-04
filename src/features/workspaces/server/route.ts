@@ -20,6 +20,7 @@ import { sessionMiddleware } from "@/lib/session-middleware";
 import { uploadImageAndGetUrl } from "@/lib/storage/helpers";
 import { generateInviteCode } from "@/lib/utils";
 import { CK, invalidateCache } from "@/lib/redis";
+import { logComputeUsage } from "@/lib/usage-metering";
 
 import { MemberRole, WorkspaceMemberRole } from "@/features/members/types";
 import { getMember } from "@/features/members/utils";
@@ -207,6 +208,14 @@ const app = new Hono()
       // CRITICAL: Invalidate lifecycle cache to reflect transition out of onboarding
       await invalidateCache(CK.authLifecycle(user.$id));
 
+      // LOG COMPUTE USAGE: Workspace Creation
+      logComputeUsage({
+        databases,
+        workspaceId: workspace.$id,
+        units: 1,
+        jobType: "workspace_create",
+      });
+
       return c.json({ data: workspace });
     }
   )
@@ -255,6 +264,14 @@ const app = new Hono()
         workspaceId,
         updateData
       );
+
+      // LOG COMPUTE USAGE: Workspace Update
+      logComputeUsage({
+        databases,
+        workspaceId: workspaceId,
+        units: 1,
+        jobType: "workspace_update",
+      });
 
       return c.json({ data: workspace });
     }
@@ -380,6 +397,16 @@ const app = new Hono()
       // Finally delete the workspace
       await databases.deleteDocument(DATABASE_ID, WORKSPACES_ID, workspaceId);
 
+      // LOG COMPUTE USAGE: Workspace Deletion
+      logComputeUsage({
+        databases,
+        workspaceId: workspaceId,
+        units: 1,
+        jobType: "workspace_delete",
+      });
+
+      await invalidateCache(CK.workspace(workspaceId));
+
       return c.json({ data: { $id: workspaceId } });
     } catch {
       return c.json({ error: "Failed to delete workspace and related data" }, 500);
@@ -478,6 +505,14 @@ const app = new Hono()
         workspaceId,
         userId: user.$id,
         role: MemberRole.MEMBER,
+      });
+
+      // LOG COMPUTE USAGE: Member Join (via invite code)
+      logComputeUsage({
+        databases,
+        workspaceId: workspaceId,
+        units: 1,
+        jobType: "member_invite",
       });
 
       return c.json({ data: workspace });

@@ -1,15 +1,24 @@
 import { Models } from "node-appwrite";
+import { Task } from "@/features/tasks/types";
+import { Project } from "@/features/projects/types";
 
 export type TimeLog = Models.Document & {
   taskId: string;
   userId: string;
   workspaceId: string;
   projectId: string;
-  date: string;
-  hours: number;
+  logDate: string;
+  loggedHours: number;
   description: string;
   startTime?: string;
   endTime?: string;
+  user?: {
+    userId: string;
+    name: string;
+    email: string;
+  };
+  task?: Task;
+  project?: Project;
 };
 
 export type TimeEntry = {
@@ -18,8 +27,8 @@ export type TimeEntry = {
   taskName: string;
   projectId: string;
   projectName: string;
-  date: string;
-  hours: number;
+  logDate: string;
+  loggedHours: number;
   description: string;
   userName: string;
   userEmail: string;

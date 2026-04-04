@@ -1,14 +1,13 @@
 import "server-only";
 
-import { Databases, Query, ID } from "node-appwrite";
+import { Databases, Query, ID, Models } from "node-appwrite";
 import {
     DATABASE_ID,
     STORAGE_SNAPSHOTS_ID,
-    ATTACHMENTS_BUCKET_ID,
+    ATTACHMENTS_ID,
     WORKSPACES_ID,
 } from "@/config";
 import { StorageDailySnapshot } from "@/features/usage/types";
-import { getAdminStorageProvider } from "@/lib/storage";
 
 /**
  * Storage Snapshot Job
@@ -40,7 +39,6 @@ export interface StorageSnapshotResult {
  */
 export async function captureWorkspaceStorageSnapshot(
     databases: Databases,
-    storage: { listFiles: (bucketId: string, queries?: string[]) => Promise<{ total: number; files: { sizeBytes: number }[] }> } | null,
     workspaceId: string
 ): Promise<StorageSnapshotResult> {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -81,23 +79,22 @@ export async function captureWorkspaceStorageSnapshot(
             };
         }
 
-        // Calculate total storage for workspace
-        // This queries the attachments bucket for files associated with this workspace
-        // In production, you may need to filter by workspace metadata
+        // Calculate total storage for workspace from ATTACHMENTS_ID collection
+        // WHY: Efficiently sums only files belonging to this workspace.
         let totalBytes = 0;
-
         try {
-            // Use unified storage provider (R2 or Appwrite)
-            const storageProvider = storage || await getAdminStorageProvider();
-            const files = await storageProvider.listFiles(ATTACHMENTS_BUCKET_ID, [
-                Query.limit(10000), // Adjust based on expected file count
-            ]);
-
-            for (const file of files.files) {
-                totalBytes += file.sizeBytes || 0;
-            }
-        } catch {
-            // If bucket doesn't exist or is empty, that's fine
+            const attachments = await databases.listDocuments<Models.Document & { fileSize?: number }>(
+                DATABASE_ID,
+                ATTACHMENTS_ID,
+                [
+                    Query.equal("workspaceId", workspaceId),
+                    Query.select(["fileSize"]),
+                    Query.limit(10000), // Adjust if workspace has > 10k files
+                ]
+            );
+            totalBytes = attachments.documents.reduce((sum: number, doc) => sum + (doc.fileSize || 0), 0);
+        } catch (err) {
+            console.error("[StorageSnapshot] Failed to query attachments for workspace:", workspaceId, err);
             totalBytes = 0;
         }
 
@@ -138,8 +135,7 @@ export async function captureWorkspaceStorageSnapshot(
  * WHY: Ensures consistent daily data for all billing entities
  */
 export async function captureAllStorageSnapshots(
-    databases: Databases,
-    storage?: { listFiles: (bucketId: string, queries?: string[]) => Promise<{ total: number; files: { sizeBytes: number }[] }> } | null
+    databases: Databases
 ): Promise<StorageSnapshotResult[]> {
     const results: StorageSnapshotResult[] = [];
 
@@ -153,7 +149,6 @@ export async function captureAllStorageSnapshots(
     for (const workspace of workspaces.documents) {
         const result = await captureWorkspaceStorageSnapshot(
             databases,
-            storage || null,
             workspace.$id
         );
         results.push(result);
@@ -198,7 +193,7 @@ export async function calculateTimeWeightedStorageAvg(
     }
 
     // Calculate average
-    const sumGB = snapshots.documents.reduce((sum, s) => sum + s.storageGB, 0);
+    const sumGB = snapshots.documents.reduce((sum: number, s: StorageDailySnapshot) => sum + s.storageGB, 0);
 
     // Use actual snapshot count or days in month for accurate average
     // WHY: If we only have 15 snapshots, we use actual count for conservative estimate

@@ -9,7 +9,7 @@ type RequestType = InferRequestType<(typeof client.api.subtasks)[":subtaskId"]["
 
 interface DeleteSubtaskContext {
   workspaceId: string;
-  workItemId: string;
+  parentTaskId: string;
 }
 
 export const useDeleteSubtask = () => {
@@ -32,7 +32,7 @@ export const useDeleteSubtask = () => {
     onSuccess: (_, { context }) => {
       toast.success("Subtask deleted");
       queryClient.invalidateQueries({ 
-        queryKey: ["subtasks", context.workspaceId, context.workItemId] 
+        queryKey: ["subtasks", context.workspaceId, context.parentTaskId] 
       });
     },
     onError: () => {

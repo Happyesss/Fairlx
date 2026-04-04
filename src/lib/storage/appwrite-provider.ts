@@ -1,6 +1,6 @@
 /**
  * Appwrite Storage Provider (Adapter)
- * 
+ *
  * Wraps the existing Appwrite Storage SDK to conform to the StorageProvider interface.
  * This is the default / contributor-friendly provider that requires no extra setup.
  */
@@ -55,7 +55,7 @@ export class AppwriteStorageProvider implements StorageProvider {
     );
   }
 
-  async deleteFile(bucketId: string, fileId: string): Promise<void> {
+  async deleteFile(bucketId: string, fileId: string, _context?: { workspaceId?: string; sizeBytes?: number }): Promise<void> {
     await this.storage.deleteFile(bucketId, fileId);
   }
 

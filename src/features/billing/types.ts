@@ -70,7 +70,7 @@ export enum BillingAuditEventType {
     INVOICE_GENERATED = "INVOICE_GENERATED",
     INVOICE_FINALIZED = "INVOICE_FINALIZED",
 
-    // Payment Events (Razorpay one-time)
+    // Payment Events (Cashfree one-time)
     PAYMENT_ATTEMPTED = "PAYMENT_ATTEMPTED",
     PAYMENT_SUCCEEDED = "PAYMENT_SUCCEEDED",
     PAYMENT_FAILED = "PAYMENT_FAILED",
@@ -109,7 +109,7 @@ export enum BillingAuditEventType {
 export enum InvoiceStatus {
     DRAFT = "DRAFT",       // Being generated, not yet finalized
     DUE = "DUE",           // Finalized, awaiting payment
-    PAID = "PAID",         // Successfully paid (wallet deduction or Razorpay)
+    PAID = "PAID",         // Successfully paid (wallet deduction or Cashfree)
     FAILED = "FAILED",     // Wallet deduction failed (insufficient balance)
 }
 
@@ -137,8 +137,8 @@ export type BillingAccount = Models.Document & {
     /** Organization ID (required for ORG accounts) */
     organizationId?: string;
 
-    /** Razorpay Customer ID (used for one-time top-up orders) */
-    razorpayCustomerId: string;
+    /** Cashfree Customer ID (derived stable ID from email hash) */
+    cashfreeCustomerId: string;
 
     /** Current billing status */
     billingStatus: BillingStatus;
@@ -219,8 +219,8 @@ export type BillingInvoice = Models.Document & {
     /** Due date (ISO datetime) */
     dueDate: string;
 
-    /** Razorpay Payment ID (for top-up payments) */
-    razorpayPaymentId?: string;
+    /** Cashfree Payment ID (cf_payment_id from Cashfree) */
+    cashfreePaymentId?: string;
 
     /** Wallet Transaction ID (when paid via wallet) */
     walletTransactionId?: string;
@@ -266,6 +266,8 @@ export type UsageBreakdown = {
         storage: number;
         compute: number;
         total: number;
+        /** Total amount already debited from wallet via instant billing */
+        totalAlreadyPaid: number;
     };
 };
 
@@ -288,8 +290,8 @@ export type BillingAuditLog = Models.Document & {
     /** User who triggered the event (if applicable) */
     actorUserId?: string;
 
-    /** Razorpay event ID (for webhook events) */
-    razorpayEventId?: string;
+    /** Cashfree event ID (for webhook events) */
+    cashfreeEventId?: string;
 
     /** Invoice ID (if event relates to an invoice) */
     invoiceId?: string;
@@ -342,23 +344,14 @@ export type BillingAccountResponse = {
 };
 
 /**
- * RazorpayCheckoutOptions - Options for frontend Razorpay Checkout (one-time top-up)
+ * CashfreeCheckoutOptions - Options for frontend Cashfree Checkout (one-time top-up)
  */
-export type RazorpayCheckoutOptions = {
-    key: string;
+export type CashfreeCheckoutOptions = {
+    paymentSessionId: string;
     orderId: string;
-    name: string;
-    description: string;
     amount: number;
     currency: string;
-    prefill: {
-        name: string;
-        email: string;
-        contact?: string;
-    };
-    theme: {
-        color: string;
-    };
+    redirectTarget?: "_modal" | "_self" | "_blank";
 };
 
 // ===============================
@@ -366,53 +359,40 @@ export type RazorpayCheckoutOptions = {
 // ===============================
 
 /**
- * RazorpayWebhookEvent - Structure of Razorpay webhook payload
+ * CashfreeWebhookEvent - Structure of Cashfree webhook payload
  */
-export type RazorpayWebhookEvent = {
-    entity: "event";
-    account_id: string;
-    event: string;
-    contains: string[];
-    payload: {
-        payment?: {
-            entity: RazorpayPaymentEntity;
+export type CashfreeWebhookEvent = {
+    type: "PAYMENT_SUCCESS_WEBHOOK" | "PAYMENT_FAILED_WEBHOOK" | "PAYMENT_USER_DROPPED_WEBHOOK"
+        | "REFUND_SUCCESS_WEBHOOK" | "REFUND_FAILED_WEBHOOK";
+    event_time: string;
+    data: {
+        order: {
+            order_id: string;
+            order_amount: number;
+            order_currency: string;
+            order_tags?: Record<string, string>;
         };
-        refund?: {
-            entity: RazorpayRefundEntity;
-        };
+        payment?: CashfreePaymentEntity;
+        refund?: CashfreeRefundEntity;
     };
-    created_at: number;
 };
 
-export type RazorpayPaymentEntity = {
-    id: string;
-    entity: "payment";
-    amount: number;
-    currency: string;
-    status: "captured" | "failed" | "authorized";
-    method: string;
-    order_id?: string;
-    card?: {
-        last4: string;
-        network: string;
-    };
-    error_code?: string;
-    error_description?: string;
-    notes?: Record<string, string>;
-    created_at: number;
+export type CashfreePaymentEntity = {
+    cf_payment_id: string;
+    payment_status: "SUCCESS" | "FAILED" | "USER_DROPPED" | "PENDING";
+    payment_amount: number;       // in rupees
+    payment_currency: string;
+    payment_method: Record<string, unknown>;
+    payment_message?: string;
+    order_tags?: Record<string, string>;
 };
 
-export type RazorpayRefundEntity = {
-    id: string;
-    entity: "refund";
-    amount: number;
-    currency: string;
-    payment_id: string;
-    status: "processed" | "failed" | "pending";
-    speed_requested: "normal" | "optimum";
-    speed_processed: "normal" | "instant";
-    notes?: Record<string, string>;
-    created_at: number;
+export type CashfreeRefundEntity = {
+    refund_id: string;
+    cf_payment_id: string;
+    refund_amount: number;        // in rupees
+    refund_status: "SUCCESS" | "FAILED" | "PENDING";
+    order_tags?: Record<string, string>;
 };
 
 // ===============================

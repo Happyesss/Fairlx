@@ -6,12 +6,12 @@ import { WalletTransactionType } from "./types";
 // ===============================
 
 /**
- * Schema for creating a Razorpay top-up order
- * This creates the order server-side; frontend opens Razorpay Checkout with it
+ * Schema for creating a Cashfree top-up order
+ * This creates the order server-side; frontend opens Cashfree Checkout with it
  */
 export const createTopupOrderSchema = z.object({
-    /** Amount in smallest currency unit (paise). Min ₹1, Max ₹1,00,000 */
-    amount: z.number().min(100, "Minimum top-up is ₹1").max(100000000, "Maximum top-up is ₹10,00,000"),
+    /** Amount in USD (supports decimals). Min $1, Max $10,000 */
+    amount: z.number().min(1, "Minimum top-up is $1").max(10000, "Maximum top-up is $10,000"),
     /** Currency - defaults to USD on server */
     currency: z.string().optional(),
     /** Organization ID (for org wallets) */
@@ -23,16 +23,18 @@ export const createTopupOrderSchema = z.object({
 export type CreateTopupOrderInput = z.infer<typeof createTopupOrderSchema>;
 
 /**
- * Schema for verifying a Razorpay top-up payment after checkout
- * Requires Razorpay payment details + signature for verification
+ * Schema for verifying a Cashfree top-up payment after checkout
+ * Requires Cashfree payment details + signature for verification
  */
 export const verifyTopupSchema = z.object({
-    /** Razorpay Order ID */
-    razorpayOrderId: z.string().min(1),
-    /** Razorpay Payment ID */
-    razorpayPaymentId: z.string().min(1),
-    /** Razorpay Signature for verification */
-    razorpaySignature: z.string().min(1),
+    /** Cashfree Order ID */
+    cashfreeOrderId: z.string().min(1),
+    /** Cashfree Payment ID (cfPaymentId) — optional, backend fetches from API if not provided */
+    cfPaymentId: z.string().optional(),
+    /** Order amount for signature verification — optional, backend fetches from API */
+    orderAmount: z.number().positive().optional(),
+    /** Cashfree Signature for verification — optional, backend verifies via API instead */
+    signature: z.string().optional(),
 });
 
 export type VerifyTopupInput = z.infer<typeof verifyTopupSchema>;
@@ -63,11 +65,10 @@ export type GetTransactionsInput = z.infer<typeof getTransactionsSchema>;
 
 /**
  * Schema for usage deduction from wallet (internal use)
- * Used by billing system to deduct from wallet
  */
 export const deductUsageSchema = z.object({
-    /** Amount to deduct in smallest currency unit (paise) */
-    amount: z.number().min(1),
+    /** Amount to deduct in USD (supports high precision decimals) */
+    amount: z.number().positive(),
     /** Reference ID (invoice ID, usage event ID, etc.) */
     referenceId: z.string().min(1),
     /** Idempotency key to prevent double-deduction */
@@ -82,8 +83,8 @@ export type DeductUsageInput = z.infer<typeof deductUsageSchema>;
  * Schema for holding funds in wallet (async jobs)
  */
 export const holdWalletSchema = z.object({
-    /** Amount to hold in smallest currency unit (paise) */
-    amount: z.number().min(1),
+    /** Amount to hold in USD (supports high precision decimals) */
+    amount: z.number().positive(),
     /** Reference ID for the hold */
     referenceId: z.string().min(1),
     /** Idempotency key */
@@ -98,8 +99,8 @@ export type HoldWalletInput = z.infer<typeof holdWalletSchema>;
  * Schema for releasing a hold on wallet funds
  */
 export const releaseHoldSchema = z.object({
-    /** Amount to release */
-    amount: z.number().min(1),
+    /** Amount to release (in USD) */
+    amount: z.number().positive(),
     /** Reference ID matching the original hold */
     referenceId: z.string().min(1),
     /** Idempotency key */

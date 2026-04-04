@@ -10,6 +10,8 @@ yarn.lock
 pnpm-lock.yaml
 /docs
 
+/.github
+
 # testing
 /test-results
 /tests
@@ -46,6 +48,8 @@ lerna-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.prod
+
 
 # vercel
 .vercel

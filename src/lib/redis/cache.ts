@@ -161,12 +161,16 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
  */
 export async function setIfNotExists(key: string, value: string, ttlSeconds: number): Promise<boolean> {
     const redis = getRedisClient();
-    if (!redis) return false;
+    // When Redis is unavailable, return true (allow the write through).
+    // The DB-level idempotency check (findByIdempotencyKey) in usage-ledger.ts
+    // will catch true duplicates. Returning false here incorrectly blocks ALL events.
+    if (!redis) return true;
     try {
         const result = await redis.set(key, value, "EX", ttlSeconds, "NX");
         return result === "OK";
     } catch {
-        return false; // Assume not set — fail open for idempotency
+        // Redis error — fail open (allow write, rely on DB check)
+        return true;
     }
 }
 

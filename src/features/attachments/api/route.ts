@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { ID } from "node-appwrite";
 
 import { sessionMiddleware } from "@/lib/session-middleware";
-import { ATTACHMENTS_BUCKET_ID, DATABASE_ID, ATTACHMENTS_ID } from "@/config";
+import { ATTACHMENTS_BUCKET_ID, DATABASE_ID, ATTACHMENTS_ID, WORK_ITEMS_ID } from "@/config";
 import { getMember } from "@/features/members/utils";
 // Storage metering for billing - every file operation must be metered
 import { logStorageUsage } from "@/lib/usage-metering";
@@ -44,9 +44,12 @@ const app = new Hono()
 
       const attachments = await getAttachments(taskId, workspaceId);
 
-      // Add URLs to attachments - use proxy URL for authentication support
+      // Add URLs and backwards-compatible field aliases
       const attachmentsWithUrls = attachments.map((attachment) => ({
         ...attachment,
+        // Backwards-compatible aliases for UI components
+        name: (attachment as { fileName?: string }).fileName || attachment.name,
+        size: (attachment as { fileSize?: number }).fileSize || attachment.size,
         url: `/api/attachments/${attachment.$id}/preview?workspaceId=${workspaceId}`,
       }));
 
@@ -58,16 +61,20 @@ const app = new Hono()
     sessionMiddleware,
     async (c) => {
       try {
+        console.log("[Attachments] Starting upload...");
         const user = c.get("user");
         const databases = c.get("databases");
         const storage = c.get("storage");
         const storageProvider = getStorageProvider(storage);
+        console.log("[Attachments] Using storage provider:", storageProvider.provider);
 
         const body = await c.req.parseBody();
 
         const file = body.file as File;
         const taskId = body.taskId as string;
         const workspaceId = body.workspaceId as string;
+
+        console.log("[Attachments] Parsed body - file:", file?.name, "taskId:", taskId, "workspaceId:", workspaceId);
 
         if (!file || !taskId || !workspaceId) {
           return c.json({ error: "Missing required fields" }, 400);
@@ -90,27 +97,48 @@ const app = new Hono()
 
         // Validate file type
         if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-          return c.json({ error: "File type not allowed" }, 400);
+          return c.json({ error: `File type not allowed: ${file.type}` }, 400);
+        }
+
+        // Fetch the work item to get the projectId
+        let projectId: string;
+        try {
+          console.log("[Attachments] Fetching work item:", taskId);
+          const workItem = await databases.getDocument(
+            DATABASE_ID,
+            WORK_ITEMS_ID,
+            taskId
+          );
+          projectId = workItem.projectId as string;
+          console.log("[Attachments] Found projectId:", projectId);
+        } catch (err) {
+          console.error("[Attachments] Work item lookup failed:", err);
+          return c.json({ error: "Work item not found" }, 404);
         }
 
         // Upload file to storage (R2 or Appwrite)
         const fileId = ID.unique();
+        console.log("[Attachments] Uploading to storage, fileId:", fileId, "bucket:", ATTACHMENTS_BUCKET_ID);
         const uploadedFile = await storageProvider.uploadFile(
           ATTACHMENTS_BUCKET_ID,
           fileId,
           file
         );
+        console.log("[Attachments] Upload complete, result:", uploadedFile.id);
 
         // Create attachment record
+        console.log("[Attachments] Creating attachment record...");
         const attachment = await createAttachment({
           name: file.name,
           size: file.size,
           mimeType: file.type,
           fileId: uploadedFile.id,
           taskId,
+          projectId,
           workspaceId,
           uploadedBy: user.$id,
         });
+        console.log("[Attachments] Attachment created:", attachment.$id);
 
         // Add URL to response - Use proxy URL for authentication support
         const url = `/api/attachments/${attachment.$id}/preview?workspaceId=${workspaceId}`;
@@ -131,11 +159,16 @@ const app = new Hono()
         return c.json({
           data: {
             ...attachment,
+            // Backwards-compatible aliases for UI components
+            name: file.name,
+            size: file.size,
             url,
           },
         });
-      } catch {
-        return c.json({ error: "Failed to upload file" }, 500);
+      } catch (error) {
+        console.error("[Attachments] Upload failed:", error);
+        const message = error instanceof Error ? error.message : "Failed to upload file";
+        return c.json({ error: message }, 500);
       }
     }
   )
@@ -174,10 +207,10 @@ const app = new Hono()
         logStorageUsage({
           databases,
           workspaceId,
-          units: -(attachment.size as number || 0), // Negative = storage released
+          units: -((attachment.fileSize as number) || (attachment.size as number) || 0), // Negative = storage released
           operation: 'delete',
           metadata: {
-            fileName: attachment.name,
+            fileName: (attachment.fileName as string) || (attachment.name as string),
             attachmentId,
           },
         });
@@ -226,21 +259,23 @@ const app = new Hono()
         const file = await storageProvider.getFileView(ATTACHMENTS_BUCKET_ID, attachment.fileId);
 
         // Log download for traffic billing (fire-and-forget, don't await)
+        const attachmentSize = (attachment.fileSize as number) || (attachment.size as number) || 0;
+        const attachmentName = (attachment.fileName as string) || (attachment.name as string);
         logStorageUsage({
           databases,
           workspaceId,
-          units: attachment.size as number || 0,
+          units: attachmentSize,
           operation: 'download',
           metadata: {
-            fileName: attachment.name,
+            fileName: attachmentName,
             attachmentId,
           },
         }).catch(() => { /* ignore metering errors */ });
 
         // Return the file directly with proper headers
         // Use RFC 5987 encoding for unicode filenames
-        const safeFilename = attachment.name.replace(/[^\x20-\x7E]/g, '_');
-        const encodedFilename = encodeURIComponent(attachment.name);
+        const safeFilename = attachmentName.replace(/[^\x20-\x7E]/g, '_');
+        const encodedFilename = encodeURIComponent(attachmentName);
         return new Response(new Uint8Array(file), {
           headers: {
             'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,

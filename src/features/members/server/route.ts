@@ -10,6 +10,7 @@ import { DATABASE_ID, MEMBERS_ID, NOTIFICATIONS_ID, WORKSPACES_ID } from "@/conf
 import { getPermissions } from "@/lib/rbac";
 import { validateUserOrgMembershipForWorkspace } from "@/lib/invariants";
 import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
+import { logComputeUsage } from "@/lib/usage-metering";
 
 import { getMember } from "../utils";
 import { Member, MemberRole, WorkspaceMemberRole, MemberStatus } from "../types";
@@ -193,6 +194,14 @@ const app = new Hono()
     );
     await invalidateCachePattern(CKPattern.workspacePerms(memberToDelete.workspaceId));
     await invalidateCachePattern(CKPattern.allUserPerms(memberToDelete.userId));
+
+    // LOG COMPUTE USAGE: Member Removal
+    logComputeUsage({
+      databases,
+      workspaceId: memberToDelete.workspaceId,
+      units: 1,
+      jobType: "member_remove",
+    });
 
     return c.json({ data: { $id: memberToDelete.$id } });
   })
@@ -475,6 +484,14 @@ const app = new Hono()
       // Invalidate member caches
       await invalidateCache(CK.memberList(workspaceId));
       await invalidateCachePattern(CKPattern.workspacePerms(workspaceId));
+
+      // LOG COMPUTE USAGE: Member Invite (from-org)
+      logComputeUsage({
+        databases,
+        workspaceId: workspaceId,
+        units: 1,
+        jobType: "member_invite",
+      });
 
       return c.json({ data: newMember });
     }

@@ -67,11 +67,11 @@ export const OPTIONAL_CONFIG_CATEGORIES = [
         keys: ["GEMINI_API_KEY"],
     },
     {
-        category: "Payment (Razorpay)",
+        category: "Payment (Cashfree)",
         keys: [
-            "RAZORPAY_KEY_ID",
-            "RAZORPAY_KEY_SECRET",
-            "RAZORPAY_WEBHOOK_SECRET",
+            "CASHFREE_APP_ID",
+            "CASHFREE_SECRET_KEY",
+            "CASHFREE_WEBHOOK_SECRET",
         ],
     },
     {

@@ -38,9 +38,11 @@ export function SuspensionScreen({
         : "/settings/billing";
 
     const formatAmount = (amount: number) => {
-        return new Intl.NumberFormat("en-IN", {
+        return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: currency,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 6,
         }).format(amount);
     };
 

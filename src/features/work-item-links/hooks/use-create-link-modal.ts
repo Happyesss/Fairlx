@@ -6,26 +6,26 @@ export const useCreateLinkModal = () => {
     parseAsBoolean.withDefault(false).withOptions({ clearOnDefault: true })
   );
   
-  const [sourceWorkItemId, setSourceWorkItemId] = useQueryState(
+  const [sourceItemId, setSourceItemId] = useQueryState(
     "link-source",
     parseAsString.withDefault("").withOptions({ clearOnDefault: true })
   );
 
   const open = (workItemId?: string) => {
     if (workItemId) {
-      setSourceWorkItemId(workItemId);
+      setSourceItemId(workItemId);
     }
     setIsOpen(true);
   };
   
   const close = () => {
     setIsOpen(false);
-    setSourceWorkItemId("");
+    setSourceItemId("");
   };
 
   return {
     isOpen,
-    sourceWorkItemId,
+    sourceItemId,
     open,
     close,
     setIsOpen,

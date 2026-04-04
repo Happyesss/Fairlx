@@ -1,46 +1,19 @@
 import "server-only";
 
 import { createMiddleware } from "hono/factory";
-import { Databases, ID } from "node-appwrite";
-import { DATABASE_ID, USAGE_EVENTS_ID } from "@/config";
+import { Databases } from "node-appwrite";
+import { DATABASE_ID } from "@/config";
 import { ResourceType, UsageSource } from "@/features/usage/types";
+import { writeUsageEvent, generateTrafficIdempotencyKey } from "./usage-ledger";
 
 /**
- * Batched Traffic Metering System
+ * Traffic Metering System
  * 
  * DESIGN:
- * Instead of writing 1 event per request (was causing ~4K writes/day),
- * we collect events in memory and flush every 60 seconds.
- * 
- * BENEFITS:
- * - 1 write per 60s instead of ~3600 writes/hour
- * - No blocking of request/response cycle
- * - Handles high traffic without overwhelming Appwrite
- * 
- * TRADEOFFS:
- * - Up to 60s delay in billing data (acceptable for analytics)
- * - Memory footprint (max ~100 events in buffer)
- * - Events lost on server crash (use health checks to flush before shutdown)
+ * Writes traffic events immediately using the central Usage Ledger.
+ * Ensures usage is recorded even in serverless environments where
+ * background timers/global buffers are killed.
  */
-
-interface TrafficEvent {
-    workspaceId: string;
-    projectId?: string;
-    endpoint: string;
-    method: string;
-    requestBytes: number;
-    responseBytes: number;
-    durationMs: number;
-    statusCode: number;
-    userId: string;
-    timestamp: string;
-    billingEntityId?: string;
-    billingEntityType?: string;
-    /** True when request originates from a BYOB tenant (skip storage/compute billing) */
-    isByob?: boolean;
-    /** BYOB org slug for billing attribution */
-    byobOrgSlug?: string;
-}
 
 type MeteringContext = {
     Variables: {
@@ -48,14 +21,6 @@ type MeteringContext = {
         user?: { $id: string; prefs?: Record<string, string | number | boolean | null> };
     };
 };
-
-// In-memory buffer
-let eventBuffer: TrafficEvent[] = [];
-let flushTimer: NodeJS.Timeout | null = null;
-let databasesRef: Databases | null = null;
-
-const FLUSH_INTERVAL_MS = 60 * 1000; // 60 seconds
-const MAX_BUFFER_SIZE = 100; // Auto-flush if buffer hits this size
 
 /**
  * Calculate approximate size of request/response in bytes
@@ -73,7 +38,7 @@ function estimatePayloadSize(obj: unknown): number {
 /**
  * Extract workspace ID from request (URL or body)
  */
-function extractWorkspaceId(url: string): string | null {
+function extractWorkspaceId(url: string, body?: Record<string, unknown>): string | null {
     try {
         const urlObj = new URL(url, 'http://localhost');
         const pathname = urlObj.pathname;
@@ -89,9 +54,48 @@ function extractWorkspaceId(url: string): string | null {
 
         const queryWorkspaceId = urlObj.searchParams.get('workspaceId');
         if (queryWorkspaceId) return queryWorkspaceId;
+
+        // Try body
+        if (body && typeof body.workspaceId === 'string') {
+            return body.workspaceId;
+        }
     } catch {
         const pathMatch = url.match(/\/workspaces\/([a-zA-Z0-9_-]+)/);
         if (pathMatch) return pathMatch[1];
+    }
+
+    return null;
+}
+
+/**
+ * Extract organization ID from request (URL or body)
+ */
+function extractOrganizationId(url: string, body?: Record<string, unknown>): string | null {
+    try {
+        const urlObj = new URL(url, 'http://localhost');
+        const pathname = urlObj.pathname;
+
+        const matches = [
+            pathname.match(/\/organizations\/([a-zA-Z0-9_-]+)/),
+            pathname.match(/organizationId=([a-zA-Z0-9_-]+)/),
+            pathname.match(/orgId=([a-zA-Z0-9_-]+)/)
+        ];
+
+        for (const match of matches) {
+            if (match && match[1]) return match[1];
+        }
+
+        const queryOrgId = urlObj.searchParams.get('organizationId') || urlObj.searchParams.get('orgId');
+        if (queryOrgId) return queryOrgId;
+
+        // Try body
+        if (body) {
+            if (typeof body.organizationId === 'string') return body.organizationId;
+            if (typeof body.orgId === 'string') return body.orgId;
+        }
+    } catch {
+        const orgMatch = url.match(/\/organizations\/([a-zA-Z0-9_-]+)/);
+        if (orgMatch) return orgMatch[1];
     }
 
     return null;
@@ -116,89 +120,16 @@ function extractProjectId(url: string): string | null {
 }
 
 /**
- * Flush all buffered events to database
- */
-async function flushEvents() {
-    if (eventBuffer.length === 0 || !databasesRef) return;
-
-    const eventsToFlush = [...eventBuffer];
-    eventBuffer = []; // Clear buffer immediately
-
-    // Batch write all events (fire-and-forget, don't block)
-    Promise.all(
-        eventsToFlush.map(event =>
-            databasesRef!.createDocument(
-                DATABASE_ID,
-                USAGE_EVENTS_ID,
-                ID.unique(),
-                {
-                    workspaceId: event.workspaceId,
-                    projectId: event.projectId,
-                    resourceType: ResourceType.TRAFFIC,
-                    units: event.requestBytes + event.responseBytes,
-                    metadata: JSON.stringify({
-                        endpoint: event.endpoint,
-                        method: event.method,
-                        requestBytes: event.requestBytes,
-                        responseBytes: event.responseBytes,
-                        durationMs: event.durationMs,
-                        statusCode: event.statusCode,
-                        userId: event.userId,
-                        billingEntityId: event.billingEntityId,
-                        billingEntityType: event.billingEntityType,
-                        isByob: event.isByob || false,
-                    }),
-                    timestamp: event.timestamp,
-                    source: UsageSource.API,
-                }
-            ).catch(() => {
-                // Silently ignore write errors (duplicate keys, etc.)
-            })
-        )
-    ).catch(() => {
-        // Batch failed - events are lost but we don't crash
-    });
-}
-
-/**
- * Start the periodic flush timer
- */
-function startFlushTimer() {
-    if (flushTimer) return;
-
-    flushTimer = setInterval(() => {
-        flushEvents();
-    }, FLUSH_INTERVAL_MS);
-
-    // Ensure timer doesn't keep process alive
-    if (flushTimer.unref) {
-        flushTimer.unref();
-    }
-}
-
-/**
- * Stop the flush timer (for graceful shutdown)
- */
-export function stopFlushTimer() {
-    if (flushTimer) {
-        clearInterval(flushTimer);
-        flushTimer = null;
-    }
-}
-
-/**
- * Flush and stop (for graceful shutdown)
+ * Flush and stop (Deprecated/No-op after refactor to immediate)
  */
 export async function flushAndStop() {
-    await flushEvents();
-    stopFlushTimer();
+    // No-op
 }
 
 /**
- * Batched traffic metering middleware
+ * Traffic metering middleware
  * 
- * IMPORTANT: This does NOT write to DB immediately.
- * Events are buffered and flushed every 60 seconds.
+ * Writes usage events immediately using the Usage Ledger.
  */
 export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext>(
     async (c, next) => {
@@ -206,19 +137,30 @@ export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext
         const requestUrl = c.req.url;
         const requestMethod = c.req.method;
 
-        // Estimate request size from Content-Length header ONLY
-        // CRITICAL: Never read c.req.json() here — it drains the ReadableStream
-        // body, causing every downstream zValidator("json") to receive empty input.
+        // Estimate request size and extract Body if applicable
+        let requestBody: Record<string, unknown> | undefined = undefined;
         const contentLength = c.req.header('content-length');
         const requestSize = contentLength ? parseInt(contentLength, 10) : 0;
+
+        // SAFELY attempt to parse body for JSON requests to extract IDs
+        // Note: For POST/PUT/PATCH we need the IDs for attribution
+        if (['POST', 'PUT', 'PATCH'].includes(requestMethod)) {
+            const contentTypeHeader = c.req.header('content-type') || '';
+            if (contentTypeHeader.includes('application/json')) {
+                try {
+                    // Clone and read JSON body
+                    const clone = c.req.raw.clone();
+                    requestBody = await clone.json().catch(() => ({}));
+                } catch {
+                    // Ignore body parsing errors
+                }
+            }
+        }
 
         // Execute route handler
         await next();
 
-        // Calculate response size
-        // CRITICAL: Skip body consumption for SSE/streaming responses — reading
-        // the body with .text() blocks until the stream finishes, which prevents
-        // incremental delivery of events to the client.
+        // Calculate response size (skip for streaming)
         let responseSize = 0;
         const contentType = c.res.headers.get("content-type") || "";
         const isStreaming = contentType.includes("text/event-stream") ||
@@ -236,45 +178,63 @@ export const batchedTrafficMeteringMiddleware = createMiddleware<MeteringContext
         }
 
         const duration = Date.now() - startTime;
-        const workspaceId = extractWorkspaceId(requestUrl);
+        let workspaceId = extractWorkspaceId(requestUrl, requestBody);
+        const organizationId = extractOrganizationId(requestUrl, requestBody);
         const projectId = extractProjectId(requestUrl);
         const databases = c.get('databases');
         const user = c.get('user');
 
-        // Only log if we have workspace context and databases
-        if (!workspaceId || !databases) {
-            return;
+        if (!databases) return;
+
+        // Resolve Org -> First Workspace for contextless routes
+        if (!workspaceId) {
+            const targetOrgId = organizationId || extractOrganizationId(requestUrl, requestBody);
+            if (targetOrgId) {
+                try {
+                    const { Query } = await import('node-appwrite');
+                    const { WORKSPACES_ID } = await import('@/config');
+                    const ws = await databases.listDocuments(
+                        DATABASE_ID,
+                        WORKSPACES_ID,
+                        [Query.equal('organizationId', targetOrgId), Query.limit(1)]
+                    );
+                    if (ws.total > 0) {
+                        workspaceId = ws.documents[0].$id;
+                    }
+                } catch (err) {
+                    console.warn("[TrafficMetering] Could not resolve workspace from org:", err);
+                }
+            }
         }
 
-        // Store databases reference for flush
-        if (!databasesRef) {
-            databasesRef = databases;
-            startFlushTimer();
-        }
+        if (!workspaceId) return;
 
-        // Add to buffer (non-blocking)
         const endpoint = new URL(requestUrl, 'http://localhost').pathname;
         const byobOrgSlug = user?.prefs?.byobOrgSlug as string | undefined;
-        const event: TrafficEvent = {
-            workspaceId,
-            projectId: projectId || undefined,
-            endpoint,
-            method: requestMethod,
-            requestBytes: requestSize,
-            responseBytes: responseSize,
-            durationMs: duration,
-            statusCode: c.res.status,
-            userId: user?.$id || 'anonymous',
-            timestamp: new Date(startTime).toISOString(),
-            isByob: !!byobOrgSlug,
-            byobOrgSlug: byobOrgSlug || undefined,
-        };
 
-        eventBuffer.push(event);
-
-        // Auto-flush if buffer is full
-        if (eventBuffer.length >= MAX_BUFFER_SIZE) {
-            setTimeout(() => flushEvents(), 0);
-        }
+        // Log immediately via central ledger
+        // Use setImmediate to avoid blocking the user response, but ensures it runs
+        setImmediate(async () => {
+            try {
+                await writeUsageEvent(databases, {
+                    idempotencyKey: generateTrafficIdempotencyKey(workspaceId!, endpoint, requestMethod),
+                    workspaceId: workspaceId!,
+                    projectId: projectId || undefined,
+                    resourceType: ResourceType.TRAFFIC,
+                    units: requestSize + responseSize,
+                    source: UsageSource.API,
+                    metadata: {
+                        endpoint,
+                        method: requestMethod,
+                        durationMs: duration,
+                        statusCode: c.res.status,
+                        isByob: !!byobOrgSlug,
+                        byobOrgSlug,
+                    }
+                });
+            } catch (err) {
+                console.error("[TrafficMetering] Log failed:", err);
+            }
+        });
     }
 );

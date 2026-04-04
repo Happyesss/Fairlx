@@ -347,8 +347,56 @@ const app = new Hono()
     })
 
     /**
+     * POST /cron/storage/snapshot
+     *
+     * Capture a point-in-time storage snapshot for every workspace.
+     * These snapshots are the data source for time-weighted GB-month billing.
+     *
+     * WHY: Storage billing must reflect how much data was stored across the
+     * whole month, not just at month-end. A workspace that stored 100 GB for
+     * half the month should pay for ~50 GB-month, not 100 GB-month.
+     * calculateTimeWeightedStorageAvg() reads these snapshots — but only if
+     * they actually exist. Without this endpoint they never did.
+     *
+     * Schedule: 0 0 * * * (midnight UTC every day, BEFORE aggregate-daily at 2 AM)
+     */
+    .post("/storage/snapshot", async (c) => {
+        const authHeader = c.req.header("Authorization");
+        if (!verifyCronSecret(authHeader)) {
+            return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const { captureAllStorageSnapshots } = await import("@/lib/storage-snapshot-job");
+            const { createAdminClient } = await import("@/lib/appwrite");
+            const { databases: adminDb } = await createAdminClient();
+
+            const results = await captureAllStorageSnapshots(adminDb);
+            const duration = Date.now() - startTime;
+
+            return c.json({
+                success: true,
+                workspacesSnapshotted: results.filter(r => r.success).length,
+                workspacesFailed: results.filter(r => !r.success).length,
+                errors: results.filter(r => !r.success).map(r => ({
+                    workspaceId: r.workspaceId,
+                    error: r.error,
+                })),
+                durationMs: duration,
+            });
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            }, 500);
+        }
+    })
+
+    /**
      * GET /cron/health
-     * 
+     *
      * Health check endpoint for monitoring.
      */
     .get("/health", (c) => {
@@ -359,7 +407,8 @@ const app = new Hono()
                 "POST /cron/billing/process-cycle",
                 "POST /cron/billing/enforce-grace",
                 "POST /cron/billing/send-reminders",
-                "POST /cron/usage/aggregate-daily",
+                "POST /cron/storage/snapshot",       // NEW: daily storage snapshot (midnight UTC)
+                "POST /cron/usage/aggregate-daily",  // runs at 2 AM UTC, after snapshot
                 "POST /cron/usage/aggregate-all",
             ],
         });

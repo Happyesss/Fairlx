@@ -7,7 +7,7 @@ import { Models } from "node-appwrite";
 /**
  * WalletTransactionType - tracks type of wallet transaction
  * 
- * TOPUP: Funds added to wallet (via Razorpay payment)
+ * TOPUP: Funds added to wallet (via Cashfree payment)
  * USAGE: Funds deducted for billing usage
  * REFUND: Funds returned (e.g., service credit)
  * ADJUSTMENT: Manual adjustment by admin
@@ -62,13 +62,13 @@ export type Wallet = Models.Document & {
     /** Organization ID (for ORG accounts) */
     organizationId?: string;
 
-    /** Available balance in smallest currency unit (paise) */
+    /** Available balance in USD (supports high precision, e.g. $0.000001) */
     balance: number;
 
     /** Currency code (USD) */
     currency: string;
 
-    /** Balance reserved for pending transactions */
+    /** Balance reserved for pending transactions (in USD) */
     lockedBalance: number;
 
     /** Wallet status */
@@ -78,7 +78,7 @@ export type Wallet = Models.Document & {
     version: number;
 
     /** Last top-up timestamp */
-    lastTopupAt?: string;
+    lastTopUpAt?: string;
 
     /** Last deduction timestamp */
     lastDeductionAt?: string;
@@ -163,9 +163,10 @@ export type UsageDeduction = Models.Document & {
 
 export type TopupWalletDto = {
     amount: number;
-    razorpayOrderId: string;
-    razorpayPaymentId: string;
-    razorpaySignature: string;
+    cashfreeOrderId: string;
+    cfPaymentId: string;
+    orderAmount: number;
+    signature: string;
 };
 
 export type DeductWalletDto = {
@@ -181,7 +182,7 @@ export type WalletBalanceResponse = {
     availableBalance: number;
     currency: string;
     status: WalletStatus;
-    lastTopupAt?: string;
+    lastTopUpAt?: string;
 };
 
 export type CreateTopupOrderDto = {

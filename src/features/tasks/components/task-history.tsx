@@ -528,13 +528,14 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
     // Attachments - returns array directly
     if (attachments && Array.isArray(attachments)) {
       (attachments as Attachment[]).forEach((attachment) => {
+        const displayName = attachment.fileName || attachment.name || 'file';
         items.push({
           id: `attachment-${attachment.$id}`,
           type: "attachment",
           timestamp: attachment.$createdAt,
-          description: `uploaded "${attachment.name}"`,
+          description: `uploaded "${displayName}"`,
           userName: "Someone",
-          metadata: { fileName: attachment.name },
+          metadata: { fileName: displayName },
         });
       });
     }
@@ -542,7 +543,7 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
     // Time logs - returns { documents: [...] }
     if (timeLogs?.documents) {
       timeLogs.documents.forEach((log) => {
-        const logHours = log.hours || 0;
+        const logHours = log.loggedHours || 0;
         const totalMinutes = Math.round(logHours * 60);
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;

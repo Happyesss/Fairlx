@@ -1,14 +1,18 @@
 import { Models } from "node-appwrite";
 
 export type Attachment = Models.Document & {
-  name: string;
-  size: number;
+  fileName: string;
+  fileSize: number;
   mimeType: string;
   fileId: string;
   taskId: string;
+  projectId: string;
   workspaceId: string;
   uploadedBy: string;
-  uploadedAt: string;
+  bucketId?: string;
+  // Aliases for backwards compatibility (used in UI components)
+  name?: string;
+  size?: number;
   url?: string;
 };
 

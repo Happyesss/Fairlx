@@ -3,24 +3,24 @@
 ## Pre-Production Checklist
 
 ### Environment Configuration
-- [ ] `RAZORPAY_KEY_ID` set in production
-- [ ] `RAZORPAY_KEY_SECRET` set in production
-- [ ] `RAZORPAY_WEBHOOK_SECRET` set in production
+- [ ] `CASHFREE_APP_ID` set in production
+- [ ] `CASHFREE_SECRET_KEY` set in production
+- [ ] `CASHFREE_WEBHOOK_SECRET` set in production
 - [ ] `CRON_SECRET` set in production
 - [ ] `BILLING_ACCOUNTS_ID` collection ID set
 - [ ] `BILLING_AUDIT_LOGS_ID` collection ID set
 - [ ] `EMAIL_API_KEY` set for reminder emails
 - [ ] `NEXT_PUBLIC_APP_URL` set to production URL
 
-### Razorpay Dashboard Configuration
-- [ ] Webhook URL configured: `https://app.fairlx.com/api/webhooks/razorpay`
+### Cashfree Dashboard Configuration
+- [ ] Webhook URL configured: `https://app.fairlx.com/api/webhooks/cashfree`
 - [ ] Webhook events enabled:
-  - [ ] `payment.captured`
-  - [ ] `payment.failed`
-  - [ ] `payment.authorized`
-  - [ ] `refund.processed`
-  - [ ] `refund.failed`
-- [ ] Test mode verified before production
+  - [ ] `PAYMENT_SUCCESS_WEBHOOK`
+  - [ ] `PAYMENT_FAILED_WEBHOOK`
+  - [ ] `PAYMENT_USER_DROPPED_WEBHOOK`
+  - [ ] `REFUND_SUCCESS_WEBHOOK`
+  - [ ] `REFUND_FAILED_WEBHOOK`
+- [ ] Test mode (sandbox) verified before production
 
 ### Cron Jobs (Droplet)
 - [ ] Cron script deployed to Droplet
@@ -35,15 +35,15 @@
 
 ### Payment Flow
 - [ ] **Create billing account** - Organization setup creates billing record
-- [ ] **Add payment method** - Razorpay Checkout opens and captures card
-- [ ] **Subscription created** - Razorpay subscription/mandate created
-- [ ] **Webhook received** - payment.captured event processed
+- [ ] **Wallet top-up** - Cashfree Checkout opens and completes payment
+- [ ] **Webhook received** - PAYMENT_SUCCESS_WEBHOOK event processed
+- [ ] **Wallet credited** - Balance updated with correct USD amount
 - [ ] **Account activated** - Status set to ACTIVE
 
 ### Billing Cycle
 - [ ] **Usage aggregated** - Traffic, storage, compute summed correctly
 - [ ] **Invoice generated** - Invoice document created with breakdown
-- [ ] **Payment attempted** - Auto-debit via subscription
+- [ ] **Wallet deduction** - Auto-deduct from wallet balance
 - [ ] **Success flow** - Invoice marked PAID, account ACTIVE
 - [ ] **Failure flow** - Invoice marked FAILED, account DUE
 
@@ -63,7 +63,7 @@
 - [ ] **Suspension UI** - Full-screen overlay displayed
 
 ### Recovery
-- [ ] **Payment from suspended** - Can complete payment
+- [ ] **Payment from suspended** - Can complete wallet top-up
 - [ ] **Instant restoration** - Access restored immediately
 - [ ] **Status updated** - Account back to ACTIVE
 - [ ] **Audit logged** - Recovery event recorded
@@ -75,10 +75,10 @@
 ### Idempotency
 - [ ] Duplicate webhooks ignored
 - [ ] Multiple payment attempts handled
-- [ ] No double charges
+- [ ] No double wallet credits
 
 ### Error Handling
-- [ ] Invalid webhook signatures rejected
+- [ ] Invalid webhook signatures rejected (HMAC-SHA256 with timestamp)
 - [ ] Missing billing account handled gracefully
 - [ ] Database errors logged and don't crash
 
@@ -87,14 +87,19 @@
 - [ ] Usage snapshots immutable after billing
 - [ ] Audit trail complete for all events
 
+### Currency Conversion
+- [ ] USD → INR conversion correct (amounts in major units for Cashfree)
+- [ ] Wallet credits in original USD cents
+- [ ] Exchange rate stored in order tags for auditability
+
 ---
 
 ## Security Checks
 
-- [ ] Webhook signatures verified
+- [ ] Webhook signatures verified (HMAC-SHA256 with timestamp)
 - [ ] CRON_SECRET required for cron endpoints
 - [ ] No sensitive data in client-side code
-- [ ] Payment method details not stored (only last4)
+- [ ] Payment method details not stored
 - [ ] Admin client used for billing operations
 
 ---
