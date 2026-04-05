@@ -618,6 +618,8 @@ export async function setupOrganizationBilling(
         ID.unique(),
         {
             type: BillingAccountType.ORG,
+            ownerId: organizationId,
+            ownerType: "organization",
             organizationId,
             userId: null,
             cashfreeCustomerId: options.cashfreeCustomerId || null,
@@ -685,6 +687,8 @@ export async function setupPersonalBilling(
         ID.unique(),
         {
             type: BillingAccountType.PERSONAL,
+            ownerId: userId,
+            ownerType: "personal",
             userId,
             organizationId: null,
             cashfreeCustomerId: options.cashfreeCustomerId || null,
