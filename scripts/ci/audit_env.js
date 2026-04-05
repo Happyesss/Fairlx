@@ -1,9 +1,23 @@
 // Usage : node ./scripts/ci/audit_env.js
 
 const fs = require('fs');
+const path = require('path');
 
-const deployYml = fs.readFileSync('.github/workflows/deploy.yml', 'utf8');
-const envLocal = fs.readFileSync('.env.local', 'utf8');
+const DEPLOY_YML_PATH = '.github/workflows/deploy.yml';
+const ENV_LOCAL_PATH = '.env.local';
+
+if (!fs.existsSync(DEPLOY_YML_PATH)) {
+    console.error(`❌ Error: ${DEPLOY_YML_PATH} not found.`);
+    process.exit(1);
+}
+
+if (!fs.existsSync(ENV_LOCAL_PATH)) {
+    console.error(`❌ Error: ${ENV_LOCAL_PATH} not found.`);
+    process.exit(1);
+}
+
+const deployYml = fs.readFileSync(DEPLOY_YML_PATH, 'utf8');
+const envLocal = fs.readFileSync(ENV_LOCAL_PATH, 'utf8');
 
 // Extraction for deploy.yml: Find all ${{ secrets.NAME }} and ${{ vars.NAME }}
 const workflowMatches = deployYml.matchAll(/\$\{\{\s+(secrets|vars)\.([A-Z0-9_]+)\s+\}\}/g);
@@ -18,19 +32,42 @@ const providedKeys = new Set();
 for (const line of envLines) {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith('#')) {
-        const parts = trimmed.split('=');
-        if (parts.length >= 1) {
-            providedKeys.add(parts[0].trim());
+        const match = trimmed.match(/^([A-Z0-9_]+)=/);
+        if (match) {
+            providedKeys.add(match[1]);
         }
     }
 }
 
-const missingKeys = [...requiredKeys].filter(key => !providedKeys.has(key));
+const missingInEnv = [...requiredKeys].filter(key => !providedKeys.has(key)).sort();
+const missingInDeploy = [...providedKeys].filter(key => !requiredKeys.has(key)).sort();
 
-console.log('--- AUDIT RESULTS ---');
-if (missingKeys.length === 0) {
-    console.log('✅ ALL OK: Everything in deploy.yml is present in .env.local');
+console.log('\n--- 🔍 ENV AUDIT RESULTS ---');
+
+// 1. Missing in .env.local (Required for CI/Deploy but not found locally)
+if (missingInEnv.length === 0) {
+    console.log('✅ .env.local: All keys from deploy.yml are present.');
 } else {
-    console.log('❌ MISSING in .env.local:');
-    missingKeys.forEach(key => console.log(`- ${key}`));
+    console.log(`⚠️  MISSING in .env.local (${missingInEnv.length} keys):`);
+    console.log('   (These are used in deploy.yml but missing in your local .env.local)');
+    missingInEnv.forEach(key => console.log(`   - ${key}`));
+}
+
+console.log('');
+
+// 2. Missing in deploy.yml (Found locally but not used in CI/Deploy)
+if (missingInDeploy.length === 0) {
+    console.log('✅ deploy.yml: All local keys are used in deployment sync.');
+} else {
+    console.log(`ℹ️  MISSING in deploy.yml (${missingInDeploy.length} keys):`);
+    console.log('   (These are in .env.local but NOT mentioned in deploy.yml)');
+    missingInDeploy.forEach(key => console.log(`   - ${key}`));
+}
+
+console.log('\n---------------------------\n');
+
+if (missingInEnv.length === 0) {
+    console.log('🎉 Audit passed successfully!');
+} else {
+    console.log('❌ Audit found missing required keys in .env.local.');
 }
