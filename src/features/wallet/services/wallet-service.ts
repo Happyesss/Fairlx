@@ -19,6 +19,7 @@ import {
     WalletTransactionType,
     WalletStatus,
 } from "../types";
+import { setupOrganizationBilling, setupPersonalBilling } from "@/features/billing/services/billing-service";
 
 /**
  * Wallet Service
@@ -214,7 +215,7 @@ export async function getOrCreateWallet(
         return existing.documents[0];
     }
 
-    // Find billing account ID if not provided
+    // Find or create billing account ID if not provided
     let billingAccountId = options.billingAccountId;
     if (!billingAccountId) {
         try {
@@ -230,10 +231,16 @@ export async function getOrCreateWallet(
 
             if (accounts.total > 0) {
                 billingAccountId = accounts.documents[0].$id;
+            } else {
+                // Create billing account if it doesn't exist
+                const billingAccount = options.organizationId
+                    ? await setupOrganizationBilling(options.organizationId)
+                    : await setupPersonalBilling(options.userId!);
+                billingAccountId = billingAccount.$id;
             }
-        } catch {
-            // Ignore error - if we can't find billing account, we create without ID
-            // (The DB will error if it's strictly required, but we tried our best)
+        } catch (error) {
+            console.error("Failed to find or create billing account:", error);
+            throw new Error("Cannot create wallet without a billing account");
         }
     }
 
@@ -245,7 +252,7 @@ export async function getOrCreateWallet(
         {
             userId: options.userId || null,
             organizationId: options.organizationId || null,
-            billingAccountId: billingAccountId || null,
+            billingAccountId,
             balance: 0,
             currency,
             lockedBalance: 0,
