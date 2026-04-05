@@ -407,7 +407,7 @@ const app = new Hono()
 
         if (!projectDocsAI.isConfigured()) {
           return c.json(
-            { error: "AI features require GEMINI_API_KEY to be configured" },
+            { error: "AI features require OLLAMA_API_KEY to be configured" },
             400
           );
         }
@@ -620,7 +620,7 @@ Provide a comprehensive, helpful answer:`;
 
         if (!projectDocsAI.isConfigured()) {
           return c.json(
-            { error: "AI features require GEMINI_API_KEY to be configured" },
+            { error: "AI features require OLLAMA_API_KEY to be configured" },
             400
           );
         }
@@ -953,7 +953,7 @@ IMPORTANT:
 
         if (!projectDocsAI.isConfigured()) {
           return c.json(
-            { error: "AI features require GEMINI_API_KEY to be configured" },
+            { error: "AI features require OLLAMA_API_KEY to be configured" },
             400
           );
         }
