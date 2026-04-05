@@ -62,6 +62,9 @@ export type Wallet = Models.Document & {
     /** Organization ID (for ORG accounts) */
     organizationId?: string;
 
+    /** Billing Account ID (required) */
+    billingAccountId: string;
+
     /** Available balance in USD (supports high precision, e.g. $0.000001) */
     balance: number;
 
