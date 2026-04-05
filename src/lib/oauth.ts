@@ -10,13 +10,19 @@ import { OAuthProvider } from "node-appwrite";
 
 /**
  * Get the app origin URL
- * Uses origin header with fallback to NEXT_PUBLIC_APP_URL env variable
+ * Uses origin header with fallback to NEXT_PUBLIC_APP_URL env variable.
+ * Sanitizes "0.0.0.0" which is a server bind address but not a valid client destination.
  */
 async function getOrigin(): Promise<string> {
   const origin = (await headers()).get("origin");
-  if (origin) return origin;
 
-  // Fallback to env variable (required for server actions)
+  // Only use the request origin if it's not the catch-all bind address 0.0.0.0
+  // or the numeric local loopback 127.0.0.1 (which can also be problematic)
+  if (origin && !origin.includes("0.0.0.0") && !origin.includes("127.0.0.1")) {
+    return origin.replace(/\/$/, ""); // Remove trailing slash
+  }
+
+  // Fallback to env variable (required for server actions and reliable local dev)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (appUrl) return appUrl.replace(/\/$/, ""); // Remove trailing slash
 
