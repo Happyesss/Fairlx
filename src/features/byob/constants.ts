@@ -63,8 +63,8 @@ export const OPTIONAL_CONFIG_CATEGORIES = [
         ],
     },
     {
-        category: "AI (Gemini)",
-        keys: ["GEMINI_API_KEY"],
+        category: "AI (Ollama)",
+        keys: ["OLLAMA_BASE_URL", "OLLAMA_API_KEY", "OLLAMA_MODEL"],
     },
     {
         category: "Payment (Cashfree)",
