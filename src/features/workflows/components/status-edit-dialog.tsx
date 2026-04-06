@@ -3,6 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useEffect } from "react";
 import {
   Circle,
   CheckCircle,
@@ -188,6 +189,13 @@ export const StatusEditDialog = ({
     });
   };
 
+  // Sync form with status prop
+  useEffect(() => {
+    if (open) {
+      resetForm();
+    }
+  }, [status, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-generate key from name
   const handleNameChange = (value: string) => {
     form.setValue("name", value);
@@ -266,8 +274,8 @@ export const StatusEditDialog = ({
                       <Input
                         placeholder="IN_PROGRESS"
                         {...field}
-                        disabled={isEditing}
-                        className="font-mono uppercase"
+                        readOnly={isEditing}
+                        className={cn("font-mono uppercase", isEditing && "bg-muted cursor-not-allowed")}
                       />
                     </FormControl>
                     <FormMessage />

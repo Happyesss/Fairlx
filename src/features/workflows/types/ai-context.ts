@@ -77,11 +77,13 @@ export interface WorkflowAIAction {
   };
 }
 
+import { StatusType } from "../types";
+
 // AI suggestions for creating a status
 export interface StatusSuggestion {
   name: string;
   key: string;
-  statusType: "OPEN" | "IN_PROGRESS" | "CLOSED";
+  statusType: StatusType;
   color: string;
   isInitial?: boolean;
   isFinal?: boolean;
@@ -98,8 +100,8 @@ export interface TransitionSuggestion {
 
 // AI suggestions for a complete workflow template
 export interface WorkflowSuggestion {
-  name: string;
-  description: string;
+  name?: string;
+  description?: string;
   statuses: StatusSuggestion[];
   transitions: TransitionSuggestion[];
 }

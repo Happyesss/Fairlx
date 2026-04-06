@@ -13,6 +13,7 @@ import {
   Lightbulb,
   Copy,
   Check,
+  Eye,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,8 @@ import {
 import { 
   WorkflowAIAnswer, 
   StatusSuggestion, 
-  TransitionSuggestion 
+  TransitionSuggestion,
+  WorkflowSuggestion,
 } from "../types/ai-context";
 
 interface WorkflowAIChatProps {
@@ -40,6 +42,8 @@ interface WorkflowAIChatProps {
   workspaceId: string;
   onCreateStatus?: (status: StatusSuggestion) => void;
   onCreateTransition?: (transition: TransitionSuggestion) => void;
+  onPreview?: (suggestion: StatusSuggestion | TransitionSuggestion | WorkflowSuggestion) => void;
+  onApplyFullWorkflow?: (suggestion: WorkflowSuggestion) => void;
 }
 
 interface ConversationItem extends WorkflowAIAnswer {
@@ -59,6 +63,8 @@ export const WorkflowAIChat = ({
   workspaceId,
   onCreateStatus,
   onCreateTransition,
+  onPreview,
+  onApplyFullWorkflow,
 }: WorkflowAIChatProps) => {
   const [question, setQuestion] = useState("");
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
@@ -116,6 +122,9 @@ export const WorkflowAIChat = ({
       /review\s+workflow/i,
       /find\s+problems/i,
     ];
+
+    // Long or complex prompts should almost always use the general assistant
+    if (text.length > 80) return "question";
 
     for (const pattern of statusPatterns) {
       if (pattern.test(text)) return "status";
@@ -204,7 +213,19 @@ export const WorkflowAIChat = ({
         { workflowId, workspaceId, question: text },
         {
           onSuccess: (response) => {
-            setConversation(prev => [...prev.slice(0, -1), response.data]);
+            const data = response.data;
+            const item: ConversationItem = {
+              ...data,
+            };
+            
+            // If the response contains a workflow suggestion, extract it
+            if (data.action?.type === "suggest_workflow") {
+              // For simplicity in the current UI, we'll store the first status/transition found if any,
+              // but we should really support a "Full Suggestion" card.
+              // Actually, let's keep the 'action' on the item and render it below.
+            }
+            
+            setConversation(prev => [...prev.slice(0, -1), item]);
           },
           onError: () => {
             setConversation(prev => prev.slice(0, -1));
@@ -229,6 +250,10 @@ export const WorkflowAIChat = ({
   const handleCreateTransition = (transition: TransitionSuggestion) => {
     onCreateTransition?.(transition);
     toast.success(`Creating transition: ${transition.fromStatusKey} → ${transition.toStatusKey}`);
+  };
+
+  const handleApplyFullWorkflow = (suggestion: WorkflowSuggestion) => {
+    onApplyFullWorkflow?.(suggestion);
   };
 
   const clearConversation = () => {
@@ -399,6 +424,65 @@ export const WorkflowAIChat = ({
                                 <Plus className="h-3 w-3 mr-1" />
                                 Create
                               </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Multi-Action Suggestion Card (Workflow Suggestion) */}
+                      {item.action?.type === "suggest_workflow" && (
+                        <Card className="mt-2 border-purple-200 bg-purple-50/50 dark:bg-purple-950/20">
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <GitBranch className="h-4 w-4 text-purple-600" />
+                                <h5 className="text-sm font-semibold text-purple-900 dark:text-purple-300">
+                                  Complex Workflow Update
+                                </h5>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs border-purple-200 text-purple-700 hover:bg-purple-100"
+                                  onClick={() => item.action?.data && onPreview?.(item.action.data)}
+                                >
+                                  <Eye className="h-3 w-3 mr-1" />
+                                  Preview
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs bg-purple-600 hover:bg-purple-700"
+                                  onClick={() => item.action?.data && handleApplyFullWorkflow(item.action.data as WorkflowSuggestion)}
+                                >
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Apply All
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              {((item.action.data as WorkflowSuggestion).statuses || []).length > 0 && (
+                                <div className="space-y-1">
+                                  <p className="text-[10px] font-medium text-purple-800 uppercase tracking-wider">Statuses to create</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(item.action.data as WorkflowSuggestion).statuses.map((s, i) => (
+                                      <Badge key={i} variant="outline" className="text-[9px] bg-white/50">
+                                        {s.name}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {((item.action.data as WorkflowSuggestion).transitions || []).length > 0 && (
+                                <div className="space-y-1">
+                                  <p className="text-[10px] font-medium text-purple-800 uppercase tracking-wider">Transitions to add</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {(item.action.data as WorkflowSuggestion).transitions.length} connections defined
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
