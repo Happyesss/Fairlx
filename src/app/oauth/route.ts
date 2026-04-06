@@ -40,6 +40,12 @@ export async function GET(request: NextRequest) {
   });
 
   // Redirect to unified callback for post-auth routing
-  return NextResponse.redirect(`${request.nextUrl.origin}/auth/callback`);
+  // Use sanitized origin to avoid browser issues with 0.0.0.0 or 127.0.0.1
+  const origin = request.nextUrl.origin;
+  const redirectBase = (origin.includes("0.0.0.0") || origin.includes("127.0.0.1"))
+    ? (process.env.NEXT_PUBLIC_APP_URL || origin).replace(/\/$/, "")
+    : origin.replace(/\/$/, "");
+
+  return NextResponse.redirect(`${redirectBase}/auth/callback`);
 }
 

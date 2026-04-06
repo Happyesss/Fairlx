@@ -6,7 +6,7 @@
  * Selectively pushes environment variables from .env.local to GitHub Secrets or Variables
  * by automatically detecting their type from .github/workflows/deploy.yml.
  * 
- * Usage: node scripts/ci/push_env.js <KEY_1> <KEY_2> ...
+ * Usage: node scripts/ci/push_env.js --repo=<username>/Fairlx <KEY_1> <KEY_2> ...
  */
 
 const fs = require('fs');
@@ -56,16 +56,31 @@ for (const line of envLines) {
 }
 
 // 4. Process CLI Arguments
-const keysToPush = process.argv.slice(2);
+const args = process.argv.slice(2);
+let targetRepo = '';
+const keysToPush = [];
+
+for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--repo=')) {
+        targetRepo = args[i].split('=')[1];
+    } else if (args[i] === '--repo' && i + 1 < args.length) {
+        targetRepo = args[++i];
+    } else {
+        keysToPush.push(args[i]);
+    }
+}
 
 if (keysToPush.length === 0) {
     console.log('\n🚀 GH Environment Pusher');
-    console.log('Usage: node scripts/ci/push_env.js <KEY_1> <KEY_2> ...');
-    console.log('\nExample: node scripts/ci/push_env.js OLLAMA_API_KEY OLLAMA_BASE_URL\n');
+    console.log('Usage: node scripts/ci/push_env.js [--repo=owner/repo] <KEY_1> <KEY_2> ...');
+    console.log('\nExample: node scripts/ci/push_env.js --repo=myorg/myrepo OLLAMA_API_KEY\n');
     process.exit(0);
 }
 
-console.log(`\n📦 Initializing sync for ${keysToPush.length} keys...\n`);
+const repoFlag = targetRepo ? `--repo ${targetRepo}` : '';
+console.log(`\n📦 Initializing sync for ${keysToPush.length} keys...`);
+if (targetRepo) console.log(`🎯 Target Repository: ${targetRepo}`);
+console.log('');
 
 for (const key of keysToPush) {
     const value = valueMap.get(key);
@@ -83,14 +98,14 @@ for (const key of keysToPush) {
     try {
         if (type === 'secret') {
             console.log(`🔒 Pushing Secret: ${key}...`);
-            execSync(`gh secret set "${key}" --body "${value}"`, { stdio: 'inherit' });
+            execSync(`gh secret set "${key}" --body "${value}" ${repoFlag}`, { stdio: 'inherit' });
         } else {
             console.log(`📝 Pushing Variable: ${key}...`);
-            execSync(`gh variable set "${key}" --body "${value}"`, { stdio: 'inherit' });
+            execSync(`gh variable set "${key}" --body "${value}" ${repoFlag}`, { stdio: 'inherit' });
         }
         console.log(`✅ Success: ${key}\n`);
     } catch (error) {
-        console.error(`❌ Error: Failed to push "${key}". Make sure you are logged in (gh auth login).\n`);
+        console.error(`❌ Error: Failed to push "${key}". Make sure you are logged in (gh auth login) and have access to the repo.\n`);
     }
 }
 
