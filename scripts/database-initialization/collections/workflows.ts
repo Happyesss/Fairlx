@@ -17,6 +17,9 @@ export async function setupWorkflows(databases: Databases, databaseId: string): 
 
     await ensureCollection(databases, databaseId, COLLECTION_ID, COLLECTION_NAME, [
         Permission.read(Role.any()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
     ]);
 
     // Attributes
@@ -24,8 +27,10 @@ export async function setupWorkflows(databases: Databases, databaseId: string): 
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'workspaceId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'projectId', 256, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'name', 256, true);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'key', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'description', 2048, false);
     await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isDefault', false, false);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isArchived', false, false);
     await ensureIntegerAttribute(databases, databaseId, COLLECTION_ID, 'statusCount', false, 0);
     await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isAiGenerated', false, false);
 

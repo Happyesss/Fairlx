@@ -64,13 +64,27 @@ ${transitionList || 'No transitions defined.'}
 - Final statuses: ${context.summary.finalStatuses}
 ${issuesSummary.length > 0 ? `- Issues detected: ${issuesSummary.join(', ')}` : '- No issues detected'}
 
----
-
 User Question: ${question}
 
-Provide a helpful, concise answer. If the user asks to create something, provide the details needed. If analyzing issues, explain what they mean and how to fix them.`;
+Provide a helpful, detailed answer. If the user asks to modify the workflow (add statuses, create transitions, etc.), please provide the technical details in a JSON block at the end of your response.
 
-    return aiService.generate(prompt, { maxTokens: 1500 });
+The JSON MUST follow this exact structure (no markdown in the JSON):
+{
+  "actionType": "suggest_workflow",
+  "data": {
+    "name": "${context.workflow.name}",
+    "statuses": [
+      {"name": "Status Name", "key": "STATUS_KEY", "statusType": "OPEN|IN_PROGRESS|CLOSED", "color": "#hex", "isInitial": false, "isFinal": false}
+    ],
+    "transitions": [
+      {"fromStatusKey": "FROM_KEY", "toStatusKey": "TO_KEY", "name": "Action Name"}
+    ]
+  }
+}
+
+Respond with a helpful text answer first, followed by the JSON block if applicable.`;
+
+    return aiService.generate(prompt, { maxTokens: 2000 });
   }
 
   /**

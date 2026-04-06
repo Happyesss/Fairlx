@@ -17,6 +17,7 @@ import {
   WorkflowAIContext,
   WorkflowAIAnswer,
   WorkflowAIResponse,
+  WorkflowAIAction,
 } from "../types/ai-context";
 import {
   Workflow,
@@ -34,14 +35,14 @@ const getWorkflowAIContextSchema = z.object({
 const askWorkflowQuestionSchema = z.object({
   workflowId: z.string(),
   workspaceId: z.string(),
-  question: z.string().min(3).max(2000),
+  question: z.string().min(3).max(5000),
 });
 
 // Schema for AI status creation
 const aiCreateStatusSchema = z.object({
   workflowId: z.string(),
   workspaceId: z.string(),
-  prompt: z.string().min(5).max(1000),
+  prompt: z.string().min(5).max(5000),
   autoExecute: z.boolean().optional().default(false),
 });
 
@@ -49,7 +50,7 @@ const aiCreateStatusSchema = z.object({
 const aiCreateTransitionSchema = z.object({
   workflowId: z.string(),
   workspaceId: z.string(),
-  prompt: z.string().min(5).max(1000),
+  prompt: z.string().min(5).max(5000),
   autoExecute: z.boolean().optional().default(false),
 });
 
@@ -57,7 +58,7 @@ const aiCreateTransitionSchema = z.object({
 const aiGenerateWorkflowSchema = z.object({
   workflowId: z.string(),
   workspaceId: z.string(),
-  prompt: z.string().min(10).max(2000),
+  prompt: z.string().min(10).max(5000),
 });
 
 // Schema for AI workflow analysis
@@ -235,14 +236,32 @@ const app = new Hono()
         // Get AI answer
         const answer = await workflowAI.answerWorkflowQuestion(question, context);
 
+        // Extract potential JSON action from the answer
+        let action: WorkflowAIAction | undefined = undefined;
+        try {
+          const jsonMatch = answer.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.actionType === "suggest_workflow") {
+              action = {
+                type: "suggest_workflow",
+                data: parsed.data,
+              };
+            }
+          }
+        } catch {
+          // Ignore parse errors, just return text answer
+        }
+
         const response: WorkflowAIAnswer = {
           question,
-          answer,
+          answer: answer.replace(/\{[\s\S]*\}/, "").trim(), // Strip JSON from text answer
           timestamp: new Date().toISOString(),
           contextUsed: {
             statusesCount: context.summary.totalStatuses,
             transitionsCount: context.summary.totalTransitions,
           },
+          action,
         };
 
         return c.json({ data: response });

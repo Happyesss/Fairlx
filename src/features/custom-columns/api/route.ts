@@ -1,6 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { ID, Query } from "node-appwrite";
+import { ID, Query, Permission, Role } from "node-appwrite";
 import { z } from "zod";
 
 import { createSessionClient } from "@/lib/appwrite";
@@ -52,7 +52,14 @@ const app = new Hono()
     async (c) => {
       const { name, workspaceId, projectId, workflowId, icon, color, position } = c.req.valid("json");
 
-      const { databases } = await createSessionClient();
+      const { databases, account } = await createSessionClient();
+      const user = await account.get();
+
+      const permissions = [
+        Permission.read(Role.user(user.$id)),
+        Permission.write(Role.user(user.$id)),
+        Permission.delete(Role.user(user.$id)),
+      ];
 
       // Build query based on projectId or workflowId
       const filterQueries = [Query.equal("workspaceId", workspaceId)];
@@ -101,7 +108,8 @@ const app = new Hono()
         DATABASE_ID,
         CUSTOM_COLUMNS_ID,
         ID.unique(),
-        documentData
+        documentData,
+        permissions
       );
 
       // Auto-sync: If this is a project column and the project has a workflow, create a workflow status
@@ -150,19 +158,21 @@ const app = new Hono()
                 WORKFLOW_STATUSES_ID,
                 ID.unique(),
                 {
+                  workspaceId,
                   workflowId: project.workflowId,
                   name: name,
                   key: normalizedKey,
                   icon: icon || "Circle",
                   color: color || "#6B7280",
                   statusType: "OPEN",
-                  description: null,
+                  description: "",
                   position: statusPosition,
                   positionX: 100 + (statusPosition * 180), // Place new statuses on canvas
                   positionY: 100,
                   isInitial: false,
                   isFinal: false,
-                }
+                },
+                permissions
               );
             }
           }

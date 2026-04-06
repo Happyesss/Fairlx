@@ -1,6 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { ID, Query, type Databases } from "node-appwrite";
+import { ID, Query, Permission, Role, type Databases } from "node-appwrite";
 import { z } from "zod";
 
 import { getMember } from "@/features/members/utils";
@@ -113,9 +113,12 @@ const app = new Hono()
         key,
         description,
         workspaceId,
+        projectId,
         spaceId,
         isDefault,
         copyFromWorkflowId,
+        statuses,
+        transitions,
       } = c.req.valid("json");
 
       const { hasPermission } = await checkWorkflowPermission(
@@ -145,8 +148,19 @@ const app = new Hono()
           spaceId: spaceId || null,
           isDefault: isDefault || false,
           isArchived: false,
-        }
+        },
+        [
+          Permission.read(Role.user(user.$id)),
+          Permission.write(Role.user(user.$id)),
+          Permission.delete(Role.user(user.$id)),
+        ]
       );
+
+      const permissions = [
+        Permission.read(Role.user(user.$id)),
+        Permission.write(Role.user(user.$id)),
+        Permission.delete(Role.user(user.$id)),
+      ];
 
       // If copying from existing workflow
       if (copyFromWorkflowId) {
@@ -170,19 +184,22 @@ const app = new Hono()
             WORKFLOW_STATUSES_ID,
             ID.unique(),
             {
+              workspaceId: workflow.workspaceId,
               workflowId: workflow.$id,
               name: status.name,
               key: status.key,
               icon: status.icon,
               color: status.color,
               statusType: status.statusType,
+              category: status.statusType === StatusType.CLOSED ? "done" : (status.statusType === StatusType.OPEN ? "todo" : "in_progress"),
               description: status.description,
               position: status.position,
               positionX: status.positionX || 0,
               positionY: status.positionY || 0,
               isInitial: status.isInitial,
               isFinal: status.isFinal,
-            }
+            },
+            permissions
           );
           statusIdMap[status.$id] = newStatus.$id;
         }
@@ -197,6 +214,7 @@ const app = new Hono()
               WORKFLOW_TRANSITIONS_ID,
               ID.unique(),
               {
+                workspaceId: workflow.workspaceId,
                 workflowId: workflow.$id,
                 fromStatusId: newFromId,
                 toStatusId: newToId,
@@ -206,61 +224,192 @@ const app = new Hono()
                 allowedMemberRoles: transition.allowedMemberRoles,
                 requiresApproval: transition.requiresApproval,
                 approverTeamIds: transition.approverTeamIds,
-              }
+              },
+              permissions
             );
           }
         }
       } else {
-        // Create default statuses from template (Software Development - simple linear flow)
-        const template = DEFAULT_SOFTWARE_WORKFLOW;
-        const statusIdMap: Record<string, string> = {};
+        // Handle initialization from explicit statuses, project columns, OR default template
+        let statusesInitialized = false;
 
-        for (const statusDef of template.statuses) {
-          const status = await databases.createDocument<WorkflowStatus>(
-            DATABASE_ID,
-            WORKFLOW_STATUSES_ID,
-            ID.unique(),
-            {
-              workflowId: workflow.$id,
-              name: statusDef.name,
-              key: statusDef.key,
-              icon: statusDef.icon,
-              color: statusDef.color,
-              statusType: statusDef.statusType,
-              position: statusDef.position,
-              positionX: statusDef.positionX || (statusDef.position * 250),
-              positionY: statusDef.positionY || 100,
-              isInitial: statusDef.isInitial,
-              isFinal: statusDef.isFinal,
+        if (statuses && statuses.length > 0) {
+          const statusIdMap: Record<string, string> = {};
+
+          for (let i = 0; i < statuses.length; i++) {
+            const statusDef = statuses[i];
+            const normalizedKey = statusDef.key || statusDef.name.toLowerCase().replace(/[\s_-]+/g, "_").toUpperCase();
+            
+            const status = await databases.createDocument<WorkflowStatus>(
+              DATABASE_ID,
+              WORKFLOW_STATUSES_ID,
+              ID.unique(),
+              {
+                workspaceId: workflow.workspaceId,
+                workflowId: workflow.$id,
+                name: statusDef.name,
+                key: normalizedKey,
+                icon: statusDef.icon || "Circle",
+                color: statusDef.color || "#6B7280",
+                statusType: statusDef.statusType || StatusType.OPEN,
+                category: statusDef.statusType === StatusType.CLOSED ? "done" : (statusDef.statusType === StatusType.OPEN ? "todo" : "in_progress"),
+                position: statusDef.position ?? i,
+                positionX: i * 280 + 100, // Normalized grid
+                positionY: 200,
+                isInitial: statusDef.isInitial ?? (i === 0),
+                isFinal: statusDef.isFinal ?? (statusDef.statusType === StatusType.CLOSED),
+              },
+              permissions
+            );
+            statusIdMap[normalizedKey] = status.$id;
+          }
+
+          // Create explicit transitions if provided
+          if (transitions && transitions.length > 0) {
+            for (const transitionDef of transitions) {
+              const fromId = statusIdMap[transitionDef.fromStatusKey];
+              const toId = statusIdMap[transitionDef.toStatusKey];
+              if (fromId && toId) {
+                await databases.createDocument<WorkflowTransition>(
+                  DATABASE_ID,
+                  WORKFLOW_TRANSITIONS_ID,
+                  ID.unique(),
+                  {
+                    workspaceId: workflow.workspaceId,
+                    workflowId: workflow.$id,
+                    fromStatusId: fromId,
+                    toStatusId: toId,
+                    name: transitionDef.name || null,
+                    allowedTeamIds: transitionDef.allowedTeamIds || null,
+                    requiresApproval: transitionDef.requiresApproval || false,
+                  },
+                  permissions
+                );
+              }
             }
-          );
-          statusIdMap[statusDef.key] = status.$id;
+          }
+          statusesInitialized = true;
         }
 
-        // ALWAYS create simple transitions from template (never use "ALL")
-        // Software Development template has proper defined transitions
-        if (Array.isArray(template.transitions)) {
-          // Create transitions from template
-          for (const transitionDef of template.transitions) {
-            const fromId = statusIdMap[transitionDef.from];
-            const toId = statusIdMap[transitionDef.to];
-            if (fromId && toId) {
-              await databases.createDocument<WorkflowTransition>(
+        if (!statusesInitialized && projectId) {
+          const projectColumns = await databases.listDocuments(
+            DATABASE_ID,
+            CUSTOM_COLUMNS_ID,
+            [Query.equal("projectId", projectId), Query.orderAsc("position")]
+          );
+
+          if (projectColumns.total > 0) {
+            for (let i = 0; i < projectColumns.documents.length; i++) {
+              const column = projectColumns.documents[i];
+              const normalizedKey = column.name.toLowerCase().replace(/[\s_-]+/g, "_").toUpperCase();
+              
+              // Map status type based on name
+              let statusType = StatusType.IN_PROGRESS;
+              let category = "in_progress";
+              const lowerName = column.name.toLowerCase();
+              
+              if (lowerName.includes("todo") || lowerName.includes("backlog") || lowerName.includes("open") || i === 0) {
+                statusType = StatusType.OPEN;
+                category = "todo";
+              } else if (lowerName.includes("done") || lowerName.includes("close") || lowerName.includes("finish") || lowerName.includes("completed")) {
+                statusType = StatusType.CLOSED;
+                category = "done";
+              }
+
+              await databases.createDocument<WorkflowStatus>(
                 DATABASE_ID,
-                WORKFLOW_TRANSITIONS_ID,
+                WORKFLOW_STATUSES_ID,
                 ID.unique(),
                 {
+                  workspaceId: workflow.workspaceId,
                   workflowId: workflow.$id,
-                  fromStatusId: fromId,
-                  toStatusId: toId,
-                  name: transitionDef.name || null,
-                  allowedTeamIds: transitionDef.allowedTeamIds || null,
-                  requiresApproval: transitionDef.requiresApproval || false,
-                }
+                  name: column.name,
+                  key: normalizedKey,
+                  icon: column.icon || "Circle",
+                  color: column.color || "#6B7280",
+                  statusType: statusType,
+                  category: category,
+                  position: i, // Use index for standard ordering
+                  positionX: i * 280 + 100, // Grid spacing
+                  positionY: 200,
+                  isInitial: i === 0, // First column is the entry point
+                  isFinal: statusType === StatusType.CLOSED,
+                },
+                permissions
               );
+            }
+            statusesInitialized = true;
+          }
+        }
+
+        if (!statusesInitialized) {
+          // Create default statuses from template (Software Development - simple linear flow)
+          const template = DEFAULT_SOFTWARE_WORKFLOW;
+          const statusIdMap: Record<string, string> = {};
+
+          for (const statusDef of template.statuses) {
+            const status = await databases.createDocument<WorkflowStatus>(
+              DATABASE_ID,
+              WORKFLOW_STATUSES_ID,
+              ID.unique(),
+              {
+                workspaceId: workflow.workspaceId,
+                workflowId: workflow.$id,
+                name: statusDef.name,
+                key: statusDef.key,
+                icon: statusDef.icon,
+                color: statusDef.color,
+                statusType: statusDef.statusType,
+                category: statusDef.key === "DONE" ? "done" : (statusDef.statusType === StatusType.OPEN ? "todo" : "in_progress"),
+                position: statusDef.position,
+                positionX: statusDef.positionX || (statusDef.position * 250),
+                positionY: statusDef.positionY || 100,
+                isInitial: statusDef.isInitial,
+                isFinal: statusDef.isFinal,
+              },
+              permissions
+            );
+            statusIdMap[statusDef.key] = status.$id;
+          }
+
+          // ALWAYS create simple transitions from template (never use "ALL")
+          if (Array.isArray(template.transitions)) {
+            for (const transitionDef of template.transitions) {
+              const fromId = statusIdMap[transitionDef.from];
+              const toId = statusIdMap[transitionDef.to];
+              if (fromId && toId) {
+                await databases.createDocument<WorkflowTransition>(
+                  DATABASE_ID,
+                  WORKFLOW_TRANSITIONS_ID,
+                  ID.unique(),
+                  {
+                    workspaceId: workflow.workspaceId,
+                    workflowId: workflow.$id,
+                    fromStatusId: fromId,
+                    toStatusId: toId,
+                    name: transitionDef.name || null,
+                    allowedTeamIds: transitionDef.allowedTeamIds || null,
+                    requiresApproval: transitionDef.requiresApproval || false,
+                  },
+                  permissions
+                );
+              }
             }
           }
         }
+      }
+
+      // Automatically assign workflow to project if projectId was provided
+      if (projectId) {
+        await databases.updateDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId,
+          {
+            workflowId: workflow.$id,
+          }
+        );
+        await invalidateCache(CK.project(projectId));
       }
 
       return c.json({ data: workflow });
@@ -599,6 +748,8 @@ const app = new Hono()
         workflowId
       );
 
+      console.log(`Creating status for workflow: ${workflowId}, workspace: ${workflow.workspaceId}`);
+
       if (workflow.isSystem) {
         return c.json({ error: "Cannot modify system workflows" }, 400);
       }
@@ -637,84 +788,97 @@ const app = new Hono()
         position = (allStatuses.documents[0]?.position ?? -1) + 1;
       }
 
-      const status = await databases.createDocument<WorkflowStatus>(
-        DATABASE_ID,
-        WORKFLOW_STATUSES_ID,
-        ID.unique(),
-        {
-          workflowId,
-          name: statusData.name,
-          key: statusData.key,
-          icon: statusData.icon || "Circle",
-          color: statusData.color,
-          statusType: statusData.statusType || StatusType.OPEN,
-          description: statusData.description || null,
-          position,
-          positionX: statusData.positionX || 0,
-          positionY: statusData.positionY || 0,
-          isInitial: statusData.isInitial || false,
-          isFinal: statusData.isFinal || false,
-        }
-      );
-
-      // Auto-sync: Create custom columns in all projects that use this workflow
       try {
-        const projectsUsingWorkflow = await databases.listDocuments(
+        const status = await databases.createDocument<WorkflowStatus>(
           DATABASE_ID,
-          PROJECTS_ID,
-          [Query.equal("workflowId", workflowId)]
+          WORKFLOW_STATUSES_ID,
+          ID.unique(),
+          {
+            workspaceId: workflow.workspaceId,
+            workflowId,
+            name: statusData.name,
+            key: statusData.key,
+            icon: statusData.icon || "Circle",
+            color: statusData.color,
+            statusType: statusData.statusType || StatusType.OPEN,
+            category: (statusData.statusType || StatusType.OPEN) === StatusType.CLOSED ? "done" : ((statusData.statusType || StatusType.OPEN) === StatusType.OPEN ? "todo" : "in_progress"),
+            description: statusData.description || "",
+            position,
+            positionX: statusData.positionX || 0,
+            positionY: statusData.positionY || 0,
+            isInitial: statusData.isInitial || false,
+            isFinal: statusData.isFinal || false,
+          },
+          [
+            Permission.read(Role.user(user.$id)),
+            Permission.write(Role.user(user.$id)),
+            Permission.delete(Role.user(user.$id)),
+          ]
         );
 
-        // Create custom column for each project using this workflow
-        for (const project of projectsUsingWorkflow.documents) {
-          // Check if custom column already exists for this project with the same name
-          const existingColumns = await databases.listDocuments(
+        // Auto-sync: Create custom columns in all projects that use this workflow
+        try {
+          const projectsUsingWorkflow = await databases.listDocuments(
             DATABASE_ID,
-            CUSTOM_COLUMNS_ID,
-            [
-              Query.equal("projectId", project.$id),
-              Query.equal("name", statusData.name)
-            ]
+            PROJECTS_ID,
+            [Query.equal("workflowId", workflowId)]
           );
 
-          if (existingColumns.total === 0) {
-            // Get max position for this project's columns
-            const projectColumns = await databases.listDocuments(
+          // Create custom column for each project using this workflow
+          for (const project of projectsUsingWorkflow.documents) {
+            // Check if custom column already exists for this project with the same name
+            const existingColumns = await databases.listDocuments(
               DATABASE_ID,
               CUSTOM_COLUMNS_ID,
               [
                 Query.equal("projectId", project.$id),
-                Query.orderDesc("position"),
-                Query.limit(1)
+                Query.equal("name", statusData.name)
               ]
             );
-            const columnPosition = projectColumns.documents.length > 0 
-              ? projectColumns.documents[0].position + 1000 
-              : 1000;
 
-            await databases.createDocument(
-              DATABASE_ID,
-              CUSTOM_COLUMNS_ID,
-              ID.unique(),
-              {
-                name: statusData.name,
-                workspaceId: workflow.workspaceId,
-                projectId: project.$id,
-                icon: statusData.icon || "Circle",
-                color: statusData.color,
-                position: columnPosition,
-              }
-            );
+            if (existingColumns.total === 0) {
+              // Get max position for this project's columns
+              const projectColumns = await databases.listDocuments(
+                DATABASE_ID,
+                CUSTOM_COLUMNS_ID,
+                [
+                  Query.equal("projectId", project.$id),
+                  Query.orderDesc("position"),
+                  Query.limit(1)
+                ]
+              );
+              const columnPosition = projectColumns.documents.length > 0 
+                ? projectColumns.documents[0].position + 1000 
+                : 1000;
+
+              await databases.createDocument(
+                DATABASE_ID,
+                CUSTOM_COLUMNS_ID,
+                ID.unique(),
+                {
+                  name: statusData.name,
+                  workspaceId: workflow.workspaceId,
+                  projectId: project.$id,
+                  icon: statusData.icon || "Circle",
+                  color: statusData.color,
+                  position: columnPosition,
+                }
+              );
+            }
           }
+        } catch (syncError) {
+          // Log but don't fail the main operation
+          console.error("Error syncing workflow status to project columns:", syncError);
         }
-      } catch (syncError) {
-        // Log but don't fail the main operation
-        console.error("Error syncing workflow status to project columns:", syncError);
+
+        await invalidateCache(CK.workflow(workflowId), CK.workflowStatuses(workflowId));
+
+        return c.json({ data: status });
+      } catch (error) {
+        console.error("CRITICAL: Failed to create workflow status:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to create workflow status";
+        return c.json({ error: errorMessage }, 500);
       }
-
-      await invalidateCache(CK.workflow(workflowId), CK.workflowStatuses(workflowId));
-
-      return c.json({ data: status });
     }
   )
 
@@ -973,6 +1137,7 @@ const app = new Hono()
         WORKFLOW_TRANSITIONS_ID,
         ID.unique(),
         {
+          workspaceId: workflow.workspaceId,
           workflowId,
           fromStatusId: transitionData.fromStatusId,
           toStatusId: transitionData.toStatusId,
@@ -1923,12 +2088,14 @@ const app = new Hono()
               WORKFLOW_STATUSES_ID,
               ID.unique(),
               {
+                workspaceId: workflow.workspaceId,
                 workflowId,
                 name: projectStatus.name,
                 key: projectStatus.key,
                 icon: projectStatus.icon,
                 color: projectStatus.color,
                 statusType: StatusType.OPEN,
+                category: "todo",
                 description: null,
                 position: newPosition,
                 // If visible, place on canvas; otherwise off canvas

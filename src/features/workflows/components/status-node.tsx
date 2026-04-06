@@ -52,24 +52,35 @@ export const StatusNode = memo(({ data, selected }: StatusNodeProps) => {
       className={cn(
         "relative min-w-[140px] max-w-[180px] rounded-lg border-2 bg-background shadow-md transition-all duration-200",
         selected ? "ring-2 ring-primary ring-offset-2" : "hover:shadow-lg",
+        data.isPreview && "border-dashed opacity-70",
         "group"
       )}
       style={{ borderColor: data.color }}
     >
       {/* Connection Handles */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!w-2.5 !h-2.5 !bg-muted-foreground/50 !border-2 !border-background hover:!bg-primary transition-colors"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-2.5 !h-2.5 !bg-muted-foreground/50 !border-2 !border-background hover:!bg-primary transition-colors"
-      />
+      {!data.isPreview && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Left}
+            className="!w-2.5 !h-2.5 !bg-muted-foreground/50 !border-2 !border-background hover:!bg-primary transition-colors"
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            className="!w-2.5 !h-2.5 !bg-muted-foreground/50 !border-2 !border-background hover:!bg-primary transition-colors"
+          />
+        </>
+      )}
 
       {/* Status Indicators */}
       <div className="absolute -top-1.5 left-2 flex gap-1">
+        {data.isPreview && (
+          <Badge variant="secondary" className="h-4 text-[8px] px-1.5 font-medium gap-0.5 bg-purple-100 text-purple-700 border-purple-200">
+            <Sparkles className="size-2 text-purple-600" />
+            Suggested
+          </Badge>
+        )}
         {data.isInitial && (
           <Badge variant="secondary" className="h-4 text-[8px] px-1.5 font-medium gap-0.5">
             <Play className="size-2 fill-current" />
@@ -85,7 +96,7 @@ export const StatusNode = memo(({ data, selected }: StatusNodeProps) => {
       </div>
 
       {/* Main Content */}
-      <div className="p-3 pt-4">
+      <div className={cn("p-3 pt-4", data.isPreview && "pointer-events-none")}>
         {/* Header */}
         <div className="flex items-start justify-between gap-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -107,37 +118,39 @@ export const StatusNode = memo(({ data, selected }: StatusNodeProps) => {
           </div>
 
           {/* Actions Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Edit className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => data.onEdit(data.id)}>
-                <Edit className="size-4 mr-2" />
-                Edit Status
-              </DropdownMenuItem>
-              {data.onRemove && (
-                <DropdownMenuItem onClick={() => data.onRemove?.(data.id)}>
-                  <Circle className="size-4 mr-2" />
-                  Remove from Canvas
+          {!data.isPreview && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Edit className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => data.onEdit(data.id)}>
+                  <Edit className="size-4 mr-2" />
+                  Edit Status
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => data.onDelete(data.id)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="size-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {data.onRemove && (
+                  <DropdownMenuItem onClick={() => data.onRemove?.(data.id)}>
+                    <Circle className="size-4 mr-2" />
+                    Remove from Canvas
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => data.onDelete(data.id)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="size-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {/* Status Type Badge */}
@@ -154,7 +167,7 @@ export const StatusNode = memo(({ data, selected }: StatusNodeProps) => {
 
       {/* Color Bar */}
       <div
-        className="h-0.5 rounded-b-lg"
+        className={cn("h-0.5 rounded-b-lg", data.isPreview && "opacity-50")}
         style={{ backgroundColor: data.color }}
       />
     </div>
