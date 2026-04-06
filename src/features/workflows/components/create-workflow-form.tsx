@@ -3,8 +3,7 @@
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { GitBranch, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { GitBranch } from "lucide-react";
 
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 
@@ -21,33 +20,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+
 
 import { createWorkflowSchema } from "../schemas";
 import { useCreateWorkflow } from "../api/use-create-workflow";
-import { StatusType, STATUS_TYPE_CONFIG, DEFAULT_SOFTWARE_WORKFLOW } from "../types";
 
-// Type for local status management
-interface LocalStatus {
-  name: string;
-  key: string;
-  statusType: StatusType;
-  icon: string;
-  color: string;
-  position: number;
-  isInitial: boolean;
-  isFinal: boolean;
-}
 
 interface CreateWorkflowFormProps {
   onCancel?: () => void;
@@ -56,27 +37,10 @@ interface CreateWorkflowFormProps {
   projectId?: string;
 }
 
-const STATUS_TYPE_COLORS: Record<StatusType, string> = {
-  [StatusType.OPEN]: "#6b7280",
-  [StatusType.IN_PROGRESS]: "#3b82f6",
-  [StatusType.CLOSED]: "#22c55e",
-};
-
-export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spaceId }: CreateWorkflowFormProps) => {
+export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spaceId, projectId }: CreateWorkflowFormProps) => {
   const hookWorkspaceId = useWorkspaceId();
   const workspaceId = propWorkspaceId || hookWorkspaceId;
   const { mutate, isPending } = useCreateWorkflow();
-
-  const [statuses, setStatuses] = useState<LocalStatus[]>(DEFAULT_SOFTWARE_WORKFLOW.statuses.map((s, i) => ({
-    name: s.name,
-    key: s.key,
-    statusType: s.statusType,
-    icon: s.icon,
-    color: s.color,
-    position: i,
-    isInitial: i === 0,
-    isFinal: s.statusType === StatusType.CLOSED,
-  })));
 
   const form = useForm<z.infer<typeof createWorkflowSchema>>({
     resolver: zodResolver(createWorkflowSchema.omit({ workspaceId: true })),
@@ -88,53 +52,14 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
     },
   });
 
-  const addStatus = () => {
-    setStatuses([
-      ...statuses,
-      {
-        name: "",
-        key: "",
-        statusType: StatusType.OPEN,
-        icon: "circle",
-        color: "#94a3b8",
-        position: statuses.length,
-        isInitial: false,
-        isFinal: false,
-      },
-    ]);
-  };
-
-  const removeStatus = (index: number) => {
-    setStatuses(statuses.filter((_: LocalStatus, i: number) => i !== index));
-  };
-
-  const updateStatus = (index: number, field: keyof LocalStatus, value: unknown) => {
-    const newStatuses = [...statuses];
-    (newStatuses[index] as unknown as Record<string, unknown>)[field] = value;
-    
-    // Auto-generate key from name
-    if (field === "name") {
-      newStatuses[index].key = (value as string)
-        .toUpperCase()
-        .replace(/[^A-Z0-9_]/g, "_")
-        .substring(0, 20);
-    }
-    
-    // Auto-set color based on status type
-    if (field === "statusType") {
-      newStatuses[index].color = STATUS_TYPE_COLORS[value as StatusType];
-    }
-    
-    setStatuses(newStatuses);
-  };
-
   const onSubmit = (values: z.infer<typeof createWorkflowSchema>) => {
     mutate(
-      { 
+      {
         json: {
           ...values,
           workspaceId,
           spaceId: spaceId || undefined,
+          projectId: projectId || undefined,
         }
       },
       {
@@ -168,8 +93,8 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
                   <FormItem>
                     <FormLabel>Workflow Name</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="e.g., Software Development, Bug Tracking" 
+                      <Input
+                        placeholder="e.g., Software Development, Bug Tracking"
                         {...field}
                         onChange={(e) => {
                           field.onChange(e);
@@ -197,8 +122,8 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
                   <FormItem>
                     <FormLabel>Workflow Key</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="e.g., SOFTWARE_DEV, BUG_TRACKING" 
+                      <Input
+                        placeholder="e.g., SOFTWARE_DEV, BUG_TRACKING"
                         {...field}
                         className="font-mono"
                         onChange={(e) => {
@@ -222,11 +147,11 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
                   <FormItem>
                     <FormLabel>Description (Optional)</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        placeholder="Describe this workflow" 
+                      <Textarea
+                        placeholder="Describe this workflow"
                         className="resize-none"
                         rows={2}
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
@@ -254,78 +179,6 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
                   </FormItem>
                 )}
               />
-
-              <DottedSeparator className="py-4" />
-
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium">Statuses</h3>
-                  <Button type="button" variant="outline" size="sm" onClick={addStatus}>
-                    <Plus className="size-4 mr-1" />
-                    Add Status
-                  </Button>
-                </div>
-
-                <div className="space-y-3">
-                  {statuses.map((status: LocalStatus, index: number) => (
-                    <div key={index} className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: status.color }}
-                      />
-                      <Input
-                        placeholder="Status name"
-                        value={status.name}
-                        onChange={(e) => updateStatus(index, "name", e.target.value)}
-                        className="flex-1"
-                      />
-                      <Select
-                        value={status.statusType}
-                        onValueChange={(value) => updateStatus(index, "statusType", value)}
-                      >
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={StatusType.OPEN}>Open</SelectItem>
-                          <SelectItem value={StatusType.IN_PROGRESS}>In Progress</SelectItem>
-                          <SelectItem value={StatusType.CLOSED}>Closed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <input
-                        type="color"
-                        value={status.color}
-                        onChange={(e) => updateStatus(index, "color", e.target.value)}
-                        className="size-8 rounded border cursor-pointer"
-                      />
-                      {statuses.length > 2 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeStatus(index)}
-                        >
-                          <Trash2 className="size-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex gap-2 flex-wrap">
-                  {Object.entries(STATUS_TYPE_CONFIG).map(([statusType, config]) => (
-                    <Badge
-                      key={statusType}
-                      variant="outline"
-                      className="text-xs"
-                      style={{ borderColor: config.defaultColor, color: config.defaultColor }}
-                    >
-                      {config.label}:{" "}
-                      {statuses.filter((s: LocalStatus) => s.statusType === statusType).length}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <DottedSeparator className="py-7" />

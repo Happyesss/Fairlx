@@ -56,7 +56,13 @@ export async function ensureCollection(
 ): Promise<void> {
     try {
         await databases.getCollection(databaseId, collectionId);
-        logger.skipped('collection', name);
+        // Important: Update permissions even if collection exists
+        if (permissions) {
+            await databases.updateCollection(databaseId, collectionId, name, permissions);
+            logger.updated('collection permissions', name);
+        } else {
+            logger.skipped('collection', name);
+        }
     } catch (err) {
         if (isAppwriteError(err, 404)) {
             try {

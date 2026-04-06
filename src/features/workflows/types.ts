@@ -98,6 +98,7 @@ export type Workflow = Models.Document & {
 // Workflow Status (Simplified - NO category, NO customColumnId)
 // ===================================
 export type WorkflowStatus = Models.Document & {
+  workspaceId: string;
   workflowId: string;
   name: string;
   key: string;
@@ -116,6 +117,7 @@ export type WorkflowStatus = Models.Document & {
 // Workflow Transition (Enhanced with Team-Based Rules)
 // ===================================
 export type WorkflowTransition = Models.Document & {
+  workspaceId: string;
   workflowId: string;
   fromStatusId: string;
   toStatusId: string;
@@ -133,6 +135,29 @@ export type WorkflowTransition = Models.Document & {
   // Automation
   autoTransition?: boolean;             // Auto-transition when conditions are met
   conditions?: TransitionCondition | null; // Conditions for auto-transition
+};
+
+// ===================================
+// Generic Types for UI/AI (Supports both DB docs and suggestions)
+// ===================================
+export type WorkflowStatusLike = Partial<WorkflowStatus> & {
+  name: string;
+  key: string;
+  statusType: StatusType;
+  color: string;
+  icon?: string;
+  position?: number;
+  positionX?: number;
+  positionY?: number;
+  isInitial?: boolean;
+  isFinal?: boolean;
+  isPreview?: boolean;
+};
+
+export type WorkflowTransitionLike = Partial<WorkflowTransition> & {
+  fromStatusKey?: string;
+  toStatusKey?: string;
+  isPreview?: boolean;
 };
 
 // ===================================
@@ -181,6 +206,7 @@ export interface StatusNodeData extends Record<string, unknown> {
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onRemove?: (id: string) => void;
+  isPreview?: boolean;
   [key: string]: unknown;
 }
 
@@ -196,6 +222,7 @@ export interface TransitionEdgeData extends Record<string, unknown> {
   approverTeamIds?: string[] | null;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  isPreview?: boolean;
   [key: string]: unknown;
 }
 
@@ -363,7 +390,8 @@ export const STATUS_COLORS = [
  * Statuses with positionX=0 AND positionY=0 are considered "in sidebar"
  * and are NOT rendered on the workflow canvas, but remain usable in dropdowns.
  */
-export function hasCanvasPosition(status: WorkflowStatus): boolean {
+export function hasCanvasPosition(status: WorkflowStatusLike): boolean {
+  if (status.isPreview) return true;
   return (status.positionX !== undefined && status.positionX > 0) || 
          (status.positionY !== undefined && status.positionY > 0);
 }
@@ -494,49 +522,60 @@ export function getReachableStatusIds(
 }
 
 export function convertStatusesToNodes(
-  statuses: WorkflowStatus[],
+  statuses: WorkflowStatusLike[],
   onEdit: (id: string) => void,
   onDelete: (id: string) => void,
-  onRemove?: (id: string) => void
+  onRemove?: (id: string) => void,
+  isPreview?: boolean
 ): StatusNode[] {
   // Only render statuses that have valid canvas positions
   const canvasStatuses = statuses.filter(hasCanvasPosition);
   
-  return canvasStatuses.map((status) => ({
-    id: status.$id,
-    type: "statusNode",
-    position: { x: status.positionX || status.position * 280, y: status.positionY || 150 },
-    data: {
-      id: status.$id,
-      name: status.name,
-      key: status.key,
-      icon: status.icon,
-      color: status.color,
-      statusType: status.statusType,
-      description: status.description,
-      isInitial: status.isInitial,
-      isFinal: status.isFinal,
-      position: status.position,
-      onEdit,
-      onDelete,
-      onRemove,
-    },
-  }));
+  return canvasStatuses.map((status: WorkflowStatusLike) => {
+    const nodeId = status.$id || status.key; // Use key as stable ID for suggestions
+    return {
+      id: nodeId,
+      type: "statusNode",
+      position: { x: status.positionX || (status.position ? status.position * 280 : 100), y: status.positionY || 150 },
+      data: {
+        id: nodeId,
+        name: status.name,
+        key: status.key,
+        icon: status.icon || "Circle",
+        color: status.color,
+        statusType: status.statusType,
+        description: status.description,
+        isInitial: !!status.isInitial,
+        isFinal: !!status.isFinal,
+        position: status.position || 0,
+        onEdit,
+        onDelete,
+        onRemove,
+        isPreview: isPreview || status.isPreview,
+      },
+    };
+  });
 }
 
 export function convertTransitionsToEdges(
-  transitions: WorkflowTransition[],
+  transitions: WorkflowTransitionLike[],
   onEdit: (id: string) => void,
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void,
+  isPreview?: boolean
 ): TransitionEdge[] {
-  return transitions.map((transition) => ({
-    id: transition.$id,
-    source: transition.fromStatusId,
-    target: transition.toStatusId,
-    type: "transitionEdge",
-    animated: true,
-    data: {
-      id: transition.$id,
+  return transitions.map((transition: WorkflowTransitionLike) => {
+    const fromId = transition.fromStatusId || transition.fromStatusKey || "";
+    const toId = transition.toStatusId || transition.toStatusKey || "";
+    const edgeId = transition.$id || `preview-edge-${fromId}-${toId}`;
+
+    return {
+      id: edgeId,
+      source: fromId,
+      target: toId,
+      type: "transitionEdge",
+      animated: true,
+      data: {
+        id: edgeId,
       name: transition.name,
       description: transition.description,
       allowedTeamIds: transition.allowedTeamIds,
@@ -545,8 +584,10 @@ export function convertTransitionsToEdges(
       approverTeamIds: transition.approverTeamIds,
       onEdit,
       onDelete,
+      isPreview,
     },
-  }));
+  };
+});
 }
 
 // ===================================

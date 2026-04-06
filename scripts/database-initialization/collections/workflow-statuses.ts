@@ -18,16 +18,23 @@ export async function setupWorkflowStatuses(databases: Databases, databaseId: st
 
     await ensureCollection(databases, databaseId, COLLECTION_ID, COLLECTION_NAME, [
         Permission.read(Role.any()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
     ]);
 
     // Attributes
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'workflowId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'workspaceId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'name', 256, true);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'key', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'color', 64, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'icon', 256, false);
-    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'category', ['todo', 'in_progress', 'done', 'cancelled'], true);
+    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'statusType', ['OPEN', 'IN_PROGRESS', 'CLOSED'], true);
+    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'category', ['TODO', 'ASSIGNED', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'CUSTOM'], false);
     await ensureIntegerAttribute(databases, databaseId, COLLECTION_ID, 'position', true);
+    await ensureIntegerAttribute(databases, databaseId, COLLECTION_ID, 'positionX', false);
+    await ensureIntegerAttribute(databases, databaseId, COLLECTION_ID, 'positionY', false);
     await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isInitial', false, false);
     await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isFinal', false, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'description', 1024, false);

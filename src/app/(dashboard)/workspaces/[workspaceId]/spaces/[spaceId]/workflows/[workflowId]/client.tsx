@@ -55,19 +55,30 @@ import { useSyncWithResolution } from "@/features/workflows/api/use-sync-with-re
 import { useGetMultipleProjectTeams } from "@/features/project-teams/api/use-get-multiple-project-teams";
 import { useConfirm } from "@/hooks/use-confirm";
 import { PageLoader } from "@/components/page-loader";
+import { toast } from "sonner";
 
+import {
+  updateWorkflowStatusSchema,
+  createWorkflowStatusSchema,
+  updateWorkflowTransitionSchema,
+} from "@/features/workflows/schemas";
+import { z } from "zod";
 import {
   WorkflowStatus,
   WorkflowTransition,
   StatusNodeData,
   convertStatusesToNodes,
   convertTransitionsToEdges,
-  StatusNode as StatusNodeType,
-  TransitionEdge as TransitionEdgeType,
   PopulatedWorkflow,
   StatusType,
+  StatusNode as StatusNodeType,
+  TransitionEdge as TransitionEdgeType,
 } from "@/features/workflows/types";
-import { StatusSuggestion, TransitionSuggestion } from "@/features/workflows/types/ai-context";
+import { 
+  StatusSuggestion, 
+  TransitionSuggestion,
+  WorkflowSuggestion
+} from "@/features/workflows/types/ai-context";
 import { StatusNode } from "@/features/workflows/components/status-node";
 import { TransitionEdge } from "@/features/workflows/components/transition-edge";
 import { StatusEditDialog } from "@/features/workflows/components/status-edit-dialog";
@@ -305,6 +316,7 @@ const WorkflowEditor = () => {
   const [showCanvasTip, setShowCanvasTip] = useState(true);
   const [editingStatus, setEditingStatus] = useState<WorkflowStatus | null>(null);
   const [editingTransition, setEditingTransition] = useState<WorkflowTransition | null>(null);
+  const [previewSuggestion, setPreviewSuggestion] = useState<WorkflowSuggestion | null>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeType>([]);
@@ -498,14 +510,38 @@ const WorkflowEditor = () => {
 
   // Convert workflow data to React Flow nodes and edges
   useEffect(() => {
-    if (workflow?.statuses) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setNodes(convertStatusesToNodes(workflow.statuses, handleNodeEdit, handleNodeDelete, handleRemoveStatus) as any);
+    let currentNodes = workflow?.statuses 
+      ? convertStatusesToNodes(workflow.statuses, handleNodeEdit, handleNodeDelete, handleRemoveStatus) 
+      : [];
+    let currentEdges = workflow?.transitions 
+      ? convertTransitionsToEdges(workflow.transitions, handleEdgeEdit, handleEdgeDelete)
+      : [];
+
+    if (previewSuggestion) {
+      // Offset preview nodes slightly to avoid complete overlap if they match existing names
+      const previewNodes = convertStatusesToNodes(
+        previewSuggestion.statuses || [],
+        () => {}, 
+        () => {}, 
+        () => {},
+        true
+      );
+      
+      const previewEdges = convertTransitionsToEdges(
+        previewSuggestion.transitions || [],
+        () => {}, 
+        () => {},
+        true
+      );
+
+      // Merge preview nodes and edges
+      currentNodes = [...currentNodes, ...previewNodes];
+      currentEdges = [...currentEdges, ...previewEdges];
     }
-    if (workflow?.transitions) {
-      setEdges(convertTransitionsToEdges(workflow.transitions, handleEdgeEdit, handleEdgeDelete));
-    }
-  }, [workflow?.statuses, workflow?.transitions, setNodes, setEdges, handleNodeEdit, handleNodeDelete, handleRemoveStatus, handleEdgeEdit, handleEdgeDelete]);
+
+    setNodes(currentNodes);
+    setEdges(currentEdges);
+  }, [workflow?.statuses, workflow?.transitions, previewSuggestion, setNodes, setEdges, handleNodeEdit, handleNodeDelete, handleRemoveStatus, handleEdgeEdit, handleEdgeDelete]);
 
   const handleDelete = async () => {
     const ok = await confirmDelete();
@@ -610,8 +646,10 @@ const WorkflowEditor = () => {
     if (editingStatus) {
       await updateStatus({
         param: { workflowId, statusId: editingStatus.$id },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        json: data as any,
+        json: {
+          ...data,
+          description: data.description ?? undefined,
+        } as z.infer<typeof updateWorkflowStatusSchema>,
       });
     } else {
       // Calculate position for new status
@@ -625,8 +663,8 @@ const WorkflowEditor = () => {
           ...data,
           positionX,
           positionY,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any,
+          description: data.description ?? undefined,
+        } as z.infer<typeof createWorkflowStatusSchema>,
       });
     }
     setStatusDialogOpen(false);
@@ -638,8 +676,10 @@ const WorkflowEditor = () => {
     if (editingTransition) {
       await updateTransition({
         param: { workflowId, transitionId: editingTransition.$id },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        json: data as any,
+        json: {
+          ...data,
+          description: data.description ?? undefined,
+        } as z.infer<typeof updateWorkflowTransitionSchema>,
       });
     }
     setTransitionDialogOpen(false);
@@ -654,11 +694,21 @@ const WorkflowEditor = () => {
       const positionX = lastNode ? lastNode.position.x + 250 : 100;
       const positionY = lastNode ? lastNode.position.y : 100;
 
+      // Sanitize key for consistency
+      const sanitizedKey = suggestion.key.trim().toUpperCase().replace(/[\s-]+/g, "_");
+
+      // Check if status already exists by key
+      const existingStatus = workflow?.statuses?.find(s => s.key === sanitizedKey);
+      if (existingStatus) {
+        console.log(`Status with key ${sanitizedKey} already exists, skipping creation.`);
+        return;
+      }
+
       await createStatus({
         param: { workflowId },
         json: {
           name: suggestion.name,
-          key: suggestion.key,
+          key: sanitizedKey,
           statusType: suggestion.statusType as StatusType,
           color: suggestion.color,
           isInitial: suggestion.isInitial || false,
@@ -669,17 +719,30 @@ const WorkflowEditor = () => {
         },
       });
     },
-    [workflowId, createStatus, nodes]
+    [workflowId, createStatus, nodes, workflow?.statuses]
   );
 
   // AI handlers - create transition from AI suggestion
   const handleAICreateTransition = useCallback(
     async (suggestion: TransitionSuggestion) => {
+      // Sanitize keys for consistency
+      const fromStatusKey = suggestion.fromStatusKey.trim().toUpperCase().replace(/[\s-]+/g, "_");
+      const toStatusKey = suggestion.toStatusKey.trim().toUpperCase().replace(/[\s-]+/g, "_");
+
       // Find status IDs from keys
-      const fromStatus = workflow?.statuses?.find(s => s.key === suggestion.fromStatusKey);
-      const toStatus = workflow?.statuses?.find(s => s.key === suggestion.toStatusKey);
+      const fromStatus = workflow?.statuses?.find(s => s.key === fromStatusKey);
+      const toStatus = workflow?.statuses?.find(s => s.key === toStatusKey);
 
       if (!fromStatus || !toStatus) {
+        return;
+      }
+
+      // Check if transition already exists
+      const existingTransition = workflow?.transitions?.find(
+        t => t.fromStatusId === fromStatus.$id && t.toStatusId === toStatus.$id
+      );
+      if (existingTransition) {
+        console.log(`Transition already exists, skipping creation.`);
         return;
       }
 
@@ -693,7 +756,27 @@ const WorkflowEditor = () => {
         },
       });
     },
-    [workflowId, createTransition, workflow?.statuses]
+    [workflowId, createTransition, workflow?.statuses, workflow?.transitions]
+  );
+
+  const handleApplyFullWorkflow = useCallback(
+    async (suggestion: WorkflowSuggestion) => {
+      if (suggestion.statuses) {
+        for (const s of suggestion.statuses) {
+          await handleAICreateStatus(s);
+        }
+      }
+      if (suggestion.transitions) {
+        // Delay transitions slightly to ensure statuses are created
+        setTimeout(async () => {
+          for (const t of suggestion.transitions) {
+            await handleAICreateTransition(t);
+          }
+        }, 500);
+      }
+      toast.success(`Applied workflow update: ${suggestion.name || "Custom"}`);
+    },
+    [handleAICreateStatus, handleAICreateTransition]
   );
 
   // Redirect if workflow not found
@@ -889,6 +972,22 @@ const WorkflowEditor = () => {
                   workspaceId={workspaceId}
                   onCreateStatus={handleAICreateStatus}
                   onCreateTransition={handleAICreateTransition}
+                  onPreview={(suggestion) => {
+                    if ("statuses" in suggestion || "transitions" in suggestion) {
+                      setPreviewSuggestion(suggestion as WorkflowSuggestion);
+                    } else if ("statusType" in suggestion) {
+                      setPreviewSuggestion({ 
+                        statuses: [suggestion as StatusSuggestion], 
+                        transitions: [] 
+                      });
+                    } else {
+                      setPreviewSuggestion({ 
+                        statuses: [], 
+                        transitions: [suggestion as TransitionSuggestion] 
+                      });
+                    }
+                  }}
+                  onApplyFullWorkflow={handleApplyFullWorkflow}
                 />
               </TabsContent>
             </Tabs>
@@ -955,10 +1054,47 @@ const WorkflowEditor = () => {
             />
 
             {/* Zoom Indicator - moved to top-left next to Controls */}
-            <Panel position="top-left" className="!top-14 !left-3 !z-50">
+            <Panel position="top-left" className="!top-14 !left-3 !z-50 flex flex-col gap-2">
               <Badge variant="secondary" className="text-xs font-mono !bg-primary/7 !text-primary !border-primary/10">
                 {zoomLevel}%
               </Badge>
+              
+              {previewSuggestion && (
+                <Card className="p-3 shadow-xl border-purple-200 bg-background/95 backdrop-blur-sm animate-in fade-in slide-in-from-left-4 duration-300">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-md bg-purple-100">
+                        <Sparkles className="size-4 text-purple-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold">Preview Mode</h4>
+                        <p className="text-[10px] text-muted-foreground">AI Suggestion</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        size="sm" 
+                        className="h-8 px-3 text-xs bg-purple-600 hover:bg-purple-700"
+                        onClick={() => {
+                          handleApplyFullWorkflow(previewSuggestion);
+                          setPreviewSuggestion(null);
+                        }}
+                      >
+                        Apply All
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setPreviewSuggestion(null)}
+                      >
+                        Exit Preview
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              )}
             </Panel>
 
             <Panel position="top-right" className="flex gap-2">
