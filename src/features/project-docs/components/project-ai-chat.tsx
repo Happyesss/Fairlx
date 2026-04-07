@@ -235,7 +235,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
       {
         onSuccess: (response) => {
           setConversation((prev) => [...prev, {
-            ...response,
+            ...response.data,
             timestamp: new Date().toISOString(),
           }]);
           setQuestion("");
