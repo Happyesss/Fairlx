@@ -642,6 +642,17 @@ Provide a comprehensive, helpful answer:`;
           ]
         );
 
+        // Get project documents for deeper context
+        const docsResponse = await databases.listDocuments<ProjectDocument>(
+          DATABASE_ID,
+          PROJECT_DOCS_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.equal("isArchived", false),
+            Query.limit(5), // Sample context from documents
+          ]
+        );
+
         // Get existing work items for context
         const workItemsResponse = await databases.listDocuments<WorkItem>(
           DATABASE_ID,
@@ -694,11 +705,8 @@ ${existingLabelsList || "No existing labels"}
 - HIGH
 - URGENT
 
-## Common Label Categories (use these as inspiration)
-- Type: bug, feature, enhancement, documentation, refactor, testing
-- Area: frontend, backend, api, database, ui, ux, security, performance
-- Effort: quick-win, complex, needs-research
-- Other: urgent, blocked, review-needed
+## Project Documents (Context)
+${docsResponse.documents.map(d => `- ${d.name}: ${d.extractedText?.substring(0, 300)}...`).join("\n") || "No documents found"}
 
 ## User Request
 ${prompt}
@@ -708,7 +716,7 @@ ${prompt}
 Generate a JSON object with the following structure (only include fields that are relevant):
 {
   "name": "Work item title (required, be specific and actionable)",
-  "description": "Detailed work item description",
+  "description": "Comprehensive HTML-formatted description",
   "status": "TODO",
   "priority": "MEDIUM",
   "dueDate": "YYYY-MM-DD (if mentioned or can be inferred)",
@@ -719,12 +727,16 @@ Generate a JSON object with the following structure (only include fields that ar
 }
 
 IMPORTANT: 
+- For the "description" field, ALWAYS use HTML tags for structure. Provide:
+  - <h3>Context</h3> explaining why this task is needed.
+  - <h3>Description</h3> detailing exactly what needs to be done.
+  - <h3>Acceptance Criteria</h3> using a <ul> list with <li> checkbox-like items.
 - Return ONLY valid JSON, no markdown code blocks
 - Use actual member IDs from the list above for assigneeIds (only if user mentions a specific person)
 - Make the work item title clear and actionable
 - ALWAYS generate relevant labels based on the work item type (e.g., "bug" for bugs, "feature" for features, "frontend"/"backend" for technical tasks)
 - Prefer existing labels from the project when applicable
-- If dates are mentioned like "tomorrow" or "next week", calculate the actual date from today (${new Date().toISOString().split('T')[0]})
+- If dates are mentioned like "tomorrow" or "next week", calculate the actual date from today (${new Date().toISOString().split("T")[0]})
 - Default status to "TODO" if not specified
 - Default priority to "MEDIUM" if not specified`;
 
@@ -1011,7 +1023,7 @@ ${prompt}
 Generate a JSON object with ONLY the fields that should be updated based on the user's request:
 {
   "name": "New task name (only if changing)",
-  "description": "New description (only if changing)",
+  "description": "New description as structured HTML (only if changing)",
   "status": "NEW_STATUS (only if changing)",
   "priority": "NEW_PRIORITY (only if changing)",
   "dueDate": "YYYY-MM-DD (only if changing)",
@@ -1022,6 +1034,10 @@ Generate a JSON object with ONLY the fields that should be updated based on the 
 }
 
 IMPORTANT:
+- If updating "description", ALWAYS use HTML tags for structure:
+  - <h3>Context</h3> explaining why this task is needed.
+  - <h3>Description</h3> detailing exactly what needs to be done.
+  - <h3>Acceptance Criteria</h3> using a <ul> list with <li> checkbox-like items.
 - Return ONLY valid JSON, no markdown code blocks
 - Include ONLY fields that are being changed
 - Use actual member IDs from the list for assigneeIds
