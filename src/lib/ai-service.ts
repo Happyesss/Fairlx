@@ -14,34 +14,6 @@ interface ChatMessage {
   content: string;
 }
 
-interface ChatChoice {
-  index: number;
-  message: ChatMessage;
-  finish_reason: string;
-}
-
-interface ChatUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface ChatCompletionResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: ChatChoice[];
-  usage?: ChatUsage;
-}
-
-interface ChatCompletionRequest {
-  model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-  stream?: boolean;
-}
 
 /**
  * Unified AI Service class for all AI-powered features
@@ -121,7 +93,7 @@ export class AIService {
       parts: [{ text: msg.content }]
     }));
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       contents,
       generationConfig: {
         temperature: options?.temperature ?? 0.3,

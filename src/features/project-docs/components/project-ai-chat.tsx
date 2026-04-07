@@ -23,7 +23,13 @@ import {
   Flag,
   Tag,
   Clock,
+  GitBranch,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from "lucide-react";
+
+import { RichTextEditor } from "@/components/editor/rich-text-editor";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,9 +59,10 @@ import {
   useAIUpdateTask,
   useExecuteTaskSuggestion,
 } from "../api/use-project-ai";
-import { ProjectAIAnswer, AITaskResponse, AITaskData, AvailableMember } from "../types/ai-context";
+import { ProjectAIAnswer, AITaskResponse, AITaskData, AvailableMember, TaskContext, GitHubRecommendation } from "../types/ai-context";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { TaskPicker } from "./task-picker";
 
 interface ProjectAIChatProps {
   projectId: string;
@@ -67,6 +74,7 @@ interface ConversationItem extends ProjectAIAnswer {
   taskResponse?: AITaskResponse;
   availableMembers?: AvailableMember[];
   suggestedLabels?: string[];
+  githubRecommendation?: GitHubRecommendation;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -85,6 +93,8 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [pendingTaskAction, setPendingTaskAction] = useState<AITaskResponse | null>(null);
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskContext | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const { data: contextData, isLoading: isLoadingContext } = useGetProjectAIContext(
@@ -127,35 +137,15 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  // Detect if the question is a task action
-  const detectTaskAction = (text: string): { isTaskAction: boolean; action: "create" | "update" | null; taskName?: string } => {
+  // Detect if the question is a task create action
+  const detectCreateAction = (text: string): boolean => {
     const createPatterns = [
       /create\s+(a\s+)?task/i,
       /add\s+(a\s+)?task/i,
       /new\s+task/i,
       /make\s+(a\s+)?task/i,
     ];
-    const updatePatterns = [
-      /update\s+(the\s+)?task/i,
-      /change\s+(the\s+)?task/i,
-      /modify\s+(the\s+)?task/i,
-      /set\s+(the\s+)?task/i,
-      /mark\s+(the\s+)?task/i,
-    ];
-
-    for (const pattern of createPatterns) {
-      if (pattern.test(text)) {
-        return { isTaskAction: true, action: "create" };
-      }
-    }
-
-    for (const pattern of updatePatterns) {
-      if (pattern.test(text)) {
-        return { isTaskAction: true, action: "update" };
-      }
-    }
-
-    return { isTaskAction: false, action: null };
+    return createPatterns.some(pattern => pattern.test(text));
   };
 
   const handleAsk = (questionText?: string) => {
@@ -165,9 +155,38 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
     // Scroll to bottom when user sends a message
     scrollToBottom();
 
-    const taskAction = detectTaskAction(q);
+    if (editMode && selectedTask) {
+      // Explicit edit mode — task already selected via picker
+      updateTaskAI(
+        { projectId, workspaceId, taskId: selectedTask.id, prompt: q, autoExecute: false },
+        {
+          onSuccess: (response) => {
+            const conversationItem: ConversationItem = {
+              question: `[Edit: ${selectedTask.name}] ${q}`,
+              answer: response.message,
+              timestamp: new Date().toISOString(),
+              contextUsed: {
+                documentsCount: 0,
+                tasksCount: 1,
+                membersCount: context?.members.length || 0,
+                categories: [],
+              },
+              taskResponse: response,
+            };
+            setConversation((prev) => [...prev, conversationItem]);
+            if (response.action && !response.action.executed) {
+              setPendingTaskAction(response);
+            }
+            setQuestion("");
+            setEditMode(false);
+            setSelectedTask(null);
+          },
+        }
+      );
+      return;
+    }
 
-    if (taskAction.isTaskAction && taskAction.action === "create") {
+    if (detectCreateAction(q)) {
       // Handle task creation
       createTaskAI(
         { projectId, workspaceId, prompt: q, autoExecute: false },
@@ -184,6 +203,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
                 categories: [],
               },
               taskResponse: response,
+              githubRecommendation: response.githubRecommendation,
             };
             setConversation((prev) => [...prev, conversationItem]);
             if (response.action && !response.action.executed) {
@@ -193,92 +213,6 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           },
         }
       );
-    } else if (taskAction.isTaskAction && taskAction.action === "update") {
-      // For updates, we need to find the task
-      // Try multiple approaches to find the task name in the question
-      let matchingTask = null;
-      
-      if (context?.tasks && context.tasks.length > 0) {
-        // Approach 1: Check if any task name appears in the question
-        for (const task of context.tasks) {
-          // Check for exact or partial task name match
-          const taskNameLower = task.name.toLowerCase();
-          const questionLower = q.toLowerCase();
-          
-          // Check if significant words from task name appear in question
-          const taskWords = taskNameLower.split(/\s+/).filter(w => w.length > 3);
-          const matchingWords = taskWords.filter(word => questionLower.includes(word));
-          
-          // If more than half of significant words match, consider it a match
-          if (matchingWords.length >= Math.ceil(taskWords.length / 2) && matchingWords.length >= 2) {
-            matchingTask = task;
-            break;
-          }
-          
-          // Also check for direct inclusion
-          if (questionLower.includes(taskNameLower) || taskNameLower.includes(questionLower.replace(/update|change|modify|set|mark|to|the|task|status|completed|in_progress|assigned/gi, '').trim())) {
-            matchingTask = task;
-            break;
-          }
-        }
-        
-        // Approach 2: Try regex patterns
-        if (!matchingTask) {
-          const taskMatch = q.match(/(?:task\s+)?["']([^"']+)["']|(?:task\s+)([^\s]+(?:\s+[^\s]+)*?)(?:\s+to\s+|\s+as\s+|\s+status)/i);
-          if (taskMatch) {
-            const taskName = (taskMatch[1] || taskMatch[2] || '').trim();
-            matchingTask = context.tasks.find(
-              (t) => t.name.toLowerCase().includes(taskName.toLowerCase()) ||
-                     taskName.toLowerCase().includes(t.name.toLowerCase().substring(0, 20))
-            );
-          }
-        }
-      }
-      
-      if (matchingTask) {
-        updateTaskAI(
-          { projectId, workspaceId, taskId: matchingTask.id, prompt: q, autoExecute: false },
-          {
-            onSuccess: (response) => {
-              const conversationItem: ConversationItem = {
-                question: q,
-                answer: response.message,
-                timestamp: new Date().toISOString(),
-                contextUsed: {
-                  documentsCount: 0,
-                  tasksCount: 1,
-                  membersCount: context?.members.length || 0,
-                  categories: [],
-                },
-                taskResponse: response,
-              };
-              setConversation((prev) => [...prev, conversationItem]);
-              if (response.action && !response.action.executed) {
-                setPendingTaskAction(response);
-              }
-              setQuestion("");
-            },
-          }
-        );
-        return;
-      } else {
-        // No matching task found - let the user know and list available tasks
-        const taskList = context?.tasks?.slice(0, 5).map(t => `• ${t.name}`).join('\n') || 'No tasks found';
-        const conversationItem: ConversationItem = {
-          question: q,
-          answer: `I couldn't find a matching task. Here are some tasks in this project:\n\n${taskList}\n\nPlease specify which task you'd like to update.`,
-          timestamp: new Date().toISOString(),
-          contextUsed: {
-            documentsCount: 0,
-            tasksCount: context?.tasks?.length || 0,
-            membersCount: context?.members.length || 0,
-            categories: [],
-          },
-        };
-        setConversation((prev) => [...prev, conversationItem]);
-        setQuestion("");
-        return;
-      }
     } else {
       // Regular question
       askQuestion(
@@ -331,10 +265,14 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
 
   const handleQuickCreateTask = () => {
     setQuestion("Create a task for ");
+    setEditMode(false);
+    setSelectedTask(null);
   };
 
   const handleQuickUpdateTask = () => {
-    setQuestion("Update task ");
+    setEditMode(true);
+    setSelectedTask(null);
+    setQuestion("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -347,6 +285,8 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
   const clearConversation = () => {
     setConversation([]);
     setPendingTaskAction(null);
+    setEditMode(false);
+    setSelectedTask(null);
   };
 
   // Task Preview Card Component with editable fields
@@ -358,6 +298,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
     isPending = false,
     availableMembers = [],
     suggestedLabels = [],
+    onRegenerate,
   }: {
     taskData: AITaskData;
     onExecute: (updatedTaskData: AITaskData) => void;
@@ -366,12 +307,13 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
     isPending?: boolean;
     availableMembers?: AvailableMember[];
     suggestedLabels?: string[];
+    onRegenerate?: () => void;
   }) => {
     const [taskData, setTaskData] = useState<AITaskData>(initialTaskData);
     const [newLabel, setNewLabel] = useState("");
     const [showAssigneeList, setShowAssigneeList] = useState(false);
     const [showLabelInput, setShowLabelInput] = useState(false);
-
+    const [showPreview, setShowPreview] = useState(false);
     const priorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
     const statuses = ["ASSIGNED", "IN_PROGRESS", "COMPLETED", "CLOSED"];
 
@@ -418,7 +360,33 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           <div className="space-y-1">
             <p className="font-medium text-sm">{taskData.name}</p>
             {taskData.description && (
-              <p className="text-xs text-muted-foreground line-clamp-2">{taskData.description}</p>
+              <div className="space-y-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  {showPreview ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                  {showPreview ? "Hide Preview" : "Preview Description"}
+                </Button>
+                
+                {showPreview ? (
+                  <div className="rounded-md border bg-background overflow-hidden">
+                    <RichTextEditor
+                      content={taskData.description}
+                      editable={false}
+                      showToolbar={false}
+                      minHeight="100px"
+                      className="border-none text-xs"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground line-clamp-2 px-1">
+                    {taskData.description.replace(/<[^>]*>/g, '').slice(0, 100)}...
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -611,7 +579,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           <div className="flex gap-2 pt-2">
             <Button
               size="sm"
-              className="flex-1 h-7 text-xs"
+              className="flex-1 h-7 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 border-none"
               onClick={() => onExecute(taskData)}
               disabled={isPending}
             >
@@ -625,7 +593,23 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs"
+              className="h-7 text-xs flex-shrink-0"
+              onClick={() => {
+                if (onRegenerate) {
+                  onRegenerate();
+                } else {
+                  toast.error("Regeneration is not available for this item");
+                }
+              }}
+              disabled={isPending}
+            >
+              <RefreshCw className={cn("h-3 w-3 mr-1", isPending && "animate-spin")} />
+              Regenerate
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs flex-shrink-0"
               onClick={onCancel}
               disabled={isPending}
             >
@@ -865,6 +849,138 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
                       </ReactMarkdown>
                     </div>
 
+                    {/* GitHub Recommendation Card */}
+                    {item.githubRecommendation && (
+                      <Card className="mt-3 border-2 border-purple-500/30 bg-purple-500/5">
+                        <CardHeader className="p-3 pb-2">
+                          <CardTitle className="text-sm flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                            <div className="p-1 bg-purple-500/20 rounded-full">
+                              <GitBranch className="h-4 w-4" />
+                            </div>
+                            GitHub-Ready Output
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-3 pt-0 space-y-3">
+                          {/* Branch Name */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Branch Name</label>
+                            <div className="flex items-center gap-1">
+                              <code className="flex-1 text-xs bg-background/80 border rounded px-2 py-1 font-mono truncate">
+                                {item.githubRecommendation.branchName}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => handleCopyCode(item.githubRecommendation!.branchName, "gh-branch")}
+                              >
+                                {copiedCode === "gh-branch" ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Commit */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Commit Title</label>
+                            <div className="flex items-center gap-1">
+                              <code className="flex-1 text-xs bg-background/80 border rounded px-2 py-1 font-mono truncate">
+                                {item.githubRecommendation.commitTitle}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => handleCopyCode(item.githubRecommendation!.commitTitle, "gh-commit-title")}
+                              >
+                                {copiedCode === "gh-commit-title" ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {item.githubRecommendation.commitBody && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Commit Body</label>
+                              <div className="relative">
+                                <pre className="text-xs bg-background/80 border rounded px-2 py-1.5 whitespace-pre-wrap font-mono max-h-24 overflow-y-auto">
+                                  {item.githubRecommendation.commitBody}
+                                </pre>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 absolute top-1 right-1"
+                                  onClick={() => handleCopyCode(item.githubRecommendation!.commitBody, "gh-commit-body")}
+                                >
+                                  {copiedCode === "gh-commit-body" ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* PR */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                              PR Title → <span className="font-mono">{item.githubRecommendation.targetBranch}</span>
+                            </label>
+                            <div className="flex items-center gap-1">
+                              <code className="flex-1 text-xs bg-background/80 border rounded px-2 py-1 font-mono truncate">
+                                {item.githubRecommendation.prTitle}
+                              </code>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => handleCopyCode(item.githubRecommendation!.prTitle, "gh-pr-title")}
+                              >
+                                {copiedCode === "gh-pr-title" ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {item.githubRecommendation.prDescription && (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">PR Description</label>
+                              <div className="relative">
+                                <pre className="text-xs bg-background/80 border rounded px-2 py-1.5 whitespace-pre-wrap font-mono max-h-32 overflow-y-auto">
+                                  {item.githubRecommendation.prDescription}
+                                </pre>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 absolute top-1 right-1"
+                                  onClick={() => handleCopyCode(item.githubRecommendation!.prDescription, "gh-pr-desc")}
+                                >
+                                  {copiedCode === "gh-pr-desc" ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {item.githubRecommendation.note && (
+                            <p className="text-[10px] text-muted-foreground italic mt-1">
+                              {item.githubRecommendation.note}
+                            </p>
+                          )}
+
+                          {/* Copy All Button */}
+                          <div className="pt-1 border-t border-purple-500/20">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-xs w-full border-purple-500/30 hover:bg-purple-500/10"
+                              onClick={() => {
+                                const ghRec = item.githubRecommendation!;
+                                const allText = `Branch: ${ghRec.branchName}\nCommit: ${ghRec.commitTitle}\n\n${ghRec.commitBody}\n\nPR Title: ${ghRec.prTitle}\nTarget: ${ghRec.targetBranch}\n\n${ghRec.prDescription}`;
+                                handleCopyCode(allText, "gh-all");
+                              }}
+                            >
+                              <Copy className="h-3 w-3 mr-1" />
+                              Copy All Git Info
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {/* Task Action Card */}
                     {item.taskResponse?.action && !item.taskResponse.action.executed && item.taskResponse.action.taskData && (
                       <TaskPreviewCard
@@ -893,6 +1009,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
                           );
                         }}
                         isPending={executingIndex === index}
+                        onRegenerate={() => handleAsk(item.question)}
                       />
                     )}
 
@@ -1012,7 +1129,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           <div className="flex justify-between items-center mb-2">
             <div className="flex gap-2">
               <Button
-                variant="ghost"
+                variant={!editMode ? "primary" : "ghost"}
                 size="sm"
                 className="text-xs h-6"
                 onClick={handleQuickCreateTask}
@@ -1022,33 +1139,67 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
                 New Task
               </Button>
               <Button
-                variant="ghost"
+                variant={editMode ? "primary" : "ghost"}
                 size="sm"
                 className="text-xs h-6"
                 onClick={handleQuickUpdateTask}
                 disabled={isProcessing}
               >
                 <Edit className="h-3 w-3 mr-1" />
-                Update Task
+                Edit Task
               </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs h-6"
-              onClick={clearConversation}
-            >
-              Clear chat
-            </Button>
+            <div className="flex gap-1 items-center">
+              {editMode && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 text-muted-foreground"
+                  onClick={() => { setEditMode(false); setSelectedTask(null); }}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Cancel Edit
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-6"
+                onClick={clearConversation}
+              >
+                Clear chat
+              </Button>
+            </div>
           </div>
         )}
+
+        {/* Task Picker — shown in edit mode */}
+        {editMode && context?.tasks && (
+          <div className="mb-2">
+            <TaskPicker
+              tasks={context.tasks}
+              selectedTask={selectedTask}
+              onSelect={(task) => setSelectedTask(task)}
+              onClear={() => setSelectedTask(null)}
+              disabled={isProcessing}
+              inputText={question}
+            />
+          </div>
+        )}
+
         <div className="relative">
           <Textarea
-            placeholder="Ask about your project or say 'Create a task for...' or 'Update task...'"
+            placeholder={
+              editMode
+                ? selectedTask
+                  ? `Describe changes for "${selectedTask.name}"...`
+                  : "Select a task above first, then describe changes..."
+                : "Ask about your project or say 'Create a task for...'"
+            }
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isProcessing || isLoadingContext}
+            disabled={isProcessing || isLoadingContext || (editMode && !selectedTask)}
             className="min-h-[60px] max-h-[120px] pr-12 resize-none rounded-xl"
             rows={2}
           />
@@ -1056,7 +1207,7 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
             size="icon"
             className="absolute bottom-2 right-2 h-8 w-8 rounded-lg"
             onClick={() => handleAsk()}
-            disabled={!question.trim() || isProcessing || isLoadingContext}
+            disabled={!question.trim() || isProcessing || isLoadingContext || (editMode && !selectedTask)}
           >
             {isProcessing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1066,7 +1217,9 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2 text-center">
-          Press Enter to send • Try &quot;Create a task&quot; or &quot;Update task [name]&quot;
+          {editMode
+            ? "Select a task → describe your changes → press Enter"
+            : "Press Enter to send • Try \"Create a task\" or click \"Edit Task\""}
         </p>
       </div>
     </div>
