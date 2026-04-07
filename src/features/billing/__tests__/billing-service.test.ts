@@ -48,7 +48,6 @@ describe('Billing Service', () => {
                     traffic: 10.0, // 100 * 0.10
                     storage: 0,
                     compute: 0,
-                    totalAlreadyPaid: 0,
                     total: 10.0,
                     totalAlreadyPaid: 0,
                 },
@@ -68,7 +67,6 @@ describe('Billing Service', () => {
                     traffic: 0,
                     storage: 2.5, // 50 * 0.05
                     compute: 0,
-                    totalAlreadyPaid: 0,
                     total: 2.5,
                     totalAlreadyPaid: 0,
                 },
@@ -88,7 +86,6 @@ describe('Billing Service', () => {
                     traffic: 0,
                     storage: 0,
                     compute: 1.0, // 1000 * 0.001
-                    totalAlreadyPaid: 0,
                     total: 1.0,
                     totalAlreadyPaid: 0,
                 },
@@ -112,7 +109,6 @@ describe('Billing Service', () => {
                     traffic: 10.0,
                     storage: 2.5,
                     compute: 1.0,
-                    totalAlreadyPaid: 0,
                     total: 13.5,
                     totalAlreadyPaid: 0,
                 },
