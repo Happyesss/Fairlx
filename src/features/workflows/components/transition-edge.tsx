@@ -7,7 +7,7 @@ import {
   getBezierPath,
   type Position,
 } from "@xyflow/react";
-import { Edit, Trash2, ArrowRight, Shield, Users, CheckCircle2 } from "lucide-react";
+import { Edit, Trash2, ArrowRight, Shield, Users, CheckCircle2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,26 +81,36 @@ export const TransitionEdge = memo(
     return (
       <>
         {/* Invisible wider path for easier hover/selection */}
-        <path
-          d={edgePath}
-          fill="none"
-          strokeWidth={20}
-          stroke="transparent"
-          className="cursor-pointer"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-        />
+        {!data?.isPreview && (
+          <path
+            d={edgePath}
+            fill="none"
+            strokeWidth={20}
+            stroke="transparent"
+            className="cursor-pointer"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+          />
+        )}
 
         {/* Visible edge */}
         <BaseEdge
           id={id}
           path={edgePath}
           style={{
-            stroke: selected ? "hsl(var(--primary))" : isHovered ? "hsl(var(--primary)/0.7)" : "hsl(var(--muted-foreground)/0.4)",
+            stroke: selected 
+              ? "hsl(var(--primary))" 
+              : isHovered 
+                ? "hsl(var(--primary)/0.7)" 
+                : data?.isPreview 
+                  ? "hsl(var(--purple-500)/0.4)" 
+                  : "hsl(var(--muted-foreground)/0.4)",
             strokeWidth: selected ? 2.5 : isHovered ? 2 : 1.5,
+            strokeDasharray: data?.isPreview ? "5,5" : undefined,
             transition: "stroke 0.2s, stroke-width 0.2s",
+            opacity: data?.isPreview ? 0.6 : 1,
           }}
-          markerEnd="url(#arrow)"
+          markerEnd={data?.isPreview ? "url(#arrow-preview)" : "url(#arrow)"}
         />
 
         {/* Arrow marker definition */}
@@ -117,6 +127,20 @@ export const TransitionEdge = memo(
             <path
               d="M2,2 L10,6 L2,10 L4,6 L2,2"
               fill={selected ? "hsl(var(--primary))" : "hsl(var(--muted-foreground)/0.6)"}
+            />
+          </marker>
+          <marker
+            id="arrow-preview"
+            markerWidth="12"
+            markerHeight="12"
+            refX="8"
+            refY="6"
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
+            <path
+              d="M2,2 L10,6 L2,10 L4,6 L2,2"
+              fill="hsl(var(--purple-400)/0.5)"
             />
           </marker>
         </defs>
@@ -142,9 +166,14 @@ export const TransitionEdge = memo(
                     "bg-background border shadow-sm",
                     selected || isHovered
                       ? "border-primary bg-primary/5 scale-105"
-                      : "border-border hover:border-primary/50"
+                      : data?.isPreview
+                        ? "border-purple-200 opacity-80"
+                        : "border-border hover:border-primary/50"
                   )}
                 >
+                  {data?.isPreview && (
+                    <Sparkles className="size-3 text-purple-600 flex-shrink-0" />
+                  )}
                   {data?.name ? (
                     <>
                       <ArrowRight className="size-3 text-muted-foreground flex-shrink-0" />

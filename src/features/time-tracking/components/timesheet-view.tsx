@@ -53,10 +53,10 @@ export const TimesheetView = ({ workspaceId }: TimesheetViewProps) => {
         week.entries.forEach(entry => {
           const row = [
             userTimesheet.userName,
-            entry.date,
+            entry.logDate,
             entry.projectName,
             entry.taskName,
-            entry.hours.toString(),
+            entry.loggedHours.toString(),
             `"${entry.description.replace(/"/g, '""')}"` // Escape quotes in CSV
           ];
           csvData.push(row.join(","));
@@ -175,11 +175,11 @@ export const TimesheetView = ({ workspaceId }: TimesheetViewProps) => {
                         {week.entries.map((entry) => (
                           <TableRow key={entry.id}>
                             <TableCell className="font-medium">
-                              {format(parseISO(entry.date), "MMM d")}
+                              {format(parseISO(entry.logDate), "MMM d")}
                             </TableCell>
                             <TableCell>{entry.projectName}</TableCell>
                             <TableCell>{entry.taskName}</TableCell>
-                            <TableCell>{entry.hours}</TableCell>
+                            <TableCell>{entry.loggedHours}</TableCell>
                             <TableCell className="max-w-xs truncate">
                               {entry.description}
                             </TableCell>

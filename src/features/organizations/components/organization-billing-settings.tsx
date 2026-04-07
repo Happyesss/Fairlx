@@ -170,7 +170,7 @@ export function OrganizationBillingSettings({
                         json: {
                             type: BillingAccountType.ORG,
                             organizationId,
-                            billingEmail: billingEmailValue || organization?.email || ownerEmail || "",
+                            billingEmail: billingEmailValue || organization?.email || ownerEmail || undefined,
                             contactName: organization?.name || "Organization Admin",
                         }
                     });
@@ -181,10 +181,10 @@ export function OrganizationBillingSettings({
                 }
             }
 
-            // Create a Razorpay order for wallet top-up
+            // Create a Cashfree order for wallet top-up
             const orderResponse = await client.api.wallet["create-order"].$post({
                 json: {
-                    amount: amount * 100, // Convert dollars to cents
+                    amount, // Amount in full dollar units (float) with 6-decimal support
                     organizationId,
                 },
             });
@@ -197,66 +197,68 @@ export function OrganizationBillingSettings({
             const orderResult = await orderResponse.json() as {
                 data: {
                     orderId: string;
+                    paymentSessionId: string;
                     key: string;
                     amount: number;
                     currency: string;
+                    environment: "sandbox" | "production";
+                    walletId: string;
                     originalUsdCents: number;
                     exchangeRate: number;
                 }
             };
             const orderData = orderResult.data;
-            const inrAmount = (orderData.amount / 100).toFixed(2);
 
-            // Open Razorpay checkout for one-time payment (charges in INR)
-            const razorpayOptions: RazorpayCheckoutConfig = {
-                key: orderData.key,
-                order_id: orderData.orderId,
-                amount: orderData.amount,
-                currency: orderData.currency, // INR from backend
-                name: "Fairlx",
-                description: `Add $${amount} to Wallet (~₹${inrAmount})`,
-                prefill: {
-                    email: billingEmailValue || organization?.email || ownerEmail || "",
-                },
-                theme: {
-                    color: "#3B82F6",
-                },
-                handler: async (response: RazorpayResponse) => {
-                    // Verify the payment and credit the wallet
-                    try {
-                        const verifyResponse = await client.api.wallet["verify-topup"].$post({
-                            json: {
-                                razorpayOrderId: response.razorpay_order_id || "",
-                                razorpayPaymentId: response.razorpay_payment_id,
-                                razorpaySignature: response.razorpay_signature,
-                            },
-                        });
+            // Open Cashfree Checkout for one-time payment
+            const cashfree = window.Cashfree({ 
+                mode: (orderData.environment || "sandbox") as "sandbox" | "production" 
+            });
 
-                        if (!verifyResponse.ok) {
-                            const errorData = await verifyResponse.json().catch(() => ({}));
-                            throw new Error((errorData as { error?: string }).error || "Verification failed");
+            const checkoutResult = await cashfree.checkout({
+                paymentSessionId: orderData.paymentSessionId,
+                redirectTarget: "_modal",
+            });
+
+            // Cashfree SDK v3 modal returns { error, paymentDetails } — NOT orderStatus/transaction
+            if (checkoutResult.error) {
+                // User closed modal or payment error
+                if (checkoutResult.error.message?.includes("user")) {
+                    // User dismissed — don't show error
+                } else {
+                    toast.error(`Payment error: ${checkoutResult.error.message || "Unknown error"}`);
+                }
+            } else {
+                // Modal closed without error — verify payment server-side
+                // The backend fetches order status and payment details from Cashfree API directly
+                try {
+                    const verifyResponse = await client.api.wallet["verify-topup"].$post({
+                        json: {
+                            cashfreeOrderId: orderData.orderId,
+                        },
+                    });
+
+                    if (!verifyResponse.ok) {
+                        const errorData = await verifyResponse.json().catch(() => ({}));
+                        const errorMsg = (errorData as { error?: string }).error || "Verification failed";
+                        // If order is still ACTIVE, payment might not be complete yet
+                        if (errorMsg.includes("ACTIVE")) {
+                            toast.info("Payment is being processed. Your wallet will be credited shortly via webhook.");
+                        } else {
+                            throw new Error(errorMsg);
                         }
-
+                    } else {
                         toast.success(`$${amount} added to your wallet successfully!`);
-                        // Refresh billing data to get updated balance (without full page reload)
+                        // Refresh billing data to get updated balance
                         queryClient.invalidateQueries({ queryKey: ["billing-account"] });
                         queryClient.invalidateQueries({ queryKey: ["billing-status"] });
                         setTopupAmount("");
-                    } catch (verifyError) {
-                        const msg = verifyError instanceof Error ? verifyError.message : "Verification failed";
-                        toast.error(`Payment issue: ${msg}. Please contact support if credits were not added.`);
                     }
-                    setIsAddingCredits(false);
-                },
-                modal: {
-                    ondismiss: () => {
-                        setIsAddingCredits(false);
-                    },
-                },
-            };
-
-            const razorpay = new window.Razorpay(razorpayOptions);
-            razorpay.open();
+                } catch (verifyError) {
+                    const msg = verifyError instanceof Error ? verifyError.message : "Verification failed";
+                    toast.error(`Payment issue: ${msg}. Your wallet will be credited via webhook if payment succeeded.`);
+                }
+            }
+            setIsAddingCredits(false);
         } catch {
             toast.error("Failed to initialize payment. Please try again.");
             setIsAddingCredits(false);
@@ -274,12 +276,12 @@ export function OrganizationBillingSettings({
 
     return (
         <>
-            {/* Load Razorpay Script */}
+            {/* Load Cashfree SDK Script */}
             <Script
-                src="https://checkout.razorpay.com/v1/checkout.js"
+                src="https://sdk.cashfree.com/js/v3/cashfree.js"
                 onLoad={() => setIsScriptLoaded(true)}
                 onError={() => {
-                    // Failed to load Razorpay script
+                    // Failed to load Cashfree script
                 }}
             />
 
@@ -515,7 +517,9 @@ export function OrganizationBillingSettings({
                                         {new Intl.NumberFormat("en-US", {
                                             style: "currency",
                                             currency: walletCurrency,
-                                        }).format(walletBalance / 100)}
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 6,
+                                        }).format(walletBalance)}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
                                         Available Balance
@@ -525,7 +529,7 @@ export function OrganizationBillingSettings({
                         </div>
 
                         {/* Low balance warning */}
-                        {walletBalance < 10000 && (
+                        {walletBalance < 100 && (
                             <Alert className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30">
                                 <AlertTriangle className="h-4 w-4 text-orange-600" />
                                 <AlertDescription className="text-orange-700 dark:text-orange-400">
@@ -557,7 +561,7 @@ export function OrganizationBillingSettings({
 
                                 {/* Quick top-up amounts */}
                                 <div className="flex flex-wrap gap-2">
-                                    {[5, 10, 25, 50].map((amt) => (
+                                    {[1, 5, 10, 25, 50].map((amt) => (
                                         <Button
                                             key={amt}
                                             variant="outline"
@@ -594,7 +598,7 @@ export function OrganizationBillingSettings({
                                 </Button>
 
                                 <p className="text-xs text-muted-foreground text-center">
-                                    Payments processed securely by Razorpay. Minimum $1.
+                                    Payments processed securely by Cashfree. Minimum $1.
                                 </p>
                             </div>
                         </div>
@@ -657,6 +661,8 @@ export function OrganizationBillingSettings({
                                                     {new Intl.NumberFormat("en-US", {
                                                         style: "currency",
                                                         currency: "USD",
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 6,
                                                     }).format(invoice.totalCost)}
                                                 </div>
                                                 <Badge

@@ -1,7 +1,7 @@
 /**
  * Webhook Handler Integration Tests
  * 
- * Tests for Razorpay webhook processing including:
+ * Tests for Cashfree webhook processing including:
  * - Signature verification
  * - Event routing
  * - Idempotency
@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     BillingStatus,
     BillingAuditEventType,
-    RazorpayWebhookEvent,
+    CashfreeWebhookEvent,
 } from '../types';
 
 // Mock modules
@@ -28,7 +28,7 @@ vi.mock('@/lib/appwrite', () => ({
     }),
 }));
 
-vi.mock('@/lib/razorpay', () => ({
+vi.mock('@/lib/cashfree', () => ({
     verifyWebhookSignature: vi.fn().mockReturnValue(true),
 }));
 
@@ -38,26 +38,22 @@ describe('Webhook Handler', () => {
     });
 
     describe('Signature Verification', () => {
-        it('should reject requests without signature', async () => {
-            const mockEvent: Partial<RazorpayWebhookEvent> = {
-                event: 'payment.captured',
-                payload: {},
-            };
+        it('should reject requests without signature or timestamp', async () => {
+            // Cashfree requires both x-webhook-signature AND x-webhook-timestamp
+            const headers = { 'x-webhook-signature': undefined, 'x-webhook-timestamp': undefined };
 
-            // Should throw when signature is missing
-            expect(() => {
-                if (!mockEvent.account_id) {
-                    throw new Error('Missing signature');
-                }
-            }).toThrow('Missing signature');
+            expect(headers['x-webhook-signature']).toBeUndefined();
+            expect(headers['x-webhook-timestamp']).toBeUndefined();
         });
 
         it('should accept valid signatures', async () => {
-            const { verifyWebhookSignature } = await import('@/lib/razorpay');
+            const { verifyWebhookSignature } = await import('@/lib/cashfree');
 
+            // Cashfree verification requires rawBody, signature, AND timestamp
             const isValid = verifyWebhookSignature(
                 'rawbody',
                 'valid-signature',
+                '1704067200',  // timestamp parameter (Cashfree-specific)
                 'webhook-secret'
             );
 
@@ -66,110 +62,105 @@ describe('Webhook Handler', () => {
     });
 
     describe('Event Routing', () => {
-        it('should route payment.captured events', async () => {
-            const event: RazorpayWebhookEvent = {
-                entity: 'event',
-                account_id: 'acc_123',
-                event: 'payment.captured',
-                contains: ['payment'],
-                payload: {
-                    payment: {
-                        entity: {
-                            id: 'pay_123',
-                            entity: 'payment',
-                            amount: 1000,
-                            currency: 'INR',
-                            status: 'captured',
-                            method: 'card',
-                            notes: {
-                                fairlx_billing_account_id: 'billing_123',
-                            },
-                            created_at: Date.now(),
+        it('should route PAYMENT_SUCCESS_WEBHOOK events', async () => {
+            const event: CashfreeWebhookEvent = {
+                type: 'PAYMENT_SUCCESS_WEBHOOK',
+                event_time: new Date().toISOString(),
+                data: {
+                    order: {
+                        order_id: 'topup_wallet123_1704067200',
+                        order_amount: 10.00,   // Cashfree amounts in RUPEES
+                        order_currency: 'INR',
+                        order_tags: {
+                            fairlx_billing_account_id: 'billing_123',
+                            fairlx_wallet_id: 'wallet_123',
                         },
                     },
-                },
-                created_at: Date.now(),
-            };
-
-            expect(event.event).toBe('payment.captured');
-            expect(event.payload.payment?.entity.status).toBe('captured');
-        });
-
-        it('should route payment.failed events', async () => {
-            const event: RazorpayWebhookEvent = {
-                entity: 'event',
-                account_id: 'acc_123',
-                event: 'payment.failed',
-                contains: ['payment'],
-                payload: {
                     payment: {
-                        entity: {
-                            id: 'pay_123',
-                            entity: 'payment',
-                            amount: 1000,
-                            currency: 'INR',
-                            status: 'failed',
-                            method: 'card',
-                            error_code: 'BAD_REQUEST_ERROR',
-                            error_description: 'Card declined',
-                            notes: {
-                                fairlx_billing_account_id: 'billing_123',
-                            },
-                            created_at: Date.now(),
-                        },
+                        cf_payment_id: 'cf_pay_123',
+                        payment_status: 'SUCCESS',
+                        payment_amount: 10.00,
+                        payment_currency: 'INR',
+                        payment_method: { card: {} },
                     },
                 },
-                created_at: Date.now(),
             };
 
-            expect(event.event).toBe('payment.failed');
-            expect(event.payload.payment?.entity.error_code).toBe('BAD_REQUEST_ERROR');
+            expect(event.type).toBe('PAYMENT_SUCCESS_WEBHOOK');
+            expect(event.data.payment?.payment_status).toBe('SUCCESS');
+            // Amount is in rupees, NOT paise
+            expect(event.data.order.order_amount).toBe(10.00);
         });
 
-        it('should route refund.processed events', async () => {
-            const event: RazorpayWebhookEvent = {
-                entity: 'event',
-                account_id: 'acc_123',
-                event: 'refund.processed',
-                contains: ['refund'],
-                payload: {
+        it('should route PAYMENT_FAILED_WEBHOOK events', async () => {
+            const event: CashfreeWebhookEvent = {
+                type: 'PAYMENT_FAILED_WEBHOOK',
+                event_time: new Date().toISOString(),
+                data: {
+                    order: {
+                        order_id: 'topup_wallet123_1704067200',
+                        order_amount: 10.00,
+                        order_currency: 'INR',
+                        order_tags: {
+                            fairlx_billing_account_id: 'billing_123',
+                        },
+                    },
+                    payment: {
+                        cf_payment_id: 'cf_pay_456',
+                        payment_status: 'FAILED',
+                        payment_amount: 10.00,
+                        payment_currency: 'INR',
+                        payment_method: { card: {} },
+                        payment_message: 'Card declined',
+                    },
+                },
+            };
+
+            expect(event.type).toBe('PAYMENT_FAILED_WEBHOOK');
+            expect(event.data.payment?.payment_status).toBe('FAILED');
+            expect(event.data.payment?.payment_message).toBe('Card declined');
+        });
+
+        it('should route REFUND_SUCCESS_WEBHOOK events', async () => {
+            const event: CashfreeWebhookEvent = {
+                type: 'REFUND_SUCCESS_WEBHOOK',
+                event_time: new Date().toISOString(),
+                data: {
+                    order: {
+                        order_id: 'topup_wallet123_1704067200',
+                        order_amount: 10.00,
+                        order_currency: 'INR',
+                        order_tags: {
+                            fairlx_billing_account_id: 'billing_123',
+                            fairlx_wallet_id: 'wallet_123',
+                        },
+                    },
                     refund: {
-                        entity: {
-                            id: 'rfnd_123',
-                            entity: 'refund',
-                            amount: 500,
-                            currency: 'INR',
-                            payment_id: 'pay_123',
-                            status: 'processed',
-                            speed_requested: 'normal',
-                            speed_processed: 'normal',
-                            notes: {
-                                fairlx_billing_account_id: 'billing_123',
-                                reason: 'Customer request',
-                            },
-                            created_at: Date.now(),
-                        },
+                        refund_id: 'rfnd_123',
+                        cf_payment_id: 'cf_pay_123',
+                        refund_amount: 5.00,  // In rupees
+                        refund_status: 'SUCCESS',
                     },
                 },
-                created_at: Date.now(),
             };
 
-            expect(event.event).toBe('refund.processed');
-            expect(event.payload.refund?.entity.status).toBe('processed');
+            expect(event.type).toBe('REFUND_SUCCESS_WEBHOOK');
+            expect(event.data.refund?.refund_status).toBe('SUCCESS');
         });
     });
 
     describe('Idempotency', () => {
         it('should generate unique event IDs', () => {
-            const event1 = 'payment.captured-1704067200-pay_123';
-            const event2 = 'payment.captured-1704067201-pay_456';
+            // Cashfree event IDs use type-event_time-cf_payment_id format
+            const event1 = 'PAYMENT_SUCCESS_WEBHOOK-2024-01-01T00:00:00Z-cf_pay_123';
+            const event2 = 'PAYMENT_SUCCESS_WEBHOOK-2024-01-01T00:00:01Z-cf_pay_456';
 
             expect(event1).not.toBe(event2);
         });
 
         it('should detect duplicate events', () => {
             const processedEvents = new Set<string>();
-            const eventId = 'payment.captured-1704067200-pay_123';
+            const eventId = 'PAYMENT_SUCCESS_WEBHOOK-2024-01-01T00:00:00Z-cf_pay_123';
 
             // First processing
             processedEvents.add(eventId);

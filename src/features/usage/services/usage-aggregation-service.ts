@@ -5,6 +5,7 @@ import {
     DATABASE_ID,
     USAGE_EVENTS_ID,
     USAGE_AGGREGATIONS_ID,
+    WORKSPACES_ID,
 } from "@/config";
 import {
     UsageEvent,
@@ -132,7 +133,6 @@ export async function aggregateDailyUsage(
 
                 // Compute aggregates
                 let trafficBytes = 0;
-                let storageBytes = 0;
                 let computeUnits = 0;
                 const bySource: Record<string, number> = {};
                 const byModule: Record<string, number> = {};
@@ -161,31 +161,110 @@ export async function aggregateDailyUsage(
                         case ResourceType.TRAFFIC:
                             trafficBytes += event.units;
                             break;
-                        case ResourceType.STORAGE:
-                            storageBytes += event.units;
-                            break;
                         case ResourceType.COMPUTE:
                             computeUnits += event.weightedUnits || event.units;
                             break;
                     }
                 }
 
-                // Convert to GB for storage
-                const trafficTotalGB = trafficBytes / (1024 * 1024 * 1024);
-                const storageAvgGB = storageBytes / (1024 * 1024 * 1024);
+                // CRITICAL FIX (Bug 3): Use time-weighted daily snapshot average for storage.
+                // The old approach summed raw storage-event bytes for the day, which is WRONG:
+                //   - It double-counts downloads as "storage usage"
+                //   - It doesn't reflect actual GB-month utilisation
+                // The correct approach: average the daily point-in-time snapshot across the month.
+                const { calculateTimeWeightedStorageAvg } = await import("@/lib/storage-snapshot-job");
+                // targetDate is YYYY-MM-DD; the period arg for time-weighting is YYYY-MM
+                const storagePeriod = targetDate.slice(0, 7); // e.g. "2025-03"
+                const storageAvgGB = await calculateTimeWeightedStorageAvg(databases, workspaceId, storagePeriod);
 
-                // Create daily summary document
+                // Calculate metrics
+                const trafficTotalGB = trafficBytes / (1024 * 1024 * 1024);
+                
+                 // Resolve billing account ID
+                const { getBillingAccount } = await import("@/lib/billing-primitives");
+                const billingAccount = await getBillingAccount(databases, { workspaceId });
+
+                // FALLBACK: resolve billingEntityId from workspace if account missing
+                // WHY: We must aggregate usage even for users who haven't set up billing yet,
+                // so they see their "Estimated Total" and "Today's Usage" correctly.
+                let resolvedEntityId = billingAccount?.organizationId || billingAccount?.userId || null;
+                let resolvedEntityType = (billingAccount?.type === 'ORG' ? 'organization' : 'user') as "user" | "organization";
+
+                if (!resolvedEntityId) {
+                    try {
+                        const workspace = await databases.getDocument(DATABASE_ID, WORKSPACES_ID, workspaceId);
+                        resolvedEntityId = workspace.organizationId || workspace.userId;
+                        resolvedEntityType = workspace.organizationId ? 'organization' : 'user';
+                    } catch { /* ignore fallback failure */ }
+                }
+
+                // Calculate total cost
+                const {
+                    USAGE_RATE_TRAFFIC_GB,
+                    USAGE_RATE_STORAGE_GB_MONTH,
+                    USAGE_RATE_COMPUTE_UNIT,
+                } = await import('@/config');
+
+                const totalCost = Number((
+                    ((trafficTotalGB * USAGE_RATE_TRAFFIC_GB) / 100) +
+                    ((storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100) +
+                    ((computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100)
+                ).toFixed(6));
+
+                // =========================================================
+                // NEW: Instant Wallet Debit
+                // =========================================================
+                let billingStatus: 'billed' | 'pending' | 'failed' = 'pending';
+                let walletTransactionId: string | undefined = undefined;
+
+                if (totalCost > 0) {
+                    try {
+                        const { getOrCreateWallet, deductFromWallet } = await import("@/features/wallet/services/wallet-service");
+                        const wallet = await getOrCreateWallet(databases, { 
+                            organizationId: billingAccount?.organizationId || undefined,
+                            userId: billingAccount?.userId || undefined,
+                            billingAccountId: billingAccount?.$id
+                        });
+
+                        const deductionResult = await deductFromWallet(databases, wallet.$id, totalCost, {
+                            referenceId: `usage_${targetDate}_${workspaceId.slice(-4)}`,
+                            idempotencyKey: `usage_billing_${workspaceId}_${targetDate}`,
+                            description: `Usage Billing for ${targetDate} (${workspaceId})`
+                        });
+
+                        if (deductionResult.success) {
+                            billingStatus = 'billed';
+                            walletTransactionId = deductionResult.transaction?.$id;
+                        } else {
+                            billingStatus = 'pending'; // Insufficient balance or other soft failure
+                        }
+                    } catch (deductErr) {
+                        console.error(`[UsageBilling] Failed to debit wallet for workspace ${workspaceId}:`, deductErr);
+                        billingStatus = 'failed';
+                    }
+                } else {
+                    // Zero cost usage is auto-billed
+                    billingStatus = 'billed';
+                }
+
                 await databases.createDocument(
                     DATABASE_ID,
                     USAGE_AGGREGATIONS_ID,
                     ID.unique(),
                     {
                         workspaceId,
-                        period: targetDate,           // YYYY-MM-DD format for daily
+                        billingAccountId: billingAccount?.$id || null,
+                        billingEntityId: resolvedEntityId,
+                        billingEntityType: resolvedEntityType,
+                        period: targetDate,
+                        periodType: 'daily',
                         trafficTotalGB,
                         storageAvgGB,
                         computeTotalUnits: computeUnits,
-                        isFinalized: true,            // Daily summaries are immutable once created
+                        totalCost,
+                        currency: 'INR',
+                        status: billingStatus,
+                        walletTransactionId: walletTransactionId || null,
                     }
                 );
 

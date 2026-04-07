@@ -375,7 +375,7 @@ export const WorkItemDrawer = ({
           {/* Subtasks Tab */}
           <TabsContent value="subtasks" className="space-y-4 mt-6">
             <SubtasksList
-              workItemId={workItem.$id}
+              parentTaskId={workItem.$id}
               workspaceId={workItem.workspaceId}
             />
           </TabsContent>

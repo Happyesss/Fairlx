@@ -14,7 +14,7 @@ import {
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
-import { createCustomer } from "@/lib/razorpay";
+import { createCustomer } from "@/lib/cashfree";
 
 import {
     BillingStatus,
@@ -41,7 +41,7 @@ import { getOrCreateWallet } from "@/features/wallet/services/wallet-service";
  * 
  * ROUTES:
  * - GET  /billing/account  - Get billing account + wallet balance
- * - POST /billing/setup    - Create billing account + wallet + Razorpay customer
+ * - POST /billing/setup    - Create billing account + wallet + Cashfree customer
  * - GET  /billing/invoices - List invoices
  * - GET  /billing/status   - Quick billing status check
  */
@@ -55,7 +55,7 @@ async function logBillingAudit(
         actorUserId?: string;
         metadata?: Record<string, unknown>;
         invoiceId?: string;
-        razorpayEventId?: string;
+        cashfreeEventId?: string;
         ipAddress?: string;
     } = {}
 ) {
@@ -70,7 +70,7 @@ async function logBillingAudit(
                 metadata: options.metadata ? JSON.stringify(options.metadata) : null,
                 actorUserId: options.actorUserId || null,
                 invoiceId: options.invoiceId || null,
-                razorpayEventId: options.razorpayEventId || null,
+                cashfreeEventId: options.cashfreeEventId || null,
                 ipAddress: options.ipAddress || null,
             }
         );
@@ -187,7 +187,7 @@ const app = new Hono()
 
     /**
      * POST /billing/setup
-     * Create billing account, Razorpay customer, and wallet
+     * Create billing account, Cashfree customer, and wallet
      * 
      * WALLET-ONLY: No mandate setup. Creates wallet with zero balance.
      * User tops up their wallet via the wallet routes.
@@ -198,7 +198,14 @@ const app = new Hono()
         zValidator("json", setupBillingSchema),
         async (c) => {
             const user = c.get("user");
-            const { type, userId, organizationId, billingEmail, contactName, contactPhone } = c.req.valid("json");
+            const { type, userId, organizationId, billingEmail: providedEmail, contactName, contactPhone } = c.req.valid("json");
+
+            // Use provided email, or fall back to logged-in user's email (org owner / workspace owner)
+            const billingEmail = providedEmail || user.email;
+
+            if (!billingEmail) {
+                return c.json({ error: "Billing email is required" }, 400);
+            }
 
             // Verify authorization
             if (type === BillingAccountType.PERSONAL && userId !== user.$id) {
@@ -224,10 +231,10 @@ const app = new Hono()
                 });
             }
 
-            // Create Razorpay customer
-            let razorpayCustomer;
+            // Create Cashfree customer
+            let cashfreeCustomer;
             try {
-                razorpayCustomer = await createCustomer({
+                cashfreeCustomer = await createCustomer({
                     name: contactName,
                     email: billingEmail,
                     contact: contactPhone,
@@ -253,7 +260,9 @@ const app = new Hono()
                     type,
                     userId: type === BillingAccountType.PERSONAL ? userId : null,
                     organizationId: type === BillingAccountType.ORG ? organizationId : null,
-                    razorpayCustomerId: razorpayCustomer.id,
+                    ownerId: type === BillingAccountType.ORG ? organizationId! : userId!,
+                    ownerType: type === BillingAccountType.ORG ? "organization" : "personal",
+                    cashfreeCustomerId: cashfreeCustomer.id,
                     billingStatus: BillingStatus.ACTIVE,
                     billingCycleStart: start,
                     billingCycleEnd: end,
@@ -266,6 +275,7 @@ const app = new Hono()
                 await getOrCreateWallet(adminDatabases, {
                     userId: type === BillingAccountType.PERSONAL ? userId : undefined,
                     organizationId: type === BillingAccountType.ORG ? organizationId : undefined,
+                    billingAccountId: billingAccount.$id,
                     currency: BILLING_CURRENCY,
                 });
             } catch {
@@ -281,7 +291,7 @@ const app = new Hono()
                 {
                     actorUserId: user.$id,
                     metadata: {
-                        razorpayCustomerId: razorpayCustomer.id,
+                        cashfreeCustomerId: cashfreeCustomer.id,
                         billingEmail,
                         type,
                     },

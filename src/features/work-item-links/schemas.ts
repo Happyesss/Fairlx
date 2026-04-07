@@ -4,14 +4,14 @@ import { WorkItemLinkType } from "./types";
 // Create a link between work items
 export const createWorkItemLinkSchema = z.object({
   workspaceId: z.string().min(1),
-  sourceWorkItemId: z.string().min(1, "Source work item is required"),
-  targetWorkItemId: z.string().min(1, "Target work item is required"),
+  sourceItemId: z.string().min(1, "Source work item is required"),
+  targetItemId: z.string().min(1, "Target work item is required"),
   linkType: z.nativeEnum(WorkItemLinkType),
   description: z.string().max(500).optional(),
   createInverse: z.boolean().default(true), // Create the inverse link automatically
 }).refine(
-  (data) => data.sourceWorkItemId !== data.targetWorkItemId,
-  { message: "Cannot link a work item to itself", path: ["targetWorkItemId"] }
+  (data) => data.sourceItemId !== data.targetItemId,
+  { message: "Cannot link a work item to itself", path: ["targetItemId"] }
 );
 
 // Update a link (mainly for description)
@@ -29,8 +29,8 @@ export const deleteWorkItemLinkSchema = z.object({
 export const bulkCreateLinksSchema = z.object({
   workspaceId: z.string().min(1),
   links: z.array(z.object({
-    sourceWorkItemId: z.string().min(1),
-    targetWorkItemId: z.string().min(1),
+    sourceItemId: z.string().min(1),
+    targetItemId: z.string().min(1),
     linkType: z.nativeEnum(WorkItemLinkType),
     description: z.string().max(500).optional(),
   })),
@@ -51,8 +51,8 @@ export const checkBlockedStatusSchema = z.object({
 
 // Find dependency chain (for detecting cycles)
 export const findDependencyChainSchema = z.object({
-  sourceWorkItemId: z.string().min(1),
-  targetWorkItemId: z.string().min(1),
+  sourceItemId: z.string().min(1),
+  targetItemId: z.string().min(1),
   linkType: z.nativeEnum(WorkItemLinkType),
 });
 

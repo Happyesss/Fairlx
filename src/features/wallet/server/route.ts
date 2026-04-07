@@ -8,10 +8,11 @@ import {
     DATABASE_ID,
     BILLING_ACCOUNTS_ID,
     WALLET_DAILY_TOPUP_LIMIT,
+    WALLET_TRANSACTIONS_ID,
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
-import { createOrder, getPublicKey, verifyPaymentSignature } from "@/lib/razorpay";
+import { createOrder, getPublicKey, verifyPaymentSignature, getOrderPayments, createCustomer, getCashfreeMode, getCashfree } from "@/lib/cashfree";
 
 import {
     createTopupOrderSchema,
@@ -38,8 +39,8 @@ import { BillingAccount, BillingAccountType } from "@/features/billing/types";
  * 
  * Routes:
  * - GET    /wallet/balance          - Get wallet balance
- * - POST   /wallet/create-order     - Create Razorpay order for wallet top-up
- * - POST   /wallet/verify-topup     - Verify Razorpay payment and credit wallet
+ * - POST   /wallet/create-order     - Create Cashfree order for wallet top-up
+ * - POST   /wallet/verify-topup     - Verify Cashfree payment and credit wallet
  * - GET    /wallet/transactions     - List wallet transactions
  * - POST   /wallet/deduct           - Deduct usage from wallet (internal API)
  * 
@@ -76,7 +77,7 @@ const app = new Hono()
                 data: {
                     walletId: wallet.$id,
                     ...balance,
-                    lastTopupAt: wallet.lastTopupAt,
+                    lastTopUpAt: wallet.lastTopUpAt,
                 },
             });
         }
@@ -84,11 +85,11 @@ const app = new Hono()
 
     /**
      * POST /wallet/create-order
-     * Create a Razorpay order for wallet top-up
+     * Create a Cashfree order for wallet top-up
      * 
      * This is step 1 of the top-up flow:
-     * 1. Frontend calls this to get a Razorpay order
-     * 2. Frontend opens Razorpay Checkout with the order
+     * 1. Frontend calls this to get a Cashfree order
+     * 2. Frontend opens Cashfree Checkout with the paymentSessionId
      * 3. After payment, frontend calls /verify-topup with payment details
      */
     .post(
@@ -107,15 +108,16 @@ const app = new Hono()
                 organizationId,
             });
 
-            // Fraud check: Daily top-up limit
-            if (amount > WALLET_DAILY_TOPUP_LIMIT) {
+            // Fraud check: Daily top-up limit (converted from cents to USD)
+            const limitUsd = WALLET_DAILY_TOPUP_LIMIT / 100;
+            if (amount > limitUsd) {
                 return c.json({
                     error: "Amount exceeds daily top-up limit",
-                    maxAllowed: WALLET_DAILY_TOPUP_LIMIT,
+                    maxAllowed: limitUsd,
                 }, 400);
             }
 
-            // Get billing account for Razorpay customer ID
+            // Get billing account for customer ID
             let billingAccountId: string | undefined;
             try {
                 const billingQuery = organizationId
@@ -136,42 +138,52 @@ const app = new Hono()
             }
 
             // ── USD → INR Conversion ──
-            // Frontend sends amount in USD cents. Razorpay charges in INR paise.
+            // Frontend sends amount in USD (float). Cashfree charges in INR (major units).
             // We convert using the live exchange rate and store metadata for reverse conversion.
             const { getUsdToInrRate } = await import("@/lib/currency");
             const exchangeRate = await getUsdToInrRate();
-            const amountInrPaise = Math.round(amount * exchangeRate); // USD cents × rate = INR paise
+            const amountInrPaise = Math.round(amount * 100 * exchangeRate); // USD × 100 (cents) × rate = INR paise
 
-            // Create Razorpay order in INR
-            const receipt = `topup_${wallet.$id}_${Date.now()}`;
-            const order = await createOrder({
+            // Generate order ID upfront (Cashfree requires it)
+            const orderId = `topup_${wallet.$id}_${Date.now()}`;
+
+            // Create stable customer ID from email hash
+            const customer = await createCustomer({
+                name: user.name || "Fairlx User",
+                email: user.email,
+            });
+
+            // Create Cashfree order in INR (amount in paise, createOrder converts to rupees)
+            const orderResponse = await createOrder({
                 amount: amountInrPaise,
                 currency: "INR",
-                receipt,
+                orderId,
+                customerId: customer.id,
+                customerEmail: user.email,
                 notes: {
                     fairlx_wallet_id: wallet.$id,
                     fairlx_billing_account_id: billingAccountId || "",
                     fairlx_user_id: user.$id,
                     fairlx_purpose: "wallet_topup",
-                    fairlx_usd_amount: String(amount), // Original USD cents
+                    fairlx_usd_amount: String(amount), // Original USD (float)
                     fairlx_exchange_rate: String(exchangeRate), // Rate used
                 },
             });
 
+            const orderData = orderResponse.data;
+
             return c.json({
                 data: {
-                    orderId: order.id,
-                    amount: order.amount,
-                    currency: order.currency,
+                    orderId: orderData?.order_id || orderId,
+                    amount: amountInrPaise,
+                    currency: "INR",
+                    paymentSessionId: orderData?.payment_session_id || "",
                     key: getPublicKey(),
+                    environment: getCashfreeMode(),
                     walletId: wallet.$id,
                     // Send conversion info to frontend for display
                     originalUsdCents: amount,
                     exchangeRate,
-                    prefill: {
-                        name: user.name || "",
-                        email: user.email,
-                    },
                 },
             });
         }
@@ -179,11 +191,11 @@ const app = new Hono()
 
     /**
      * POST /wallet/verify-topup
-     * Verify Razorpay payment and credit wallet
+     * Verify Cashfree payment and credit wallet
      * 
      * This is step 3 of the top-up flow:
      * 1. Frontend called /create-order to get an order
-     * 2. Frontend completed Razorpay Checkout
+     * 2. Frontend completed Cashfree Checkout
      * 3. Frontend calls this with payment details for verification
      */
     .post(
@@ -192,76 +204,136 @@ const app = new Hono()
         zValidator("json", verifyTopupSchema),
         async (c) => {
             try {
-                const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = c.req.valid("json");
+                const { cashfreeOrderId, cfPaymentId, orderAmount, signature } = c.req.valid("json");
 
-                // Step 1: Verify payment signature
-                const isValid = verifyPaymentSignature(
-                    razorpayOrderId,
-                    razorpayPaymentId,
-                    razorpaySignature
-                );
+                // Step 1: Verify payment signature (optional — only if frontend provided it)
+                if (signature && cfPaymentId && orderAmount) {
+                    const isValid = verifyPaymentSignature(
+                        cashfreeOrderId,
+                        String(orderAmount),
+                        cfPaymentId,
+                        signature
+                    );
 
-                if (!isValid) {
-                    return c.json({ error: "Invalid payment signature" }, 400);
-                }
-
-                // Step 2: Get payment details from Razorpay
-                const { getPayment, capturePayment } = await import("@/lib/razorpay");
-                const payment = await getPayment(razorpayPaymentId);
-
-                // Accept both "captured" (auto-capture) and "authorized" (manual capture) states
-                if (payment.status === "authorized") {
-                    // Auto-capture is async; capture explicitly if still authorized
-                    try {
-                        await capturePayment(razorpayPaymentId, Number(payment.amount), payment.currency);
-                    } catch (captureError) {
-                        // If capture fails with "already captured", that's fine — it was auto-captured
-                        const errMsg = String(captureError);
-                        if (!errMsg.includes("already been captured") && !errMsg.includes("already captured")) {
-                            console.error("[verify-topup] Capture failed:", captureError);
-                            return c.json({ error: "Payment capture failed" }, 400);
-                        }
+                    if (!isValid) {
+                        console.warn("[verify-topup] Client signature invalid, falling back to API verification:", cashfreeOrderId);
+                        // Don't fail — we'll verify via API below
                     }
-                } else if (payment.status !== "captured") {
-                    return c.json({ error: `Payment not in valid state: ${payment.status}` }, 400);
                 }
 
-                // Step 3: Get wallet from payment notes
-                const walletId = (payment.notes as Record<string, string>)?.fairlx_wallet_id;
+                // Step 2: Fetch order details from Cashfree server-side (source of truth)
+                const cashfreeClient = getCashfree();
+                let orderTags: Record<string, string> | undefined;
+                let orderStatus: string | undefined;
+
+                try {
+                    const orderDetails = await cashfreeClient.PGFetchOrder(cashfreeOrderId);
+                    orderTags = orderDetails.data?.order_tags as Record<string, string> | undefined;
+                    orderStatus = orderDetails.data?.order_status;
+                } catch (fetchErr) {
+                    console.warn("[verify-topup] Could not fetch order details:", {
+                        cashfreeOrderId,
+                        error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                    });
+                }
+
+                // If order is not PAID, check if there's still a chance it will be
+                if (orderStatus && orderStatus !== "PAID") {
+                    return c.json({
+                        error: `Order not in PAID state: ${orderStatus}. The webhook will credit your wallet when payment completes.`,
+                    }, 400);
+                }
+
+                // Step 3: Get payment details from Cashfree
+                const paymentsResponse = await getOrderPayments(cashfreeOrderId);
+                const payments = paymentsResponse.data;
+
+                if (!payments || payments.length === 0) {
+                    return c.json({ error: "No payments found for this order" }, 400);
+                }
+
+                // Find the successful payment — match by cfPaymentId if provided, else find any SUCCESS
+                const payment = cfPaymentId
+                    ? (payments.find(
+                        (p) => p.cf_payment_id?.toString() === cfPaymentId && p.payment_status === "SUCCESS"
+                    ) || payments.find((p) => p.payment_status === "SUCCESS"))
+                    : payments.find((p) => p.payment_status === "SUCCESS");
+
+                if (!payment || payment.payment_status !== "SUCCESS") {
+                    return c.json({
+                        error: `Payment not in valid state: ${payment?.payment_status || "NOT_FOUND"}`,
+                    }, 400);
+                }
+
+                // Resolve the actual cfPaymentId from the payment object
+                const resolvedCfPaymentId = cfPaymentId || String(payment.cf_payment_id);
+
+                // Step 4: Get wallet ID from order tags
+                let walletId = orderTags?.fairlx_wallet_id;
+
+                if (!walletId) {
+                    // Fallback: parse from orderId format: topup_{walletId}_{timestamp}
+                    const parts = cashfreeOrderId.split("_");
+                    if (parts.length >= 2 && parts[0] === "topup") {
+                        walletId = parts[1];
+                    }
+                }
+
                 if (!walletId) {
                     return c.json({ error: "Payment not linked to a wallet" }, 400);
                 }
 
                 const { databases } = await createAdminClient();
 
-                // Step 4: Determine USD amount to credit
-                // The payment was charged in INR. The original USD amount was
-                // stored in the order notes during create-order.
-                const notes = payment.notes as Record<string, string>;
-                let usdCentsToCredit: number;
-
-                if (notes?.fairlx_usd_amount) {
+                // Step 5: Determine USD amount to credit
+                let usdToCredit: number;
+ 
+                if (orderTags?.fairlx_usd_amount) {
                     // Use the exact USD amount from order creation
-                    usdCentsToCredit = Number(notes.fairlx_usd_amount);
+                    usdToCredit = Number(orderTags.fairlx_usd_amount);
                 } else {
-                    // Fallback: convert INR paise back to USD cents using live rate
+                    // Fallback: convert INR (major units) back to USD using live rate
                     const { getUsdToInrRate } = await import("@/lib/currency");
                     const rate = await getUsdToInrRate();
-                    usdCentsToCredit = Math.round(Number(payment.amount) / rate);
+                    const paymentAmountRupees = payment.payment_amount || 0;
+                    usdToCredit = paymentAmountRupees / rate;
                 }
 
-                // Step 5: Credit wallet with USD cents (idempotent via payment ID)
-                const result = await topUpWallet(databases, walletId, usdCentsToCredit, {
-                    idempotencyKey: `razorpay_${razorpayPaymentId}`,
-                    paymentId: razorpayPaymentId,
-                    description: `Wallet top-up via Razorpay (${payment.method}) — $${(usdCentsToCredit / 100).toFixed(2)} USD`,
+                // Step 5b: Pre-flight duplicate check by payment ID
+                // Catches all legacy key variants (webhook_, cashfree_, topup_)
+                const existingForPayment = await databases.listDocuments(
+                    DATABASE_ID,
+                    WALLET_TRANSACTIONS_ID,
+                    [
+                        Query.equal("referenceId", resolvedCfPaymentId),
+                        Query.limit(1),
+                    ]
+                );
+                if (existingForPayment.total > 0) {
+                    const balance = await getWalletBalance(databases, walletId);
+                    return c.json({
+                        data: {
+                            success: true,
+                            balance: balance.balance,
+                            availableBalance: balance.availableBalance,
+                            currency: balance.currency,
+                            alreadyProcessed: true,
+                        },
+                    });
+                }
+
+                // Step 6: Credit wallet with USD (idempotent via payment ID)
+                const result = await topUpWallet(databases, walletId, usdToCredit, {
+                    idempotencyKey: `topup_${resolvedCfPaymentId}`,
+                    paymentId: resolvedCfPaymentId,
+                    description: `Wallet top-up via Cashfree — $${usdToCredit.toFixed(2)} USD`,
                 });
 
                 if (!result.success && result.error !== "already_processed") {
                     return c.json({ error: result.error }, 400);
                 }
 
-                // Step 6: Return updated balance
+                // Step 7: Return updated balance
                 const balance = await getWalletBalance(databases, walletId);
 
                 return c.json({

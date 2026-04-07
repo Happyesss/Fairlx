@@ -18,10 +18,14 @@ export async function setupCustomColumns(databases: Databases, databaseId: strin
 
     await ensureCollection(databases, databaseId, COLLECTION_ID, COLLECTION_NAME, [
         Permission.read(Role.any()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
     ]);
 
     // Attributes
-    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'projectId', 256, true);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'projectId', 256, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'workflowId', 256, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'workspaceId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'name', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'color', 64, false);

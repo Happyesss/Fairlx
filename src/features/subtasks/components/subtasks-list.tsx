@@ -13,18 +13,18 @@ import { SubtaskItem } from "./subtask-item";
 import { SubtaskStatus } from "../types";
 
 interface SubtasksListProps {
-  workItemId: string;
+  parentTaskId: string;
   workspaceId: string;
   members?: Array<{ $id: string; name: string }>;
 }
 
-export const SubtasksList = ({ workItemId, workspaceId, members = [] }: SubtasksListProps) => {
+export const SubtasksList = ({ parentTaskId, workspaceId, members = [] }: SubtasksListProps) => {
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
   const { data: subtasksData, isLoading } = useGetSubtasks({ 
     workspaceId, 
-    workItemId 
+    parentTaskId 
   });
   const { mutate: createSubtask, isPending: isCreating } = useCreateSubtask();
 
@@ -32,7 +32,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
   
   // Calculate progress based on both completed and status
   const completedCount = subtasks.filter((st) => 
-    st.completed || st.status === SubtaskStatus.DONE
+    st.isCompleted || st.status === SubtaskStatus.DONE
   ).length;
   const inProgressCount = subtasks.filter((st) => 
     st.status === SubtaskStatus.IN_PROGRESS
@@ -43,7 +43,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
   // Calculate total estimated hours
   const totalEstimatedHours = subtasks.reduce((acc, st) => acc + (st.estimatedHours || 0), 0);
   const completedEstimatedHours = subtasks
-    .filter((st) => st.completed || st.status === SubtaskStatus.DONE)
+    .filter((st) => st.isCompleted || st.status === SubtaskStatus.DONE)
     .reduce((acc, st) => acc + (st.estimatedHours || 0), 0);
 
   const handleAddSubtask = () => {
@@ -51,9 +51,9 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
       createSubtask(
         {
           title: newSubtaskTitle.trim(),
-          workItemId,
+          parentTaskId: parentTaskId,
           workspaceId,
-          completed: false,
+          isCompleted: false,
         },
         {
           onSuccess: () => {
@@ -117,7 +117,7 @@ export const SubtasksList = ({ workItemId, workspaceId, members = [] }: Subtasks
             key={subtask.$id}
             subtask={subtask}
             workspaceId={workspaceId}
-            workItemId={workItemId}
+            parentTaskId={parentTaskId}
             members={members}
             showDetails={true}
           />

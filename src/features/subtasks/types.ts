@@ -19,9 +19,11 @@ export enum SubtaskPriority {
 export type Subtask = Models.Document & {
   title: string;
   description?: string;
-  workItemId: string;
+  parentTaskId: string; // Matches schema attribute
   workspaceId: string;
-  completed: boolean;              // Keep for backward compatibility
+  isCompleted: boolean; // Matches schema attribute
+  completed?: boolean;  // Kept for backward compatibility
+  workItemId?: string;   // Kept for backward compatibility
   position: number;
   createdBy: string;
   

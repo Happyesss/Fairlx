@@ -57,6 +57,10 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
 
   const { mutate: deleteAttachment, isPending: isDeletingAttachment } = useDeleteAttachment();
 
+  // Use fileName with fallback to legacy name field
+  const displayName = attachment.fileName || attachment.name || 'download';
+  const displaySize = attachment.fileSize || attachment.size || 0;
+
   const handleDelete = async () => {
     const ok = await confirm();
     if (!ok) return;
@@ -79,7 +83,7 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = attachment.name;
+      link.download = displayName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -112,9 +116,9 @@ const AttachmentItem = ({ attachment, workspaceId }: AttachmentItemProps) => {
                 {getFileIcon(attachment.mimeType)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{attachment.name}</p>
+                <p className="text-sm font-medium truncate">{displayName}</p>
                 <div className="flex items-center space-x-2 mt-1">
-                  <span className="text-xs text-gray-500">{formatFileSize(attachment.size)}</span>
+                  <span className="text-xs text-gray-500">{formatFileSize(displaySize)}</span>
                   <Badge variant="secondary" className="text-xs">
                     {attachment.mimeType.split("/")[1]?.toUpperCase() || "FILE"}
                   </Badge>
@@ -204,7 +208,7 @@ export const AttachmentList = ({ attachments, workspaceId }: AttachmentListProps
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Attachments ({attachments.length})</h3>
-        <Badge variant="outline">{formatFileSize(attachments.reduce((total, att) => total + att.size, 0))} total</Badge>
+        <Badge variant="outline">{formatFileSize(attachments.reduce((total, att) => total + (att.fileSize || att.size || 0), 0))} total</Badge>
       </div>
       <div className="space-y-2">
         {attachments.map((attachment) => (

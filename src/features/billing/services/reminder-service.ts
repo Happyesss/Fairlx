@@ -312,46 +312,32 @@ function getReminderEmailContent(
 /**
  * Send email via configured email service
  * 
- * TODO: Implement with your email provider (Resend, SendGrid, SES, etc.)
+ * Migrated to Appwrite Messaging. This uses the SMTP provider
+ * configured in your Appwrite Console.
  */
 async function sendEmail(
     to: string,
     subject: string,
     html: string
 ): Promise<{ success: boolean; error?: string }> {
-    // Check if email service is configured
-    const emailApiKey = process.env.EMAIL_API_KEY;
-    const emailFrom = process.env.EMAIL_FROM || "billing@fairlx.com";
-
-    if (!emailApiKey) {
-        return { success: false, error: "Email service not configured" };
-    }
-
     try {
-        // Example implementation with Resend
-        // Replace with your preferred email provider
+        const { messaging } = await createAdminClient();
+        const _emailFrom = process.env.EMAIL_FROM || "billing@fairlx.com";
 
-        const response = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${emailApiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                from: emailFrom,
-                to: [to],
-                subject,
-                html,
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            return { success: false, error };
-        }
+        // Send direct email using Appwrite Messaging
+        await messaging.createEmail(
+            ID.unique(),
+            subject,
+            html,
+            [], // topics
+            [], // users
+            [], // targets
+            [to] // direct emails
+        );
 
         return { success: true };
     } catch (error) {
+        console.error("Appwrite Messaging Error:", error);
         return {
             success: false,
             error: error instanceof Error ? error.message : "Unknown error"

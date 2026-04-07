@@ -130,8 +130,8 @@ export const LINK_TYPE_METADATA: Record<WorkItemLinkType, {
 // Work item link entity
 export type WorkItemLink = Models.Document & {
   workspaceId: string;
-  sourceWorkItemId: string;     // The "from" work item
-  targetWorkItemId: string;     // The "to" work item
+  sourceItemId: string;       // The "from" work item
+  targetItemId: string;       // The "to" work item
   linkType: WorkItemLinkType;
   description?: string | null;  // Optional description of the link
   createdBy: string;            // User who created the link

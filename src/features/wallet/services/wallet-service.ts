@@ -7,6 +7,7 @@ import {
     DATABASE_ID,
     WALLETS_ID,
     WALLET_TRANSACTIONS_ID,
+    BILLING_ACCOUNTS_ID,
     WALLET_DAILY_TOPUP_LIMIT,
 } from "@/config";
 import { createAdminClient } from "@/lib/appwrite";
@@ -18,6 +19,7 @@ import {
     WalletTransactionType,
     WalletStatus,
 } from "../types";
+import { setupOrganizationBilling, setupPersonalBilling } from "@/features/billing/services/billing-service";
 
 /**
  * Wallet Service
@@ -64,12 +66,16 @@ function generateTransactionSignature(fields: {
     referenceId: string;
     timestamp: string;
 }): string {
+    // USE FIXED PRECISION (6 DECIMALS) FOR SIGNATURE PAYLOAD
+    // WHY: Floats can have variable string representations (s.g. 0.1 vs 0.100).
+    // Using a fixed number of decimals ensures deterministic signatures and prevents
+    // audit trail validation failures for micro-deductions.
     const payload = [
         fields.walletId,
         fields.type,
-        fields.amount,
-        fields.balanceBefore,
-        fields.balanceAfter,
+        fields.amount.toFixed(6),
+        fields.balanceBefore.toFixed(6),
+        fields.balanceAfter.toFixed(6),
         fields.referenceId,
         fields.timestamp,
     ].join("|");
@@ -83,6 +89,11 @@ function generateTransactionSignature(fields: {
  * Reads the wallet, checks version matches expected, updates balance
  * and increments version atomically. If version mismatch, throws to
  * trigger retry by caller.
+ * 
+ * NOTE: Appwrite doesn't support conditional updates (`updateDocument` with `where version = X`).
+ * So we do a read-after-write check. While the distributed lock in `deductFromWallet` 
+ * serializes concurrent writes for the *same* operation, multiple *different* operations 
+ * (like two different usage events) for the same wallet can still compete.
  */
 async function updateWalletWithVersion(
     databases: Databases,
@@ -90,9 +101,6 @@ async function updateWalletWithVersion(
     expectedVersion: number,
     updates: Record<string, unknown>
 ): Promise<void> {
-    // Appwrite doesn't support conditional updates, so we do a read-after-write check.
-    // The distributed lock already serialises concurrent writes, so this is a
-    // secondary safety net against bugs or lock failures.
     await databases.updateDocument(
         DATABASE_ID,
         WALLETS_ID,
@@ -143,6 +151,7 @@ async function checkDebitRateLimit(
 
 /**
  * Check daily top-up limit to prevent fraud/money laundering
+ * @param newAmount - Amount in USD (supports high precision)
  */
 async function checkDailyTopupLimit(
     databases: Databases,
@@ -183,6 +192,7 @@ export async function getOrCreateWallet(
     options: {
         userId?: string;
         organizationId?: string;
+        billingAccountId?: string;
         currency?: string;
     }
 ): Promise<Wallet> {
@@ -207,6 +217,35 @@ export async function getOrCreateWallet(
         return existing.documents[0];
     }
 
+    // Find or create billing account ID if not provided
+    let billingAccountId = options.billingAccountId;
+    if (!billingAccountId) {
+        try {
+            const baQueries = options.organizationId
+                ? [Query.equal("organizationId", options.organizationId)]
+                : [Query.equal("userId", options.userId!)];
+
+            const accounts = await databases.listDocuments(
+                DATABASE_ID,
+                BILLING_ACCOUNTS_ID,
+                [...baQueries, Query.limit(1)]
+            );
+
+            if (accounts.total > 0) {
+                billingAccountId = accounts.documents[0].$id;
+            } else {
+                // Create billing account if it doesn't exist
+                const billingAccount = options.organizationId
+                    ? await setupOrganizationBilling(options.organizationId)
+                    : await setupPersonalBilling(options.userId!);
+                billingAccountId = billingAccount.$id;
+            }
+        } catch (error) {
+            console.error("Failed to find or create billing account:", error);
+            throw new Error("Cannot create wallet without a billing account");
+        }
+    }
+
     // Create new wallet with zero balance
     const wallet = await databases.createDocument<Wallet>(
         DATABASE_ID,
@@ -215,6 +254,7 @@ export async function getOrCreateWallet(
         {
             userId: options.userId || null,
             organizationId: options.organizationId || null,
+            billingAccountId,
             balance: 0,
             currency,
             lockedBalance: 0,
@@ -290,6 +330,20 @@ export async function topUpWallet(
     }
 
     try {
+        // 1b. Secondary idempotency check: verify no transaction exists with this key.
+        // This catches duplicates that slipped through due to different key prefixes
+        // (e.g., old "cashfree_" vs "webhook_" vs new "topup_" prefix).
+        const existingTxns = await databases.listDocuments(
+            DATABASE_ID,
+            WALLET_TRANSACTIONS_ID,
+            [
+                Query.equal("idempotencyKey", options.idempotencyKey),
+                Query.limit(1),
+            ]
+        );
+        if (existingTxns.total > 0) {
+            return { success: true, error: "already_processed" };
+        }
         // 2. Get current wallet
         const wallet = await databases.getDocument<Wallet>(
             DATABASE_ID,
@@ -303,21 +357,22 @@ export async function topUpWallet(
             return { success: false, error: `wallet_${wallet.status}: Cannot top up a ${wallet.status} wallet` };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore + amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore + amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // 4. Update wallet balance with optimistic locking
         await updateWalletWithVersion(databases, walletId, wallet.version, {
             balance: balanceAfter,
-            lastTopupAt: now,
+            lastTopUpAt: now,
         });
 
         // 5. Generate transaction signature
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.TOPUP,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.paymentId || "",
@@ -366,8 +421,49 @@ export async function topUpWallet(
  * IDEMPOTENT: Uses idempotencyKey to prevent duplicate deductions.
  * Uses Distributed Lock to prevent race conditions (Double Deduction).
  * Rate-limited to prevent abuse.
+ * 
+ * RETRY LOGIC: Handles "Optimistic lock failure" when multiple processes 
+ * modify the wallet concurrently by retrying up to 5 times.
  */
 export async function deductFromWallet(
+    databases: Databases,
+    walletId: string,
+    amount: number,
+    options: {
+        referenceId: string;
+        idempotencyKey: string;
+        description?: string;
+    }
+): Promise<{ success: boolean; transaction?: WalletTransaction; error?: string }> {
+    const MAX_RETRIES = 5;
+    let attempts = 0;
+
+    while (attempts < MAX_RETRIES) {
+        attempts++;
+        try {
+            return await deductFromWalletInternal(databases, walletId, amount, options);
+        } catch (error) {
+            // Check if error is an optimistic lock failure
+            const isOptimisticLockError = error instanceof Error && error.message.includes("Optimistic lock failure");
+            
+            if (isOptimisticLockError && attempts < MAX_RETRIES) {
+                // Wait briefly before retrying (exponential backoff: 50ms, 100ms, 200ms...)
+                const delay = Math.pow(2, attempts - 1) * 50;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+            }
+            
+            throw error;
+        }
+    }
+
+    return { success: false, error: "max_retries_exceeded: Concurrent modification conflict" };
+}
+
+/**
+ * Internal logic for wallet deduction (wrapped by retry logic in public export)
+ */
+async function deductFromWalletInternal(
     databases: Databases,
     walletId: string,
     amount: number,
@@ -405,13 +501,14 @@ export async function deductFromWallet(
 
         // 3. Check wallet status
         if (wallet.status === WalletStatus.FROZEN || wallet.status === WalletStatus.CLOSED) {
-            await releaseProcessingLock(databases, eventKey, "wallet");
+            // No need to release lock here, we keep it as "processed" record
             return { success: false, error: `wallet_${wallet.status}` };
         }
 
         // 4. Balance check (available = balance - lockedBalance)
         const availableBalance = wallet.balance - wallet.lockedBalance;
         if (availableBalance < amount) {
+            // If we fail due to balance, we release the lock to allow retry if user tops up
             await releaseProcessingLock(databases, eventKey, "wallet");
             return {
                 success: false,
@@ -419,8 +516,9 @@ export async function deductFromWallet(
             };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore - amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore - amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // 5. Update wallet balance with optimistic locking
@@ -433,7 +531,7 @@ export async function deductFromWallet(
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.USAGE,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,
@@ -448,7 +546,7 @@ export async function deductFromWallet(
             {
                 walletId,
                 type: WalletTransactionType.USAGE,
-                amount,
+                amount: amountFixed,
                 direction: "debit",
                 balanceBefore,
                 balanceAfter,
@@ -463,6 +561,7 @@ export async function deductFromWallet(
         return { success: true, transaction };
 
     } catch (error) {
+        // RELEASE distributed lock so we can retry the entire process (which including re-reading wallet doc with latest version)
         await releaseProcessingLock(databases, eventKey, "wallet");
         throw error;
     }
@@ -522,18 +621,19 @@ export async function holdFromWallet(
         }
 
         const now = new Date().toISOString();
-        const balanceBefore = wallet.balance;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
 
         // Increase lockedBalance (balance stays the same)
         await updateWalletWithVersion(databases, walletId, wallet.version, {
-            lockedBalance: wallet.lockedBalance + amount,
+            lockedBalance: Number((wallet.lockedBalance + amountFixed).toFixed(6)),
         });
 
         // Generate signature
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.HOLD,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter: balanceBefore, // balance doesn't change on HOLD
             referenceId: options.referenceId,
@@ -696,21 +796,22 @@ export async function confirmHold(
             return { success: false, error: "insufficient_locked_balance" };
         }
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore - amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore - amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // Deduct from both balance and lockedBalance
         await updateWalletWithVersion(databases, walletId, wallet.version, {
             balance: balanceAfter,
-            lockedBalance: wallet.lockedBalance - amount,
+            lockedBalance: Number((wallet.lockedBalance - amountFixed).toFixed(6)),
             lastDeductionAt: now,
         });
 
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.USAGE,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,
@@ -782,8 +883,9 @@ export async function refundToWallet(
             walletId
         );
 
-        const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore + amount;
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore + amountFixed).toFixed(6));
         const now = new Date().toISOString();
 
         // Update wallet balance with optimistic locking
@@ -794,7 +896,7 @@ export async function refundToWallet(
         const signature = generateTransactionSignature({
             walletId,
             type: WalletTransactionType.REFUND,
-            amount,
+            amount: amountFixed,
             balanceBefore,
             balanceAfter,
             referenceId: options.referenceId,

@@ -11,7 +11,7 @@ import {
     WALLETS_ID,
 } from "@/config";
 import { createAdminClient } from "@/lib/appwrite";
-import { verifyWebhookSignature } from "@/lib/razorpay";
+import { verifyWebhookSignature } from "@/lib/cashfree";
 import { isEventProcessed, markEventProcessed } from "@/lib/processed-events-registry";
 
 import {
@@ -20,32 +20,34 @@ import {
     BillingInvoice,
     BillingAuditEventType,
     InvoiceStatus,
-    RazorpayWebhookEvent,
+    CashfreeWebhookEvent,
 } from "../types";
 
 import { Wallet } from "@/features/wallet/types";
 import { topUpWallet, refundToWallet } from "@/features/wallet/services/wallet-service";
 
 /**
- * Razorpay Webhook Handler (Wallet-Only)
+ * Cashfree Webhook Handler (Wallet-Only)
  * 
- * CRITICAL: This handles Razorpay webhook events for wallet top-ups.
+ * CRITICAL: This handles Cashfree webhook events for wallet top-ups.
  * 
  * Events Handled:
- * - payment.captured: Payment successful → credit wallet
- * - payment.authorized: Payment authorized → audit log only
- * - payment.failed: Payment failed → audit log only
- * - refund.processed: Refund successful → credit wallet
- * - refund.failed: Refund failed → audit log only
- * 
- * REMOVED (wallet-only model):
- * - subscription.* events (no subscriptions)
- * - token.* events (no e-mandates)
+ * - PAYMENT_SUCCESS_WEBHOOK: Payment successful → credit wallet
+ * - PAYMENT_FAILED_WEBHOOK: Payment failed → audit log only
+ * - PAYMENT_USER_DROPPED_WEBHOOK: User dropped → audit log only
+ * - REFUND_SUCCESS_WEBHOOK: Refund successful → credit wallet
+ * - REFUND_FAILED_WEBHOOK: Refund failed → audit log only
  * 
  * SECURITY:
- * - All webhooks are signature-verified
+ * - All webhooks are signature-verified using HMAC-SHA256(timestamp + body)
  * - Event IDs are stored in DATABASE for persistent idempotency
  * - All events are audit-logged
+ * 
+ * CRITICAL DIFFERENCES FROM RAZORPAY:
+ * - Signature = HMAC-SHA256(timestamp + rawBody), base64 encoded
+ * - Amounts are in RUPEES (major units), multiply by 100 for paise
+ * - order_tags replaces payment.notes
+ * - cf_payment_id replaces pay_xxx IDs
  * 
  * CRITICAL INVARIANT: Webhooks MUST NEVER:
  * - Touch usage_events
@@ -55,25 +57,35 @@ import { topUpWallet, refundToWallet } from "@/features/wallet/services/wallet-s
 
 const app = new Hono()
     /**
-     * POST /webhooks/razorpay
-     * Main webhook endpoint for Razorpay events
+     * GET /webhooks/cashfree
+     * Health check endpoint for Cashfree dashboard test ping
      */
-    .post("/razorpay", async (c) => {
+    .get("/cashfree", (c) => {
+        return c.json({ status: "ok" });
+    })
+    /**
+     * POST /webhooks/cashfree
+     * Main webhook endpoint for Cashfree events
+     */
+    .post("/cashfree", async (c) => {
         // Get raw body for signature verification
         const rawBody = await c.req.text();
-        const signature = c.req.header("x-razorpay-signature");
+        const signature = c.req.header("x-webhook-signature");
+        const timestamp = c.req.header("x-webhook-timestamp");
 
-        if (!signature) {
-            return c.json({ error: "Missing signature" }, 400);
+        if (!signature || !timestamp) {
+            // Cashfree dashboard test ping sends POST without signature headers.
+            // Return 200 so the test passes; real events always include signatures.
+            return c.json({ status: "ok" });
         }
 
         // Verify signature
-        if (!verifyWebhookSignature(rawBody, signature)) {
+        if (!verifyWebhookSignature(rawBody, signature, timestamp)) {
             return c.json({ error: "Invalid signature" }, 401);
         }
 
         // Parse event
-        let event: RazorpayWebhookEvent;
+        let event: CashfreeWebhookEvent;
         try {
             event = JSON.parse(rawBody);
         } catch {
@@ -81,7 +93,9 @@ const app = new Hono()
         }
 
         // Generate event ID from payload for idempotency
-        const eventId = `${event.event}-${event.created_at}-${event.payload?.payment?.entity?.id || "unknown"}`;
+        const cfPaymentId = event.data?.payment?.cf_payment_id || "unknown";
+        const refundId = event.data?.refund?.refund_id || "";
+        const eventId = `${event.type}-${event.event_time}-${cfPaymentId}${refundId ? `-${refundId}` : ""}`;
 
         const { databases } = await createAdminClient();
 
@@ -92,24 +106,21 @@ const app = new Hono()
 
         try {
             // Route to appropriate handler
-            switch (event.event) {
-                case "payment.captured":
-                    await handlePaymentCaptured(databases, event, eventId);
+            switch (event.type) {
+                case "PAYMENT_SUCCESS_WEBHOOK":
+                    await handlePaymentSuccess(databases, event, eventId);
                     break;
 
-                case "payment.authorized":
-                    await handlePaymentAuthorized(databases, event, eventId);
-                    break;
-
-                case "payment.failed":
+                case "PAYMENT_FAILED_WEBHOOK":
+                case "PAYMENT_USER_DROPPED_WEBHOOK":
                     await handlePaymentFailed(databases, event, eventId);
                     break;
 
-                case "refund.processed":
-                    await handleRefundProcessed(databases, event, eventId);
+                case "REFUND_SUCCESS_WEBHOOK":
+                    await handleRefundSuccess(databases, event, eventId);
                     break;
 
-                case "refund.failed":
+                case "REFUND_FAILED_WEBHOOK":
                     await handleRefundFailed(databases, event, eventId);
                     break;
 
@@ -122,9 +133,14 @@ const app = new Hono()
             await markEventProcessed(databases, eventId, "webhook");
 
             return c.json({ status: "processed" });
-        } catch {
-            // Return 200 to prevent Razorpay from retrying (we log the error)
-            return c.json({ status: "error_logged" });
+        } catch (err) {
+            console.error("[cashfree-webhook] Unhandled error processing event:", {
+                eventId,
+                error: err instanceof Error ? err.message : String(err),
+                stack: err instanceof Error ? err.stack : undefined,
+            });
+            // Return 500 so Cashfree retries on infrastructure failures
+            return c.json({ status: "error", retryable: true }, 500);
         }
     });
 
@@ -133,36 +149,86 @@ const app = new Hono()
 // ============================================================================
 
 /**
- * Handle payment.captured event
+ * Handle PAYMENT_SUCCESS_WEBHOOK event
  * 
- * Called when a wallet top-up payment is successfully captured.
+ * Called when a wallet top-up payment is successfully completed.
  * Credits the user's wallet with the payment amount.
+ * 
+ * CRITICAL: Cashfree amounts are in RUPEES. Multiply by 100 for paise.
  */
-async function handlePaymentCaptured(
+async function handlePaymentSuccess(
     databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-    event: RazorpayWebhookEvent,
+    event: CashfreeWebhookEvent,
     eventId: string
 ) {
-    const payment = event.payload.payment?.entity;
-    if (!payment) {
+    const payment = event.data?.payment;
+    const order = event.data?.order;
+    if (!payment || !order) {
         return;
     }
 
-    // Check if this is a wallet top-up payment
-    const walletId = payment.notes?.fairlx_wallet_id;
-    const billingAccountId = payment.notes?.fairlx_billing_account_id;
+    // Get metadata from order_tags (replaces Razorpay notes)
+    const tags = order.order_tags || {};
+    const walletId = tags.fairlx_wallet_id;
+    const billingAccountId = tags.fairlx_billing_account_id;
 
     if (!walletId) {
         // Not a wallet top-up, skip
         return;
     }
 
+    // Cashfree amounts are in rupees → convert to paise for wallet
+    const amountPaise = Math.round((payment.payment_amount || 0) * 100);
+
+    // Determine USD amount to credit
+    let amountToCredit: number;
+    if (tags.fairlx_usd_amount) {
+        // Use the exact USD amount from order creation
+        amountToCredit = Number(tags.fairlx_usd_amount);
+    } else {
+        // Fallback: use the INR paise amount
+        amountToCredit = amountPaise;
+    }
+
+    // Pre-flight duplicate check: If ANY transaction already references this
+    // cf_payment_id (regardless of idempotency key prefix), skip.
+    // This catches all legacy key variants: webhook_, cashfree_, topup_.
+    const { WALLET_TRANSACTIONS_ID } = await import("@/config");
+    const existingForPayment = await databases.listDocuments(
+        DATABASE_ID,
+        WALLET_TRANSACTIONS_ID,
+        [
+            Query.equal("referenceId", String(payment.cf_payment_id)),
+            Query.limit(1),
+        ]
+    );
+    if (existingForPayment.total > 0) {
+        console.log("[cashfree-webhook] Payment already credited, skipping:", {
+            cfPaymentId: payment.cf_payment_id,
+            existingTxnId: existingForPayment.documents[0].$id,
+        });
+        return; // Already credited — no error, no retry
+    }
+
     // Credit the wallet (idempotent via payment ID)
-    const result = await topUpWallet(databases, walletId, payment.amount, {
-        idempotencyKey: `webhook_${payment.id}`,
-        paymentId: payment.id,
-        description: `Wallet top-up via Razorpay (${payment.method})`,
+    const result = await topUpWallet(databases, walletId, amountToCredit, {
+        idempotencyKey: `topup_${payment.cf_payment_id}`,
+        paymentId: String(payment.cf_payment_id),
+        description: `Wallet top-up via Cashfree webhook`,
     });
+
+    // If topUpWallet failed for a non-idempotency reason, throw so the outer
+    // catch returns 500 and Cashfree retries the webhook.
+    if (!result.success && result.error !== "already_processed") {
+        console.error("[cashfree-webhook] topUpWallet failed:", {
+            walletId,
+            amountToCredit,
+            error: result.error,
+            eventId,
+            cfPaymentId: payment.cf_payment_id,
+        });
+        throw new Error(`topUpWallet failed: ${result.error}`);
+    }
 
     if (result.success && result.error !== "already_processed") {
         // Update billing account status if needed
@@ -200,11 +266,11 @@ async function handlePaymentCaptured(
                         {
                             billingAccountId,
                             eventType: BillingAuditEventType.ACCOUNT_RESTORED,
-                            razorpayEventId: eventId,
+                            cashfreeEventId: eventId,
                             metadata: JSON.stringify({
                                 previousStatus: BillingStatus.SUSPENDED,
-                                paymentId: payment.id,
-                                walletTopupAmount: payment.amount,
+                                paymentId: payment.cf_payment_id,
+                                walletTopupAmount: amountToCredit,
                             }),
                         }
                     );
@@ -215,7 +281,7 @@ async function handlePaymentCaptured(
         }
 
         // Find and update associated invoice (if top-up was for a specific invoice)
-        const invoiceId = payment.notes?.fairlx_invoice_id;
+        const invoiceId = tags.fairlx_invoice_id;
         if (invoiceId) {
             try {
                 const invoices = await databases.listDocuments<BillingInvoice>(
@@ -231,7 +297,7 @@ async function handlePaymentCaptured(
                         invoices.documents[0].$id,
                         {
                             status: InvoiceStatus.PAID,
-                            razorpayPaymentId: payment.id,
+                            cashfreePaymentId: String(payment.cf_payment_id),
                             walletTransactionId: result.transaction?.$id,
                             paidAt: new Date().toISOString(),
                         }
@@ -251,12 +317,11 @@ async function handlePaymentCaptured(
         {
             billingAccountId: billingAccountId || null,
             eventType: BillingAuditEventType.WALLET_TOPUP,
-            razorpayEventId: eventId,
+            cashfreeEventId: eventId,
             metadata: JSON.stringify({
-                paymentId: payment.id,
-                amount: payment.amount,
-                currency: payment.currency,
-                method: payment.method,
+                paymentId: payment.cf_payment_id,
+                amount: amountPaise,
+                currency: payment.payment_currency,
                 walletId,
                 walletCredited: result.success && result.error !== "already_processed",
             }),
@@ -265,61 +330,24 @@ async function handlePaymentCaptured(
 }
 
 /**
- * Handle payment.authorized event
+ * Handle PAYMENT_FAILED_WEBHOOK and PAYMENT_USER_DROPPED_WEBHOOK events
  * 
- * Called when a payment is authorized (before capture).
- * Audit log only — no wallet changes.
- */
-async function handlePaymentAuthorized(
-    databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-    event: RazorpayWebhookEvent,
-    eventId: string
-) {
-    const payment = event.payload.payment?.entity;
-    if (!payment) {
-        return;
-    }
-
-    const billingAccountId = payment.notes?.fairlx_billing_account_id;
-    if (!billingAccountId) {
-        return;
-    }
-
-    // Log audit event for tracking
-    await databases.createDocument(
-        DATABASE_ID,
-        BILLING_AUDIT_LOGS_ID,
-        ID.unique(),
-        {
-            billingAccountId,
-            eventType: BillingAuditEventType.PAYMENT_AUTHORIZED,
-            razorpayEventId: eventId,
-            metadata: JSON.stringify({
-                paymentId: payment.id,
-                amount: payment.amount,
-                currency: payment.currency,
-            }),
-        }
-    );
-}
-
-/**
- * Handle payment.failed event
- * 
- * Called when a payment attempt fails.
+ * Called when a payment attempt fails or user drops.
  * Audit log only — no grace period or mandate logic.
  */
 async function handlePaymentFailed(
     databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-    event: RazorpayWebhookEvent,
+    event: CashfreeWebhookEvent,
     eventId: string
 ) {
-    const payment = event.payload.payment?.entity;
-    if (!payment) {
+    const payment = event.data?.payment;
+    const order = event.data?.order;
+    if (!payment || !order) {
         return;
     }
 
-    const billingAccountId = payment.notes?.fairlx_billing_account_id;
+    const tags = order.order_tags || {};
+    const billingAccountId = tags.fairlx_billing_account_id;
 
     // Log audit event
     await databases.createDocument(
@@ -329,12 +357,12 @@ async function handlePaymentFailed(
         {
             billingAccountId: billingAccountId || null,
             eventType: BillingAuditEventType.PAYMENT_FAILED,
-            razorpayEventId: eventId,
+            cashfreeEventId: eventId,
             metadata: JSON.stringify({
-                paymentId: payment.id,
-                amount: payment.amount,
-                errorCode: payment.error_code,
-                errorDescription: payment.error_description,
+                paymentId: payment.cf_payment_id,
+                amount: Math.round((payment.payment_amount || 0) * 100),
+                status: payment.payment_status,
+                message: payment.payment_message,
             }),
         }
     );
@@ -345,30 +373,37 @@ async function handlePaymentFailed(
 // ============================================================================
 
 /**
- * Handle refund.processed event
+ * Handle REFUND_SUCCESS_WEBHOOK event
  * 
  * Called when a refund is successfully processed.
  * Credits the wallet with the refunded amount.
+ * 
+ * CRITICAL: Cashfree refund_amount is in RUPEES. Multiply by 100 for paise.
  */
-async function handleRefundProcessed(
+async function handleRefundSuccess(
     databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-    event: RazorpayWebhookEvent,
+    event: CashfreeWebhookEvent,
     eventId: string
 ) {
-    const refund = event.payload.refund?.entity;
-    if (!refund) {
+    const refund = event.data?.refund;
+    const order = event.data?.order;
+    if (!refund || !order) {
         return;
     }
 
-    const walletId = refund.notes?.fairlx_wallet_id;
-    const billingAccountId = refund.notes?.fairlx_billing_account_id;
+    const tags = order.order_tags || {};
+    const walletId = tags.fairlx_wallet_id;
+    const billingAccountId = tags.fairlx_billing_account_id;
+
+    // Cashfree refund_amount is in rupees → convert to paise
+    const refundAmountPaise = Math.round((refund.refund_amount || 0) * 100);
 
     // Credit wallet if we know which wallet to credit
     if (walletId) {
-        await refundToWallet(databases, walletId, refund.amount, {
-            referenceId: refund.payment_id,
-            idempotencyKey: `refund_${refund.id}`,
-            reason: refund.notes?.reason || "Razorpay refund",
+        await refundToWallet(databases, walletId, refundAmountPaise, {
+            referenceId: String(refund.cf_payment_id),
+            idempotencyKey: `refund_${refund.refund_id}`,
+            reason: "Cashfree refund",
         });
     } else if (billingAccountId) {
         // Try to find the wallet via billing account
@@ -390,10 +425,10 @@ async function handleRefundProcessed(
             );
 
             if (wallets.total > 0) {
-                await refundToWallet(databases, wallets.documents[0].$id, refund.amount, {
-                    referenceId: refund.payment_id,
-                    idempotencyKey: `refund_${refund.id}`,
-                    reason: refund.notes?.reason || "Razorpay refund",
+                await refundToWallet(databases, wallets.documents[0].$id, refundAmountPaise, {
+                    referenceId: String(refund.cf_payment_id),
+                    idempotencyKey: `refund_${refund.refund_id}`,
+                    reason: "Cashfree refund",
                 });
             }
         } catch {
@@ -409,33 +444,34 @@ async function handleRefundProcessed(
         {
             billingAccountId: billingAccountId || null,
             eventType: BillingAuditEventType.REFUND_PROCESSED,
-            razorpayEventId: eventId,
+            cashfreeEventId: eventId,
             metadata: JSON.stringify({
-                refundId: refund.id,
-                paymentId: refund.payment_id,
-                amount: refund.amount,
-                reason: refund.notes?.reason || "Not specified",
+                refundId: refund.refund_id,
+                cfPaymentId: refund.cf_payment_id,
+                amount: refundAmountPaise,
             }),
         }
     );
 }
 
 /**
- * Handle refund.failed event
+ * Handle REFUND_FAILED_WEBHOOK event
  * 
  * Called when a refund fails. Audit log only.
  */
 async function handleRefundFailed(
     databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-    event: RazorpayWebhookEvent,
+    event: CashfreeWebhookEvent,
     eventId: string
 ) {
-    const refund = event.payload.refund?.entity;
-    if (!refund) {
+    const refund = event.data?.refund;
+    const order = event.data?.order;
+    if (!refund || !order) {
         return;
     }
 
-    const billingAccountId = refund.notes?.fairlx_billing_account_id;
+    const tags = order.order_tags || {};
+    const billingAccountId = tags.fairlx_billing_account_id;
 
     // Log audit event
     await databases.createDocument(
@@ -445,11 +481,11 @@ async function handleRefundFailed(
         {
             billingAccountId: billingAccountId || null,
             eventType: BillingAuditEventType.REFUND_FAILED,
-            razorpayEventId: eventId,
+            cashfreeEventId: eventId,
             metadata: JSON.stringify({
-                refundId: refund.id,
-                paymentId: refund.payment_id,
-                amount: refund.amount,
+                refundId: refund.refund_id,
+                cfPaymentId: refund.cf_payment_id,
+                amount: Math.round((refund.refund_amount || 0) * 100),
             }),
         }
     );

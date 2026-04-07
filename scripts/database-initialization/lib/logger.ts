@@ -16,6 +16,10 @@ export const logger = {
         console.log(`  ${colors.green}✅ Created${colors.reset} ${resource}: ${colors.bold}${name}${colors.reset}`);
         stats.created++;
     },
+    updated(resource: string, name: string) {
+        console.log(`  ${colors.blue}🔄 Updated${colors.reset} ${resource}: ${colors.bold}${name}${colors.reset}`);
+        stats.created++; // Treat updates similarly to successful creations for stats
+    },
     skipped(resource: string, name: string) {
         console.log(`  ${colors.yellow}⏭️  Skipped${colors.reset} ${resource}: ${colors.dim}${name} (exists)${colors.reset}`);
         stats.skipped++;

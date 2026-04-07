@@ -146,7 +146,7 @@ const app = new Hono()
         if (!geminiAPI.isConfigured()) {
           return c.json(
             {
-              error: "AI Q&A requires GEMINI_API_KEY to be configured in environment variables",
+              error: "AI Q&A requires OLLAMA_API_KEY to be configured in environment variables",
             },
             400
           );

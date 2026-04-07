@@ -16,6 +16,9 @@ export async function setupWorkflowTransitions(databases: Databases, databaseId:
 
     await ensureCollection(databases, databaseId, COLLECTION_ID, COLLECTION_NAME, [
         Permission.read(Role.any()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
     ]);
 
     // Attributes
@@ -24,8 +27,11 @@ export async function setupWorkflowTransitions(databases: Databases, databaseId:
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'fromStatusId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'toStatusId', 256, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'name', 256, false);
-    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'conditions', 4096, false);
-    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'allowedRoles', 4096, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'description', 2048, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'allowedTeamIds', 2048, false, undefined, true);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'allowedMemberRoles', 2048, false, undefined, true);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'requiresApproval', false, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'approverTeamIds', 2048, false, undefined, true);
     await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'requiresComment', false, false);
 
     await sleep(2000);

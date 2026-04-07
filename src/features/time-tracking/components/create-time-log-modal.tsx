@@ -50,8 +50,8 @@ export const CreateTimeLogModal = ({
     resolver: zodResolver(createTimeLogSchema),
     defaultValues: {
       taskId,
-      date: new Date(),
-      hours: 1,
+      logDate: new Date(),
+      loggedHours: 1,
       description: "",
       startTime: "",
       endTime: "",
@@ -84,7 +84,7 @@ export const CreateTimeLogModal = ({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="date"
+              name="logDate"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Date</FormLabel>
@@ -126,7 +126,7 @@ export const CreateTimeLogModal = ({
 
             <FormField
               control={form.control}
-              name="hours"
+              name="loggedHours"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Hours</FormLabel>

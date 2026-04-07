@@ -22,38 +22,37 @@ const app = new Hono()
       "query",
       z.object({
         workspaceId: z.string(),
-        workItemId: z.string(),
+        parentTaskId: z.string(),
       })
     ),
     async (c) => {
       const databases = c.get("databases");
       const user = c.get("user");
-
-      const { workspaceId, workItemId } = c.req.valid("query");
-
+ 
+      const { workspaceId, parentTaskId } = c.req.valid("query");
+ 
       const member = await getMember({
         databases,
         workspaceId,
         userId: user.$id,
       });
-
+ 
       if (!member) {
         return c.json({ error: "Unauthorized" }, 401);
       }
-
+ 
       const subtasks = await databases.listDocuments<Subtask>(
         DATABASE_ID,
         SUBTASKS_ID,
         [
-          Query.equal("workItemId", workItemId),
+          Query.equal("parentTaskId", parentTaskId),
           Query.orderAsc("position"),
         ]
       );
-
+ 
       return c.json({ data: subtasks });
     }
   )
-  // Create a new subtask
   .post(
     "/",
     sessionMiddleware,
@@ -62,7 +61,17 @@ const app = new Hono()
       const databases = c.get("databases");
       const user = c.get("user");
 
-      const { title, workItemId, workspaceId, completed, assigneeId, status, dueDate, estimatedHours, priority, description } = c.req.valid("json");
+      const { 
+        title, 
+        description,
+        parentTaskId, 
+        workspaceId, 
+        assigneeId, 
+        dueDate, 
+        estimatedHours, 
+        priority, 
+        isCompleted 
+      } = c.req.valid("json");
 
       const member = await getMember({
         databases,
@@ -79,7 +88,7 @@ const app = new Hono()
         DATABASE_ID,
         SUBTASKS_ID,
         [
-          Query.equal("workItemId", workItemId),
+          Query.equal("parentTaskId", parentTaskId),
           Query.orderDesc("position"),
           Query.limit(1),
         ]
@@ -97,13 +106,12 @@ const app = new Hono()
         {
           title,
           description,
-          workItemId,
+          parentTaskId,
           workspaceId,
-          completed: completed || false,
+          isCompleted: isCompleted || false,
           position: highestPosition + 1000,
           createdBy: user.$id,
           assigneeId: assigneeId || null,
-          status: status || "TODO",
           dueDate: dueDate || null,
           estimatedHours: estimatedHours || null,
           priority: priority || "MEDIUM",
@@ -148,8 +156,8 @@ const app = new Hono()
         return c.json({ error: "Unauthorized" }, 401);
       }
 
-      const updates = c.req.valid("json");
-
+      const updates = { ...c.req.valid("json") };
+ 
       const updatedSubtask = await databases.updateDocument<Subtask>(
         DATABASE_ID,
         SUBTASKS_ID,

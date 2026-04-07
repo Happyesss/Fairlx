@@ -1,5 +1,5 @@
 /**
- * Workflow AI - Gemini API wrapper for workflow AI features
+ * Workflow AI - Unified AI service wrapper for workflow AI features
  * 
  * This module provides AI-powered workflow operations including:
  * - Answering questions about workflows
@@ -8,6 +8,7 @@
  * - Analyzing workflow issues
  */
 
+import { aiService } from "@/lib/ai-service";
 import { 
   WorkflowAIContext, 
   StatusSuggestion, 
@@ -15,146 +16,16 @@ import {
   WorkflowSuggestion 
 } from "../types/ai-context";
 
-// Gemini API response types
-interface GeminiPart {
-  text?: string;
-}
-
-interface GeminiContent {
-  parts?: GeminiPart[];
-  text?: string;
-}
-
-interface GeminiCandidate {
-  content?: GeminiContent | string | GeminiContent[];
-}
-
-interface GeminiResponse {
-  candidates?: GeminiCandidate[];
-  output?: { content?: unknown }[];
-  text?: string;
-  output_text?: string;
-}
-
-interface GeminiPayload {
-  contents: {
-    parts: { text: string }[];
-  }[];
-  generationConfig?: {
-    temperature?: number;
-    maxOutputTokens?: number;
-  };
-}
-
-/**
- * Extract text from Gemini API response
- */
-function extractTextFromResponse(json: GeminiResponse): string {
-  if (!json) return "";
-
-  // Gemini API format: { candidates: [{ content: { parts: [{ text: "..." }] } }] }
-  if (Array.isArray(json.candidates) && json.candidates[0]?.content) {
-    const content = json.candidates[0].content;
-    if (typeof content === 'object' && content !== null && 'parts' in content) {
-      const parts = content.parts;
-      if (Array.isArray(parts)) {
-        return parts.map((p) => p.text || "").join("");
-      }
-    }
-  }
-
-  // Legacy format: { candidates: [{ content: "..." }] }
-  if (Array.isArray(json.candidates) && json.candidates[0]?.content) {
-    const content = json.candidates[0].content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content.map((c) => (typeof c === 'object' && c !== null && 'text' in c ? c.text : String(c))).join("\n");
-    }
-  }
-
-  if (typeof json.output_text === "string") return json.output_text;
-  if (typeof json.text === "string") return json.text;
-
-  try {
-    return JSON.stringify(json);
-  } catch {
-    return String(json);
-  }
-}
-
 /**
  * WorkflowAI class for handling AI-powered workflow operations
  */
 export class WorkflowAI {
-  private apiKey: string;
-  private baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent";
-
-  constructor() {
-    this.apiKey = process.env.GEMINI_API_KEY || "";
-  }
-
   public isConfigured(): boolean {
-    return !!this.apiKey;
+    return aiService.isConfigured();
   }
 
   public ensureConfigured(): void {
-    if (!this.apiKey) {
-      throw new Error("GEMINI_API_KEY must be configured in the environment");
-    }
-  }
-
-  private async callGemini(payload: GeminiPayload, retries = 2): Promise<string> {
-    this.ensureConfigured();
-
-    const url = `${this.baseUrl}?key=${this.apiKey}`;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        if ((res.status === 429 || res.status >= 500) && retries > 0) {
-          await new Promise((r) => setTimeout(r, 500));
-          return this.callGemini(payload, retries - 1);
-        }
-        throw new Error(`Gemini API error ${res.status}: ${text}`);
-      }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const json = await res.json();
-        return extractTextFromResponse(json);
-      }
-
-      return await res.text();
-    } catch (err) {
-      if (retries > 0) {
-        await new Promise((r) => setTimeout(r, 500));
-        return this.callGemini(payload, retries - 1);
-      }
-      throw err;
-    }
-  }
-
-  private buildPayload(prompt: string, options?: { maxTokens?: number; temperature?: number }): GeminiPayload {
-    return {
-      contents: [
-        {
-          parts: [{ text: prompt }]
-        }
-      ],
-      generationConfig: {
-        temperature: options?.temperature ?? 0.3,
-        maxOutputTokens: options?.maxTokens ?? 2000,
-      }
-    };
+    aiService.ensureConfigured();
   }
 
   /**
@@ -193,14 +64,27 @@ ${transitionList || 'No transitions defined.'}
 - Final statuses: ${context.summary.finalStatuses}
 ${issuesSummary.length > 0 ? `- Issues detected: ${issuesSummary.join(', ')}` : '- No issues detected'}
 
----
-
 User Question: ${question}
 
-Provide a helpful, concise answer. If the user asks to create something, provide the details needed. If analyzing issues, explain what they mean and how to fix them.`;
+Provide a helpful, detailed answer. If the user asks to modify the workflow (add statuses, create transitions, etc.), please provide the technical details in a JSON block at the end of your response.
 
-    const payload = this.buildPayload(prompt, { maxTokens: 1500 });
-    return this.callGemini(payload);
+The JSON MUST follow this exact structure (no markdown in the JSON):
+{
+  "actionType": "suggest_workflow",
+  "data": {
+    "name": "${context.workflow.name}",
+    "statuses": [
+      {"name": "Status Name", "key": "STATUS_KEY", "statusType": "OPEN|IN_PROGRESS|CLOSED", "color": "#hex", "isInitial": false, "isFinal": false}
+    ],
+    "transitions": [
+      {"fromStatusKey": "FROM_KEY", "toStatusKey": "TO_KEY", "name": "Action Name"}
+    ]
+  }
+}
+
+Respond with a helpful text answer first, followed by the JSON block if applicable.`;
+
+    return aiService.generate(prompt, { maxTokens: 2000 });
   }
 
   /**
@@ -239,8 +123,7 @@ Rules:
 - isInitial should be true only for starting statuses
 - isFinal should be true only for end statuses`;
 
-    const payload = this.buildPayload(aiPrompt, { maxTokens: 500, temperature: 0.2 });
-    const response = await this.callGemini(payload);
+    const response = await aiService.generate(aiPrompt, { maxTokens: 500, temperature: 0.2 });
 
     try {
       // Extract JSON from response
@@ -299,8 +182,7 @@ Rules:
 - Do not create a transition that already exists
 - requiresApproval should be true for critical transitions`;
 
-    const payload = this.buildPayload(aiPrompt, { maxTokens: 300, temperature: 0.2 });
-    const response = await this.callGemini(payload);
+    const response = await aiService.generate(aiPrompt, { maxTokens: 300, temperature: 0.2 });
 
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -366,8 +248,7 @@ Requirements:
 - IN_PROGRESS statuses: blue/yellow colors
 - CLOSED statuses: green/emerald colors`;
 
-    const payload = this.buildPayload(aiPrompt, { maxTokens: 2000, temperature: 0.4 });
-    const response = await this.callGemini(payload);
+    const response = await aiService.generate(aiPrompt, { maxTokens: 2000, temperature: 0.4 });
 
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -420,8 +301,7 @@ Provide a structured analysis with:
 
 Be concise and actionable.`;
 
-    const payload = this.buildPayload(prompt, { maxTokens: 1500 });
-    return this.callGemini(payload);
+    return aiService.generate(prompt, { maxTokens: 1500 });
   }
 }
 
