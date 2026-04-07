@@ -132,6 +132,17 @@ export interface AIUpdateTaskRequest {
   autoExecute?: boolean;
 }
 
+// GitHub-ready output recommendations after task creation
+export interface GitHubRecommendation {
+  branchName: string;
+  commitTitle: string;
+  commitBody: string;
+  targetBranch: string;
+  prTitle: string;
+  prDescription: string;
+  note?: string;
+}
+
 export interface AITaskResponse {
   success: boolean;
   action: AITaskAction;
@@ -146,4 +157,6 @@ export interface AITaskResponse {
   availableMembers?: AvailableMember[];
   // Suggested labels based on context
   suggestedLabels?: string[];
+  // GitHub-ready output after task creation
+  githubRecommendation?: GitHubRecommendation;
 }
