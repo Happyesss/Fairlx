@@ -27,6 +27,14 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Paperclip,
+  Image as ImageIcon,
+  Bug,
+  Layout,
+  Layers,
+  Box,
+  Trash2,
+  Camera,
 } from "lucide-react";
 
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
@@ -59,6 +67,8 @@ import {
   useAIUpdateTask,
   useExecuteTaskSuggestion,
 } from "../api/use-project-ai";
+import { useUploadAttachment } from "@/features/attachments/hooks/use-upload-attachment";
+import { WorkItemType } from "@/features/sprints/types";
 import { ProjectAIAnswer, AITaskResponse, AITaskData, AvailableMember, TaskContext, GitHubRecommendation } from "../types/ai-context";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -95,6 +105,16 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
   const [executingIndex, setExecutingIndex] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskContext | null>(null);
+  
+  // NEW: Task Type selection & Attachments state
+  const [isAskingType, setIsAskingType] = useState(false);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const screenshotInputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const { data: contextData, isLoading: isLoadingContext } = useGetProjectAIContext(
@@ -187,49 +207,86 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
     }
 
     if (detectCreateAction(q)) {
-      // Handle task creation
-      createTaskAI(
-        { projectId, workspaceId, prompt: q, autoExecute: false },
-        {
-          onSuccess: (response) => {
-            const conversationItem: ConversationItem = {
-              question: q,
-              answer: response.message,
-              timestamp: new Date().toISOString(),
-              contextUsed: {
-                documentsCount: 0,
-                tasksCount: context?.tasks.length || 0,
-                membersCount: context?.members.length || 0,
-                categories: [],
-              },
-              taskResponse: response,
-              githubRecommendation: response.githubRecommendation,
-            };
-            setConversation((prev) => [...prev, conversationItem]);
-            if (response.action && !response.action.executed) {
-              setPendingTaskAction(response);
-            }
-            setQuestion("");
-          },
-        }
-      );
-    } else {
-      // Regular question
-      askQuestion(
-        { projectId, workspaceId, question: q },
-        {
-          onSuccess: (response) => {
-            if (response.data) {
-              setConversation((prev) => [...prev, response.data]);
-            }
-            setQuestion("");
-          },
-        }
-      );
+      // Show user message immediately
+      const conversationItem: ConversationItem = {
+        question: q,
+        answer: "Thinking... I see you want to create a work item. What type of item is this?",
+        timestamp: new Date().toISOString(),
+        contextUsed: {
+          documentsCount: 0,
+          tasksCount: 0,
+          membersCount: context?.members.length || 0,
+          categories: [],
+        },
+      };
+      setConversation((prev) => [...prev, conversationItem]);
+      
+      // Store prompt and ask for type
+      setPendingPrompt(q);
+      setIsAskingType(true);
+      setQuestion(""); // CLEAR input immediately
+      scrollToBottom();
+      return;
     }
+
+    // GENERAL CHAT (Missing in previous version)
+    askQuestion(
+      { projectId, workspaceId, question: q },
+      {
+        onSuccess: (response) => {
+          setConversation((prev) => [...prev, {
+            ...response.data,
+            timestamp: new Date().toISOString(),
+          }]);
+          setQuestion("");
+        },
+        onError: () => {
+          toast.error("Failed to get answer from AI");
+        }
+      }
+    );
   };
 
-  const handleExecuteTaskAction = (taskResponse: AITaskResponse, conversationIndex: number) => {
+  const { mutate: uploadAttachment } = useUploadAttachment();
+
+  const handleCreateTaskWithType = (type: string) => {
+    setSelectedType(type);
+    setIsAskingType(false);
+    
+    // Include info about attachments in the prompt for AI
+    const attachmentInfo = attachments.length > 0 
+      ? `\n\n[Note: User has attached ${attachments.length} file(s) including ${attachments.filter(a => a.type.startsWith('image/')).length} image(s).]`
+      : "";
+
+    createTaskAI(
+      { projectId, workspaceId, prompt: pendingPrompt + attachmentInfo, autoExecute: false, type },
+      {
+        onSuccess: (response) => {
+          // Update the EXISTING conversation item (the last one)
+          setConversation((prev) => {
+            const newConv = [...prev];
+            if (newConv.length > 0) {
+              const lastIndex = newConv.length - 1;
+              newConv[lastIndex] = {
+                ...newConv[lastIndex],
+                answer: response.message,
+                taskResponse: response,
+                githubRecommendation: response.githubRecommendation,
+              };
+            }
+            return newConv;
+          });
+          
+          if (response.action && !response.action.executed) {
+            setPendingTaskAction(response);
+          }
+          setPendingPrompt("");
+        },
+      }
+    );
+  };
+
+  const handleExecuteTaskAction = async (taskResponse: AITaskResponse, conversationIndex: number) => {
     if (!taskResponse.action?.taskData) return;
 
     setExecutingIndex(conversationIndex);
@@ -242,7 +299,32 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
         taskId: taskResponse.action.taskId,
       },
       {
-        onSuccess: (response) => {
+        onSuccess: async (response) => {
+          const newTaskId = response.task?.id;
+          
+          // UPLOAD ATTACHMENTS if any
+          if (newTaskId && attachments.length > 0) {
+            toast.info(`Uploading ${attachments.length} attachment(s)...`);
+            for (const file of attachments) {
+              const formData = new FormData();
+              formData.append("file", file);
+              formData.append("taskId", newTaskId);
+              formData.append("projectId", projectId);
+              formData.append("workspaceId", workspaceId);
+              
+              await new Promise((resolve) => {
+                uploadAttachment({ form: formData }, {
+                  onSuccess: resolve,
+                  onError: (err) => {
+                    console.error("Failed to upload:", file.name, err);
+                    resolve(null);
+                  }
+                });
+              });
+            }
+            setAttachments([]);
+          }
+
           // Update the conversation with the result using index
           setConversation((prev) =>
             prev.map((item, idx) =>
@@ -1108,15 +1190,63 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
             ))}
 
             {isProcessing && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-muted-foreground">
-                      {isCreatingTask || isUpdatingTask ? "Processing task..." : "Thinking..."}
-                    </span>
+              <div className="flex justify-start pt-2">
+                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-3">
+                  <div className="relative">
+                    <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                    <Loader2 className="h-4 w-4 animate-spin absolute inset-0 opacity-20" />
                   </div>
+                  <span className="text-sm text-foreground font-medium animate-pulse">
+                    {isCreatingTask ? "Architecting your task..." : isUpdatingTask ? "Refining task details..." : "Thinking..."}
+                  </span>
                 </div>
+              </div>
+            )}
+
+            {/* NEW: Type Picker UI when AI detects creation intent */}
+            {isAskingType && (
+              <div className="flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/20 rounded-2xl bg-primary/5 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-2 text-primary font-medium">
+                  < Sparkles className="h-4 w-4" />
+                  <span>Great! What type of work item is this?</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 w-full">
+                  <Button 
+                    variant="outline" 
+                    className="h-16 flex flex-col gap-1 border-primary/20 hover:border-primary hover:bg-primary/10"
+                    onClick={() => handleCreateTaskWithType(WorkItemType.TASK)}
+                  >
+                    <Layout className="h-5 w-5 text-blue-500" />
+                    <span className="text-xs">General Task</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-16 flex flex-col gap-1 border-red-500/20 hover:border-red-500 hover:bg-red-500/10"
+                    onClick={() => handleCreateTaskWithType(WorkItemType.BUG)}
+                  >
+                    <Bug className="h-5 w-5 text-red-500" />
+                    <span className="text-xs">Bug Report</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-16 flex flex-col gap-1 border-green-500/20 hover:border-green-500 hover:bg-green-500/10"
+                    onClick={() => handleCreateTaskWithType(WorkItemType.STORY)}
+                  >
+                    <Layers className="h-5 w-5 text-green-500" />
+                    <span className="text-xs">User Story</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-16 flex flex-col gap-1 border-purple-500/20 hover:border-purple-500 hover:bg-purple-500/10"
+                    onClick={() => handleCreateTaskWithType(WorkItemType.EPIC)}
+                  >
+                    <Box className="h-5 w-5 text-purple-500" />
+                    <span className="text-xs">Epic</span>
+                  </Button>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setIsAskingType(false)} className="text-xs">
+                  Cancel
+                </Button>
               </div>
             )}
           </div>
@@ -1124,7 +1254,74 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="p-4 border-t">
+      <div className="p-4 border-t bg-background/50 backdrop-blur-sm">
+        {/* Attachment Preview Tray */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3 max-h-24 overflow-y-auto p-1">
+            {attachments.map((file, i) => (
+              <div key={i} className="relative group">
+                <Badge variant="secondary" className="h-8 pr-7 pl-2 py-0 flex items-center gap-2">
+                  {file.type.startsWith('image/') ? <ImageIcon className="h-3 w-3" /> : <Paperclip className="h-3 w-3" />}
+                  <span className="max-w-[100px] truncate text-[10px]">{file.name}</span>
+                </Badge>
+                <button 
+                  className="absolute right-1 top-1.5 h-5 w-5 rounded-full bg-destructive/20 hover:bg-destructive/40 flex items-center justify-center transition-colors"
+                  onClick={() => setAttachments(attachments.filter((_, idx) => idx !== i))}
+                >
+                  <X className="h-3 w-3 text-destructive" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex gap-1">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              multiple 
+              onChange={(e) => {
+                if (e.target.files) {
+                  setAttachments([...attachments, ...Array.from(e.target.files)]);
+                }
+              }}
+            />
+            <input 
+              type="file" 
+              ref={screenshotInputRef} 
+              className="hidden" 
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  setAttachments([...attachments, e.target.files[0]]);
+                }
+              }}
+            />
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => fileInputRef.current?.click()}>
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="shadow-xl"><p>Attach Files (PDF, Docs)</p></TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => screenshotInputRef.current?.click()}>
+                    <Camera className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="shadow-xl"><p>Upload Screenshot / Photo</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
         {conversation.length > 0 && (
           <div className="flex justify-between items-center mb-2">
             <div className="flex gap-2">
