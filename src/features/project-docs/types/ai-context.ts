@@ -94,6 +94,7 @@ export interface AITaskData {
   description?: string | null;
   status?: string;
   priority?: string;
+  type?: string; // WorkItemType
   dueDate?: string | null;
   endDate?: string | null;
   assigneeIds?: string[];
