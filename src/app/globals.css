@@ -98,6 +98,8 @@ body {
     --sidebar-border: 0 0% 12%;
     --sidebar-muted: 0 0% 8%;
     --sidebar-accent: 0 0% 10%;
+
+    --radius: 0.5rem;
   }
 
   /* Dark Mode - Premium gray-900 theme inspired by Linear/Raycast */
@@ -151,7 +153,7 @@ body {
     --sidebar-muted: 210 11% 8%;
     --sidebar-accent: 210 11% 8%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
   }
 }
 
