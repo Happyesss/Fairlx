@@ -17,6 +17,7 @@ interface UseGetWorkItemsProps {
   parentId?: string | null;
   flagged?: boolean;
   search?: string;
+  labels?: string[] | null;
   includeChildren?: boolean;
   limit?: number;
   enabled?: boolean;
@@ -34,6 +35,7 @@ export const useGetWorkItems = ({
   parentId,
   flagged,
   search,
+  labels,
   includeChildren,
   limit,
   enabled = true,
@@ -52,6 +54,7 @@ export const useGetWorkItems = ({
       parentId,
       flagged,
       search,
+      labels,
       includeChildren,
       limit,
     ],
@@ -77,6 +80,7 @@ export const useGetWorkItems = ({
           parentId: parentId === null ? "null" : parentId,
           flagged: flagged?.toString(),
           search,
+          labels: labels?.length ? labels.join(",") : undefined,
           includeChildren: includeChildren?.toString(),
           limit: limit?.toString(),
         },
