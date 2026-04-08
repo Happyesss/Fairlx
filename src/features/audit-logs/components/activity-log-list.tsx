@@ -102,7 +102,7 @@ export const ActivityLogItem = ({
             </span>
             <Badge
               variant="outline"
-              className={`text-xs ${colorClass} border font-medium`}
+              className={`text-xs ${colorClass} border font-medium rounded-full`}
             >
               {action}
             </Badge>
@@ -127,7 +127,7 @@ export const ActivityLogItem = ({
             <>
               <span className="text-xs text-muted-foreground">•</span>
               <span className="text-xs text-muted-foreground">Status:</span>
-              <Badge variant="secondary" className="text-xs font-medium">
+              <Badge variant="secondary" className="text-xs font-medium rounded-full">
                 {String(metadata.status)}
               </Badge>
             </>
@@ -140,7 +140,7 @@ export const ActivityLogItem = ({
               <Badge
                 variant="secondary"
                 className={cn(
-                  "text-xs font-medium",
+                  "text-xs font-medium rounded-full",
                   metadata.priority === 'HIGH' || metadata.priority === 'URGENT'
                     ? 'bg-destructive/10 text-destructive border-destructive/20'
                     : metadata.priority === 'MEDIUM'
