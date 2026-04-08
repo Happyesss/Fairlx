@@ -73,7 +73,7 @@ for (let i = 0; i < args.length; i++) {
 if (keysToPush.length === 0) {
     console.log('\n🚀 GH Environment Pusher');
     console.log('Usage: node scripts/ci/push_env.js [--repo=owner/repo] <KEY_1> <KEY_2> ...');
-    console.log('\nExample: node scripts/ci/push_env.js --repo=myorg/myrepo OLLAMA_API_KEY\n');
+    console.log('\nExample: node scripts/ci/push_env.js --repo=myorg/myrepo GEMINI_API_KEY\n');
     process.exit(0);
 }
 

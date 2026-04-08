@@ -52,10 +52,16 @@ vi.mock("@/lib/appwrite", () => ({
     }),
 }));
 
+vi.mock("@/features/billing/services/billing-service", () => ({
+    setupOrganizationBilling: vi.fn().mockResolvedValue({ $id: "mock_ba_org" }),
+    setupPersonalBilling: vi.fn().mockResolvedValue({ $id: "mock_ba_user" }),
+}));
+
 vi.mock("@/config", () => ({
     DATABASE_ID: "test-db",
     WALLETS_ID: "test-wallets",
     WALLET_TRANSACTIONS_ID: "test-transactions",
+    BILLING_ACCOUNTS_ID: "test-billing-accounts",
     WALLET_DAILY_TOPUP_LIMIT: 50000000, // 5 lakh in paise
 }));
 

@@ -532,19 +532,19 @@ export const MembersList = () => {
                         <div className="flex items-center gap-2 mb-0.5">
                           <p className="text-sm font-medium truncate">{displayName}</p>
                           {isAdmin && (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20 text-xs px-1.5 py-0">
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20 text-xs px-1.5 py-0 rounded-full">
                               <Crown className="size-2.5 mr-1" />
                               Admin
                             </Badge>
                           )}
                           {!isAdmin && member.role !== MemberRole.MEMBER && (
-                            <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-500/20 text-xs px-1.5 py-0">
+                            <Badge variant="outline" className="bg-purple-500/10 text-purple-700 border-purple-500/20 text-xs px-1.5 py-0 rounded-full">
                               <Shield className="size-2.5 mr-1" />
                               {member.role}
                             </Badge>
                           )}
                           {isCurrentUser && (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20 text-xs px-1.5 py-0">
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20 text-xs px-1.5 py-0 rounded-full">
                               You
                             </Badge>
                           )}

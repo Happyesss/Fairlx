@@ -2,15 +2,14 @@ import { DOCUMENTATION_QUESTIONS } from "../constants";
 import { aiService } from "@/lib/ai-service";
 
 /**
- * GeminiAPI wrapper - now uses the unified AI service (Ollama)
+ * GeminiAPI wrapper - uses the unified AI service (Google Gemini)
  * 
  * This class maintains backward compatibility with existing code while
  * delegating all AI calls to the centralized AI service.
  * 
  * Environment variables (via AIService):
- * - OLLAMA_BASE_URL: Base URL for the AI API
- * - OLLAMA_API_KEY: API key for authentication
- * - OLLAMA_MODEL: Default model to use
+ * - GEMINI_API_KEY: API key for Google Gemini authentication
+ * - GEMINI_MODEL: Default model to use (default: gemini-2.5-flash)
  */
 export class GeminiAPI {
   public isConfigured(): boolean {

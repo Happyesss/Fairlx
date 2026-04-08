@@ -435,7 +435,9 @@ export const DataDashboard = ({
                           borderRadius: "8px",
                           fontSize: "12px",
                           boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                          color: "hsl(var(--foreground))",
                         }}
+                        itemStyle={{ color: "hsl(var(--foreground))" }}
                         formatter={(value: number, name: string) => [
                           `${value} tasks`,
                           name,
@@ -598,7 +600,7 @@ export const DataDashboard = ({
                 recentTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 -mx-6 px-6 transition-colors"
+                    className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors px-4 -mx-4"
                   >
                     <div className="col-span-5 flex items-center gap-3 min-w-0">
                       <MemberAvatar

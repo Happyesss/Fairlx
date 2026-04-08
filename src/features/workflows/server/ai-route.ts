@@ -222,7 +222,7 @@ const app = new Hono()
 
         if (!workflowAI.isConfigured()) {
           return c.json(
-            { error: "AI features require OLLAMA_API_KEY to be configured" },
+            { error: "AI features require GEMINI_API_KEY to be configured" },
             400
           );
         }
@@ -298,7 +298,7 @@ const app = new Hono()
 
         if (!workflowAI.isConfigured()) {
           return c.json(
-            { error: "AI features require OLLAMA_API_KEY to be configured" },
+            { error: "AI features require GEMINI_API_KEY to be configured" },
             400
           );
         }
@@ -362,7 +362,7 @@ const app = new Hono()
 
         if (!workflowAI.isConfigured()) {
           return c.json(
-            { error: "AI features require OLLAMA_API_KEY to be configured" },
+            { error: "AI features require GEMINI_API_KEY to be configured" },
             400
           );
         }
@@ -426,7 +426,7 @@ const app = new Hono()
 
         if (!workflowAI.isConfigured()) {
           return c.json(
-            { error: "AI features require OLLAMA_API_KEY to be configured" },
+            { error: "AI features require GEMINI_API_KEY to be configured" },
             400
           );
         }
@@ -484,7 +484,7 @@ const app = new Hono()
 
         if (!workflowAI.isConfigured()) {
           return c.json(
-            { error: "AI features require OLLAMA_API_KEY to be configured" },
+            { error: "AI features require GEMINI_API_KEY to be configured" },
             400
           );
         }

@@ -63,11 +63,11 @@ export const useAICreateTask = () => {
   return useMutation<
     AITaskResponse,
     Error,
-    { projectId: string; workspaceId: string; prompt: string; autoExecute?: boolean }
+    { projectId: string; workspaceId: string; prompt: string; autoExecute?: boolean; type?: string }
   >({
-    mutationFn: async ({ projectId, workspaceId, prompt, autoExecute }) => {
+    mutationFn: async ({ projectId, workspaceId, prompt, autoExecute, type }) => {
       const response = await client.api["project-docs"].ai["create-task"].$post({
-        json: { projectId, workspaceId, prompt, autoExecute },
+        json: { projectId, workspaceId, prompt, autoExecute, type },
       });
 
       if (!response.ok) {

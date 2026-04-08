@@ -1,13 +1,11 @@
 /**
- * Unified AI Service - OpenAI-compatible API wrapper
+ * Unified AI Service - Google Gemini API wrapper
  * 
- * This module provides a centralized AI service that works with any OpenAI-compatible
- * endpoint, including Ollama with OpenAI compatibility layer.
+ * This module provides a centralized AI service that works with Google's Gemini AI.
  * 
  * Environment variables:
- * - OLLAMA_BASE_URL: Base URL for the AI API (default: https://ollama.fairlx.com/v1)
- * - OLLAMA_API_KEY: API key for authentication
- * - OLLAMA_MODEL: Default model to use (default: qwen2.5-coder:7b)
+ * - GEMINI_API_KEY: API key for Google Gemini authentication
+ * - GEMINI_MODEL: Default model to use (default: gemini-2.5-flash)
  */
 
 // OpenAI-compatible response types
@@ -16,47 +14,19 @@ interface ChatMessage {
   content: string;
 }
 
-interface ChatChoice {
-  index: number;
-  message: ChatMessage;
-  finish_reason: string;
-}
-
-interface ChatUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface ChatCompletionResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: ChatChoice[];
-  usage?: ChatUsage;
-}
-
-interface ChatCompletionRequest {
-  model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-  stream?: boolean;
-}
 
 /**
  * Unified AI Service class for all AI-powered features
  */
 export class AIService {
-  private baseUrl: string;
   private apiKey: string;
   private defaultModel: string;
+  private baseUrl: string;
 
   constructor() {
-    this.baseUrl = process.env.OLLAMA_BASE_URL || "https://ollama.fairlx.com/v1";
-    this.apiKey = process.env.OLLAMA_API_KEY || "";
-    this.defaultModel = process.env.OLLAMA_MODEL || "qwen2.5-coder:7b";
+    this.apiKey = process.env.GEMINI_API_KEY || "";
+    this.defaultModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    this.baseUrl = "https://generativelanguage.googleapis.com/v1beta";
   }
 
   /**
@@ -71,7 +41,7 @@ export class AIService {
    */
   public ensureConfigured(): void {
     if (!this.apiKey) {
-      throw new Error("OLLAMA_API_KEY must be configured in the environment");
+      throw new Error("GEMINI_API_KEY must be configured in the environment");
     }
   }
 
@@ -82,11 +52,8 @@ export class AIService {
     this.ensureConfigured();
     
     try {
-      const res = await fetch(`${this.baseUrl}/models`, {
+      const res = await fetch(`${this.baseUrl}/models?key=${this.apiKey}`, {
         method: "GET",
-        headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
-        },
       });
 
       if (!res.ok) {
@@ -94,7 +61,7 @@ export class AIService {
       }
 
       const data = await res.json();
-      return data.data?.map((m: { id: string }) => m.id) || [];
+      return data.models?.map((m: { name: string }) => m.name) || [];
     } catch (err) {
       console.error("Error fetching models:", err);
       return [];
@@ -102,7 +69,7 @@ export class AIService {
   }
 
   /**
-   * Send a chat completion request
+   * Send a chat completion request to Gemini
    */
   private async chatCompletion(
     messages: ChatMessage[],
@@ -111,43 +78,85 @@ export class AIService {
       temperature?: number;
       maxTokens?: number;
     },
-    retries = 2
+    retries = 3
   ): Promise<string> {
     this.ensureConfigured();
 
-    const request: ChatCompletionRequest = {
-      model: options?.model || this.defaultModel,
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 2000,
-      stream: false,
+    const model = options?.model || this.defaultModel;
+    
+    // Convert messages to Gemini format
+    const systemInstruction = messages.find(m => m.role === "system")?.content;
+    const conversationMessages = messages.filter(m => m.role !== "system");
+    
+    const contents = conversationMessages.map(msg => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }]
+    }));
+
+    const requestBody: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        temperature: options?.temperature ?? 0.3,
+        maxOutputTokens: options?.maxTokens ?? 2000,
+      }
     };
 
+    if (systemInstruction) {
+      requestBody.systemInstruction = {
+        parts: [{ text: systemInstruction }]
+      };
+    }
+
     try {
-      const res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify(request),
-      });
+      const res = await fetch(
+        `${this.baseUrl}/models/${model}:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
 
       if (!res.ok) {
         const text = await res.text();
-        // Retry on 429/5xx
+        let retryDelay = 1000 * Math.pow(2, 3 - retries); // Default exponential backoff
+
+        // Parse Gemini-specific retry info if available
+        try {
+          const errorData = JSON.parse(text);
+          if (errorData.error?.details) {
+            const retryInfo = errorData.error.details.find(
+              (d: any) => d["@type"]?.includes("RetryInfo")
+            );
+            if (retryInfo?.retryDelay) {
+              // Extract number from "54.520959962s" or similar
+              const seconds = parseFloat(retryInfo.retryDelay);
+              if (!isNaN(seconds)) {
+                retryDelay = (seconds + 1) * 1000;
+              }
+            }
+          }
+        } catch {
+          // Fallback to default backoff
+        }
+
+        // Retry on 429 (Quota) / 5xx (Server)
         if ((res.status === 429 || res.status >= 500) && retries > 0) {
-          await new Promise((r) => setTimeout(r, 1000));
+          console.warn(`[AIService] ${res.status} encountered. Retrying in ${retryDelay}ms... (${retries} retries left)`);
+          await new Promise((r) => setTimeout(r, retryDelay));
           return this.chatCompletion(messages, options, retries - 1);
         }
-        throw new Error(`AI API error ${res.status}: ${text}`);
+        throw new Error(`Gemini API error ${res.status}: ${text}`);
       }
 
-      const data: ChatCompletionResponse = await res.json();
-      return data.choices?.[0]?.message?.content || "";
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch (err) {
       if (retries > 0) {
-        await new Promise((r) => setTimeout(r, 1000));
+        const backoff = 1000 * Math.pow(2, 3 - retries);
+        await new Promise((r) => setTimeout(r, backoff));
         return this.chatCompletion(messages, options, retries - 1);
       }
       throw err;
