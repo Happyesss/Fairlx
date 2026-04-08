@@ -74,6 +74,7 @@
     "cashfree-pg": "^5.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "date-fns": "^3.0.0",
     "docx": "^9.5.1",
     "dompurify": "^3.3.1",

@@ -14,34 +14,6 @@ interface ChatMessage {
   content: string;
 }
 
-interface ChatChoice {
-  index: number;
-  message: ChatMessage;
-  finish_reason: string;
-}
-
-interface ChatUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-interface ChatCompletionResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: ChatChoice[];
-  usage?: ChatUsage;
-}
-
-interface ChatCompletionRequest {
-  model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-  stream?: boolean;
-}
 
 /**
  * Unified AI Service class for all AI-powered features
@@ -106,7 +78,7 @@ export class AIService {
       temperature?: number;
       maxTokens?: number;
     },
-    retries = 2
+    retries = 3
   ): Promise<string> {
     this.ensureConfigured();
 
@@ -121,7 +93,7 @@ export class AIService {
       parts: [{ text: msg.content }]
     }));
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       contents,
       generationConfig: {
         temperature: options?.temperature ?? 0.3,
@@ -149,9 +121,31 @@ export class AIService {
 
       if (!res.ok) {
         const text = await res.text();
-        // Retry on 429/5xx
+        let retryDelay = 1000 * Math.pow(2, 3 - retries); // Default exponential backoff
+
+        // Parse Gemini-specific retry info if available
+        try {
+          const errorData = JSON.parse(text);
+          if (errorData.error?.details) {
+            const retryInfo = errorData.error.details.find(
+              (d: any) => d["@type"]?.includes("RetryInfo")
+            );
+            if (retryInfo?.retryDelay) {
+              // Extract number from "54.520959962s" or similar
+              const seconds = parseFloat(retryInfo.retryDelay);
+              if (!isNaN(seconds)) {
+                retryDelay = (seconds + 1) * 1000;
+              }
+            }
+          }
+        } catch {
+          // Fallback to default backoff
+        }
+
+        // Retry on 429 (Quota) / 5xx (Server)
         if ((res.status === 429 || res.status >= 500) && retries > 0) {
-          await new Promise((r) => setTimeout(r, 1000));
+          console.warn(`[AIService] ${res.status} encountered. Retrying in ${retryDelay}ms... (${retries} retries left)`);
+          await new Promise((r) => setTimeout(r, retryDelay));
           return this.chatCompletion(messages, options, retries - 1);
         }
         throw new Error(`Gemini API error ${res.status}: ${text}`);
@@ -161,7 +155,8 @@ export class AIService {
       return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch (err) {
       if (retries > 0) {
-        await new Promise((r) => setTimeout(r, 1000));
+        const backoff = 1000 * Math.pow(2, 3 - retries);
+        await new Promise((r) => setTimeout(r, backoff));
         return this.chatCompletion(messages, options, retries - 1);
       }
       throw err;
