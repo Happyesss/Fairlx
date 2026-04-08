@@ -297,6 +297,7 @@ export const TaskViewSwitcher = ({
     assigneeId: effectiveAssigneeId || undefined,
     status: mappedStatus,
     priority: priority && priority !== "null" ? priority as unknown as WorkItemPriority : undefined,
+    labels: labels && labels.length > 0 ? labels : undefined,
     search: undefined, // Don't filter on server side, use client-side search
     enabled: !showMyTasksOnly,
   });
@@ -424,11 +425,11 @@ export const TaskViewSwitcher = ({
     <Tabs
       defaultValue={view}
       onValueChange={setView}
-      className="flex-1 w-full border rounded-lg bg-card"
+      className="flex-1 w-full border rounded-lg "
     >
-      <div className="h-full flex flex-col overflow-auto ">
+      <div className="h-full flex  flex-col overflow-auto ">
         <div className="flex flex-col gap-y-2  px-4 py-6 lg:flex-row justify-between items-center">
-          <SlidingTabsList className="w-full lg:w-auto bg-muted/50 border border-border">
+          <SlidingTabsList className="w-full lg:w-auto bg-muted/50  border border-border">
             <SlidingTabsTrigger className="h-8 w-full text-xs lg:w-auto" value="dashboard">
               {showMyTasksOnly ? "My Space" : "Dashboard"}
             </SlidingTabsTrigger>
