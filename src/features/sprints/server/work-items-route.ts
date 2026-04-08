@@ -178,6 +178,7 @@ const app = new Hono()
         parentId: z.string().optional().nullable(),
         flagged: z.string().transform(val => val === "true").optional(),
         search: z.string().optional(),
+        labels: z.string().optional(),
         includeChildren: z.string().transform(val => val === "true").optional(),
         limit: z.coerce.number().min(1).max(1000).optional(),
       })
@@ -198,9 +199,10 @@ const app = new Hono()
         epicId,
         parentId,
         flagged,
-        search,
-        includeChildren,
-        limit,
+          search,
+          labels,
+          includeChildren,
+          limit,
       } = c.req.valid("query");
 
       const member = await getMember({
@@ -243,7 +245,14 @@ const app = new Hono()
       }
 
       if (assigneeId) {
-        query.push(Query.equal("assigneeIds", assigneeId));
+        query.push(Query.contains("assigneeIds", assigneeId));
+      }
+
+      if (labels) {
+        const labelsArray = labels.split(",");
+        labelsArray.forEach(label => {
+          query.push(Query.contains("labels", label.trim()));
+        });
       }
 
       if (epicId !== undefined) {
