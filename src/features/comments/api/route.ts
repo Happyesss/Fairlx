@@ -92,7 +92,8 @@ const app = new Hono()
         await invalidateCache(CK.commentList(taskId), CK.commentCount(taskId));
 
         return c.json({ data: comment });
-      } catch {
+      } catch (error) {
+        console.error("Failed to create comment", error);
         return c.json({ error: "Failed to create comment" }, 500);
       }
     }

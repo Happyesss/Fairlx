@@ -79,6 +79,12 @@ export const createComment = async (data: {
 }): Promise<Comment> => {
   const { databases } = await createAdminClient();
 
+  const task = await databases.getDocument<Task>(
+    DATABASE_ID,
+    TASKS_ID,
+    data.taskId
+  );
+
   const comment = await databases.createDocument(
     DATABASE_ID,
     COMMENTS_ID,
@@ -87,19 +93,15 @@ export const createComment = async (data: {
       content: data.content,
       taskId: data.taskId,
       workspaceId: data.workspaceId,
+      projectId: task.projectId,
       authorId: data.authorId,
       isEdited: false,
-      parentId: data.parentId || null,
+      ...(data.parentId ? { parentId: data.parentId } : {}),
     }
   );
 
   // Emit comment added event, mention events, and reply events (non-blocking)
   try {
-    const task = await databases.getDocument<Task>(
-      DATABASE_ID,
-      TASKS_ID,
-      data.taskId
-    );
     const authorName = data.authorName || "Someone";
     const mentionedUserIds = extractMentions(data.content);
     const snippet = extractSnippet(data.content, 200);

@@ -7,6 +7,7 @@
 import "server-only";
 
 import type { Storage as AppwriteStorage } from "node-appwrite";
+import { InputFile } from "node-appwrite/file";
 import type { StorageProvider, StorageFile } from "./types";
 
 export class AppwriteStorageProvider implements StorageProvider {
@@ -20,13 +21,24 @@ export class AppwriteStorageProvider implements StorageProvider {
     file: File | Buffer,
     _metadata?: { fileName?: string; mimeType?: string }
   ): Promise<StorageFile> {
-    // Appwrite SDK accepts File directly
-    const result = await this.storage.createFile(bucketId, fileId, file as File);
+    // Appwrite SDK v14 requires InputFile for all uploads
+    let inputFile: any;
+
+    if (file instanceof File) {
+      // Convert web-standard File to Buffer for InputFile
+      const arrayBuffer = await file.arrayBuffer();
+      inputFile = InputFile.fromBuffer(Buffer.from(arrayBuffer), file.name);
+    } else {
+      inputFile = InputFile.fromBuffer(file, _metadata?.fileName || fileId);
+    }
+
+    const result = await this.storage.createFile(bucketId, fileId, inputFile);
+
     return {
       id: result.$id,
-      name: (file instanceof File) ? file.name : fileId,
+      name: (file instanceof File) ? file.name : (_metadata?.fileName || fileId),
       sizeBytes: (file instanceof File) ? file.size : (file as Buffer).length,
-      mimeType: (file instanceof File) ? file.type : "application/octet-stream",
+      mimeType: (file instanceof File) ? file.type : (_metadata?.mimeType || "application/octet-stream"),
     };
   }
 
