@@ -28,3 +28,16 @@ export const summarizeCommitSchema = z.object({
   projectId: z.string(),
   commitHash: z.string(),
 });
+
+export const refineDocumentationSchema = z.object({
+  projectId: z.string(),
+  prompt: z.string().min(3, "Prompt must be at least 3 characters"),
+  currentContent: z.string(),
+});
+
+export const saveDocumentationSchema = z.object({
+  projectId: z.string(),
+  content: z.string(),
+  fileStructure: z.string().optional(),
+  mermaidDiagram: z.string().optional(),
+});

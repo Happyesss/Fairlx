@@ -48,7 +48,7 @@ export const DocumentPreviewModal = ({
     downloadDocument({
       documentId: document.$id,
       workspaceId,
-      fileName: document.name,
+      fileName: document.title,
     });
   };
 
@@ -84,7 +84,7 @@ export const DocumentPreviewModal = ({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={document.url}
-            alt={document.name}
+            alt={document.title}
             style={{
               transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
               transition: "transform 0.2s ease",
@@ -102,7 +102,7 @@ export const DocumentPreviewModal = ({
         <iframe
           src={`${document.url}#toolbar=0`}
           className="w-full h-full border-0"
-          title={document.name}
+          title={document.title}
         />
       );
     }
@@ -112,7 +112,7 @@ export const DocumentPreviewModal = ({
         <iframe
           src={document.url}
           className="w-full h-full border-0 bg-background"
-          title={document.name}
+          title={document.title}
         />
       );
     }
@@ -134,7 +134,7 @@ export const DocumentPreviewModal = ({
             <div className="flex items-center gap-3 min-w-0">
               <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               <div className="min-w-0">
-                <DialogTitle className="text-base truncate">{document.name}</DialogTitle>
+                <DialogTitle className="text-base truncate">{document.title}</DialogTitle>
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                   <Badge variant="outline" className="text-xs">
                     {DOCUMENT_CATEGORY_LABELS[document.category as DocumentCategory]}

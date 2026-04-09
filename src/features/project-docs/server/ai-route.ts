@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ID, Query, Models, Databases, Storage as AppwriteStorage } from "node-appwrite";
+import { ID, Query, Databases, Storage as AppwriteStorage } from "node-appwrite";
 
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
@@ -203,6 +203,13 @@ async function extractDocumentText(
 
     return "[Document content not extractable]";
   } catch (error) {
+    const isMissing = error && typeof error === 'object' && 'type' in error && error.type === 'storage_file_not_found';
+    
+    if (isMissing) {
+      console.warn(`[AI Context] Document file ${fileId} not found in storage. It may have been deleted.`);
+      return "[Document file missing from storage]";
+    }
+
     console.error(`[AI Context] Failed to extract text for file ${fileId}:`, error);
     return "[Failed to extract document content]";
   }
@@ -268,19 +275,6 @@ const app = new Hono()
           return highQualityCategories.some(type => category.includes(type) || name.includes(type));
         });
 
-        // Get GitHub repository connection if exists
-        const githubResponse = await databases.listDocuments(
-          DATABASE_ID,
-          GITHUB_REPOS_ID,
-          [Query.equal("projectId", projectId), Query.limit(1)]
-        );
-
-        // Get Code Documentation if exists
-        const codeDocsResponse = await databases.listDocuments(
-          DATABASE_ID,
-          CODE_DOCS_ID,
-          [Query.equal("projectId", projectId), Query.limit(1)]
-        );
 
         // Get project work items (replaces tasks)
         // Fetch MORE tasks if no critical docs are found to compensate for lack of context
@@ -343,7 +337,7 @@ const app = new Hono()
 
             return {
               id: doc.$id,
-              name: doc.name,
+              name: doc.title,
               category: doc.category,
               description: doc.description || undefined,
               tags: doc.tags || undefined,
@@ -464,23 +458,23 @@ const app = new Hono()
           ]
         );
 
-        // Check for GitHub repository context
         const githubRepoResponse = await databases.listDocuments(
           DATABASE_ID,
           GITHUB_REPOS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
-
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const githubRepo = githubRepoResponse.documents[0] as any;
-
+ 
         // Check for Code Documentation context
-        const codeDocsResponse = await databases.listDocuments(
+        const codeDocsResponseList = await databases.listDocuments(
           DATABASE_ID,
           CODE_DOCS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
-
-        const codeDoc = codeDocsResponse.documents[0] as any;
+ 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const codeDoc = codeDocsResponseList.documents[0] as any;
 
         // Check for project-critical documents to decide on task fetching limit
         const highQualityCategories = [
@@ -753,6 +747,7 @@ Provide a comprehensive, helpful answer:`;
           GITHUB_REPOS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const githubRepo = githubResponse.documents[0] as any;
 
         // Get Code Documentation if exists
@@ -761,6 +756,7 @@ Provide a comprehensive, helpful answer:`;
           CODE_DOCS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const codeDoc = codeDocsResponse.documents[0] as any;
 
         // Get existing work items for context
@@ -1096,6 +1092,7 @@ IMPORTANT:
           GITHUB_REPOS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const githubRepo = githubResponse.documents[0] as any;
 
         // Get Code Documentation if exists
@@ -1104,6 +1101,7 @@ IMPORTANT:
           CODE_DOCS_ID,
           [Query.equal("projectId", projectId), Query.limit(1)]
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const codeDoc = codeDocsResponse.documents[0] as any;
 
         // Build prompt for AI

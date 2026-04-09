@@ -193,13 +193,16 @@ const app = new Hono()
         const storageProvider = getStorageProvider(storage);
         await storageProvider.uploadFile(PROJECT_DOCS_BUCKET_ID, fileId, file);
 
+        const url = storageProvider.getPublicUrl(PROJECT_DOCS_BUCKET_ID, fileId);
+
         // Create document record
         const document = await databases.createDocument<ProjectDocument>(
           DATABASE_ID,
           PROJECT_DOCS_ID,
           ID.unique(),
           {
-            name,
+            title: name,
+            name: name, // Add name back if required by schema
             description: description || "",
             size: file.size,
             mimeType: file.type,
@@ -213,9 +216,6 @@ const app = new Hono()
             isArchived: false,
           }
         );
-
-        // Get URL for the uploaded file
-        const url = storageProvider.getPublicUrl(PROJECT_DOCS_BUCKET_ID, fileId);
 
         return c.json({
           data: {
@@ -275,7 +275,10 @@ const app = new Hono()
           DATABASE_ID,
           PROJECT_DOCS_ID,
           documentId,
-          updates
+          {
+            ...updates,
+            name: updates.title, // Keep name in sync with title
+          }
         );
 
         return c.json({ data: updatedDocument });
