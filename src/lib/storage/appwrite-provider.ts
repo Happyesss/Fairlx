@@ -22,7 +22,7 @@ export class AppwriteStorageProvider implements StorageProvider {
     _metadata?: { fileName?: string; mimeType?: string }
   ): Promise<StorageFile> {
     // Appwrite SDK v14 requires InputFile for all uploads
-    let inputFile: any;
+    let inputFile: ReturnType<typeof InputFile.fromBuffer>;
 
     if (file instanceof File) {
       // Convert web-standard File to Buffer for InputFile

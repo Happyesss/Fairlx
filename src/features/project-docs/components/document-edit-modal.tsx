@@ -36,7 +36,7 @@ import { useUpdateProjectDocument } from "../api/use-project-docs";
 import { PopulatedProjectDocument, DocumentCategory, DOCUMENT_CATEGORY_LABELS } from "../types";
 
 const editFormSchema = z.object({
-  name: z.string().min(1, "Document name is required").max(255),
+  title: z.string().min(1, "Document title is required").max(255),
   description: z.string().max(1000).optional(),
   category: z.nativeEnum(DocumentCategory),
   version: z.string().max(50),
@@ -63,7 +63,7 @@ export const DocumentEditModal = ({
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editFormSchema),
     defaultValues: {
-      name: document.name,
+      title: document.title,
       description: document.description || "",
       category: document.category as DocumentCategory,
       version: document.version,
@@ -80,7 +80,7 @@ export const DocumentEditModal = ({
       {
         documentId: document.$id,
         projectId,
-        name: values.name,
+        title: values.title,
         description: values.description,
         category: values.category,
         version: values.version,
@@ -106,13 +106,13 @@ export const DocumentEditModal = ({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Name */}
+            {/* Title */}
             <FormField
               control={form.control}
-              name="name"
+              name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Document Name *</FormLabel>
+                  <FormLabel>Document Title *</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>

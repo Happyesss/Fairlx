@@ -114,7 +114,7 @@ export const DocumentList = ({ projectId, workspaceId, readOnly = false }: Docum
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       return (
-        doc.name.toLowerCase().includes(query) ||
+        doc.title.toLowerCase().includes(query) ||
         doc.description?.toLowerCase().includes(query) ||
         doc.tags?.some((tag) => tag.toLowerCase().includes(query))
       );
@@ -126,7 +126,7 @@ export const DocumentList = ({ projectId, workspaceId, readOnly = false }: Docum
         case "oldest":
           return new Date(a.$createdAt).getTime() - new Date(b.$createdAt).getTime();
         case "name":
-          return a.name.localeCompare(b.name);
+          return a.title.localeCompare(b.title);
         case "size":
           return b.size - a.size;
         default:
@@ -188,7 +188,7 @@ export const DocumentList = ({ projectId, workspaceId, readOnly = false }: Docum
       downloadDocument({
         documentId: doc.$id,
         workspaceId,
-        fileName: doc.name,
+        fileName: doc.title,
       });
     });
 

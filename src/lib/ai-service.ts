@@ -78,7 +78,7 @@ export class AIService {
       temperature?: number;
       maxTokens?: number;
     },
-    retries = 3
+    retries = 4
   ): Promise<string> {
     this.ensureConfigured();
 
@@ -121,30 +121,44 @@ export class AIService {
 
       if (!res.ok) {
         const text = await res.text();
-        let retryDelay = 1000 * Math.pow(2, 3 - retries); // Default exponential backoff
 
-        // Parse Gemini-specific retry info if available
-        try {
-          const errorData = JSON.parse(text);
-          if (errorData.error?.details) {
-            const retryInfo = errorData.error.details.find(
-              (d: any) => d["@type"]?.includes("RetryInfo")
-            );
-            if (retryInfo?.retryDelay) {
-              // Extract number from "54.520959962s" or similar
-              const seconds = parseFloat(retryInfo.retryDelay);
-              if (!isNaN(seconds)) {
-                retryDelay = (seconds + 1) * 1000;
+        // Detect daily quota exhaustion — retrying is futile
+        if (res.status === 429) {
+          try {
+            const errorData = JSON.parse(text);
+            const isQuotaExhausted = errorData.error?.details?.some(
+              (d: { "@type"?: string; quotaMetric?: string; violations?: Array<{ quotaId?: string }> }) => {
+                if (d["@type"]?.includes("QuotaFailure")) {
+                  return d.violations?.some((v: { quotaId?: string }) =>
+                    v.quotaId?.includes("PerDay") || v.quotaId?.includes("FreeTier")
+                  );
+                }
+                return false;
               }
+            );
+
+            if (isQuotaExhausted) {
+              console.error("[AIService] Daily quota exhausted. Not retrying — upgrade your plan or wait until the quota resets.");
+              throw new Error(
+                "QUOTA_EXHAUSTED: Your daily Gemini API request limit has been reached. " +
+                "Please upgrade your plan at https://ai.google.dev or wait for the quota to reset."
+              );
             }
+          } catch (parseErr) {
+            // If it's our own QUOTA_EXHAUSTED error, re-throw it
+            if (parseErr instanceof Error && parseErr.message.startsWith("QUOTA_EXHAUSTED")) {
+              throw parseErr;
+            }
+            // Otherwise fall through to retry logic
           }
-        } catch {
-          // Fallback to default backoff
         }
 
-        // Retry on 429 (Quota) / 5xx (Server)
-        if ((res.status === 429 || res.status >= 500) && retries > 0) {
-          console.warn(`[AIService] ${res.status} encountered. Retrying in ${retryDelay}ms... (${retries} retries left)`);
+        // Capped exponential backoff: start at 2s, grow by 1.5x, max 8s
+        const retryDelay = Math.min(8000, 2000 * Math.pow(1.5, 4 - retries));
+
+        // Retry on transient 429, 503, or other 5xx
+        if ((res.status === 429 || res.status === 503 || res.status >= 500) && retries > 0) {
+          console.warn(`[AIService] ${res.status} encountered. Retrying in ${Math.round(retryDelay)}ms... (${retries} retries left)`);
           await new Promise((r) => setTimeout(r, retryDelay));
           return this.chatCompletion(messages, options, retries - 1);
         }
@@ -154,8 +168,12 @@ export class AIService {
       const data = await res.json();
       return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch (err) {
+      // Re-throw quota exhaustion immediately — do not retry
+      if (err instanceof Error && err.message.startsWith("QUOTA_EXHAUSTED")) {
+        throw err;
+      }
       if (retries > 0) {
-        const backoff = 1000 * Math.pow(2, 3 - retries);
+        const backoff = Math.min(8000, 2000 * Math.pow(1.5, 4 - retries));
         await new Promise((r) => setTimeout(r, backoff));
         return this.chatCompletion(messages, options, retries - 1);
       }
@@ -230,35 +248,76 @@ ${preview}
       })
       .join("\n");
 
-    const prompt = `You are a senior technical documentation specialist. Analyze the provided codebase and generate comprehensive, production-grade technical documentation.
+    const prompt = `You are an elite Lead Technical Architect and Documentation Specialist. Analyze the provided codebase and architect a world-class, production-grade technical manual.
 
-## Repository Information
-- **Name:** ${repositoryInfo.name}
-- **Description:** ${repositoryInfo.description || "Not provided"}
-- **Primary Language:** ${repositoryInfo.language || "Multiple"}
-- **Files Analyzed:** ${files.length}
+## REPOSITORY CONTEXT
+- **Project Name:** ${repositoryInfo.name}
+- **Overview:** ${repositoryInfo.description || "Inferred from codebase analysis."}
+- **Primary Technology Stack:** ${repositoryInfo.language || "Polyglot"}
+- **Scope of Analysis:** ${files.length} core architecture files
 
-## Source Code Analysis
+## SOURCE CODE ANALYSIS
 ${fileContext}
 
 ---
 
-Generate complete technical documentation in Markdown format. The documentation should include:
+## DOCUMENTATION REQUIREMENTS (ULTRA-PROFESSIONAL THEME)
+Construct a comprehensive technical manual in Markdown. The style must be extremely formal, authoritative, and structured for executive and engineering review. Use clear hierarchy, Mermaid-compatible descriptions where applicable, and high-impact code examples.
 
-1. **Project Overview** - Purpose, goals, target audience
-2. **Architecture and Design** - System architecture, directory structure, tech stack
-3. **Core Features** - Major features with technical implementation notes
-4. **Getting Started** - Prerequisites, installation, configuration
-5. **API Documentation** - Key endpoints and code examples
-6. **Development Guide** - Project structure, coding standards
-7. **Testing** - Testing strategy and running tests
-8. **Deployment** - Build and deployment procedures
-9. **Security** - Authentication, authorization, best practices
-10. **Troubleshooting** - Common issues and FAQs
+### MANDATORY SECTIONS:
+1.  **Executive Summary** - The high-level value proposition and system essence.
+2.  **System Architecture** - Deep dive into design patterns (e.g., MVC, Microservices, Clean Architecture), core modules, and data flow.
+3.  **Core Technical Features** - Detailed breakdown of functionality with focus on implementation logic.
+4.  **Engineering Onboarding** - Precise prerequisites, deterministic installation steps, and environment configuration.
+5.  **API & Interface Specification** - Exhaustive documentation of primary endpoints with request/response schemas.
+6.  **Development Standards** - Naming conventions, architectural constraints, and contribution workflow.
+7.  **Quality Assurance** - Testing strategies (Unit, Integration, E2E) and verification procedures.
+8.  **DevOps & Deployment** - CI/CD pipeline overview, infrastructure requirements, and production release protocols.
+9.  **Security Posture** - Threat models, authentication mechanisms, and data protection strategies.
+10. **Operational Runbook** - Common failure modes, troubleshooting, and scalability considerations.
 
-Be thorough, professional, and use actual code examples from the analyzed files.`;
+### AESTHETIC GUIDELINES:
+- Use clear table of contents.
+- Employ clean typography-friendly Markdown.
+- Ensure every section provides unique, actionable technical value.
+- DO NOT use generic placeholders; derive all content from the provided source code.`;
 
-    return this.generate(prompt, { maxTokens: 8000, temperature: 0.2 });
+    return this.generate(prompt, { maxTokens: 8000, temperature: 0.1 });
+  }
+
+  /**
+   * Refine existing documentation based on user feedback
+   */
+  async refineDocumentation(
+    currentDocumentation: string,
+    prompt: string,
+    files: Array<{ path: string; content: string }>
+  ): Promise<string> {
+    const fileContext = files
+      .slice(0, 5)
+      .map(f => `File: ${f.path}\nContent Preview: ${f.content.slice(0, 1000)}`)
+      .join("\n---\n");
+
+    const aiPrompt = `You are a Lead Technical Architect. A user has requested specific refinements to the existing project documentation.
+
+## CURRENT DOCUMENTATION
+${currentDocumentation}
+
+## USER REFINEMENT REQUEST
+> ${prompt}
+
+## ADDITIONAL CODEBASE CONTEXT
+${fileContext}
+
+---
+
+## REFINEMENT INSTRUCTIONS
+Apply the user's requested changes precisely while maintaining the ultra-professional, structured, and authoritative tone of the original document. 
+- If the user asks for a structural change, reorganize accordingly.
+- If the user identifies missing details, derive them from the codebase context.
+- Ensure the output is a COMPLETE, updated version of the documentation, not just the changes.`;
+
+    return this.generate(aiPrompt, { maxTokens: 8000, temperature: 0.1 });
   }
 
   /**

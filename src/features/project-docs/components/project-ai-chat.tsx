@@ -33,7 +33,6 @@ import {
   Layout,
   Layers,
   Box,
-  Trash2,
   Camera,
 } from "lucide-react";
 
@@ -108,10 +107,8 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
   
   // NEW: Task Type selection & Attachments state
   const [isAskingType, setIsAskingType] = useState(false);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
@@ -250,7 +247,6 @@ export const ProjectAIChat = ({ projectId, workspaceId }: ProjectAIChatProps) =>
   const { mutate: uploadAttachment } = useUploadAttachment();
 
   const handleCreateTaskWithType = (type: string) => {
-    setSelectedType(type);
     setIsAskingType(false);
     
     // Include info about attachments in the prompt for AI

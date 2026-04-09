@@ -48,7 +48,7 @@ import {
 } from "../schemas";
 
 const uploadFormSchema = z.object({
-  name: z.string().min(1, "Document name is required").max(255),
+  title: z.string().min(1, "Document title is required").max(255),
   description: z.string().max(1000).optional(),
   category: z.nativeEnum(DocumentCategory),
   version: z.string().max(50).default("1.0"),
@@ -87,7 +87,7 @@ export const DocumentUploadModal = ({
   const form = useForm<UploadFormValues>({
     resolver: zodResolver(uploadFormSchema),
     defaultValues: {
-      name: "",
+      title: "",
       description: "",
       category: DocumentCategory.OTHER,
       version: "1.0",
@@ -135,10 +135,10 @@ export const DocumentUploadModal = ({
     setFileError(null);
     setSelectedFile(file);
     
-    // Auto-fill name if empty
-    if (!form.getValues("name")) {
+    // Auto-fill title if empty
+    if (!form.getValues("title")) {
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-      form.setValue("name", nameWithoutExt);
+      form.setValue("title", nameWithoutExt);
     }
   }, [form, remainingSize]);
 
@@ -185,7 +185,7 @@ export const DocumentUploadModal = ({
     uploadDocument(
       {
         file: selectedFile,
-        name: values.name,
+        title: values.title,
         description: values.description,
         projectId,
         workspaceId,
@@ -316,13 +316,13 @@ export const DocumentUploadModal = ({
               </div>
             )}
 
-            {/* Name */}
+            {/* Title */}
             <FormField
               control={form.control}
-              name="name"
+              name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Document Name *</FormLabel>
+                  <FormLabel>Document Title *</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g., Product Requirements Document v1" {...field} />
                   </FormControl>

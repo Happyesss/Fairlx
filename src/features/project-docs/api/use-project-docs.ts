@@ -82,7 +82,7 @@ export const useGetProjectDocument = (documentId: string, workspaceId: string) =
 // Upload a document
 interface UploadDocumentParams {
   file: File;
-  name: string;
+  title: string;
   description?: string;
   projectId: string;
   workspaceId: string;
@@ -98,7 +98,7 @@ export const useUploadProjectDocument = () => {
     mutationFn: async (params) => {
       const formData = new FormData();
       formData.append("file", params.file);
-      formData.append("name", params.name);
+      formData.append("name", params.title);
       formData.append("projectId", params.projectId);
       formData.append("workspaceId", params.workspaceId);
       formData.append("category", params.category);
@@ -142,7 +142,7 @@ export const useUploadProjectDocument = () => {
 interface UpdateDocumentParams {
   documentId: string;
   projectId: string;
-  name?: string;
+  title?: string;
   description?: string;
   category?: DocumentCategory;
   version?: string;

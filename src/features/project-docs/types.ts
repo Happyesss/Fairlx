@@ -54,7 +54,8 @@ export const DOCUMENT_CATEGORY_COLORS: Record<DocumentCategory, string> = {
 };
 
 export type ProjectDocument = Models.Document & {
-  name: string;
+  title: string;
+  name: string; // Compatibility with older schemas
   description?: string;
   size: number;
   mimeType: string;
@@ -74,7 +75,7 @@ export type PopulatedProjectDocument = ProjectDocument & {
 };
 
 export type ProjectDocumentUploadData = {
-  name: string;
+  title: string;
   description?: string;
   size: number;
   mimeType: string;
@@ -88,7 +89,7 @@ export type ProjectDocumentUploadData = {
 
 export type ProjectDocumentUpdateData = {
   documentId: string;
-  name?: string;
+  title?: string;
   description?: string;
   category?: DocumentCategory;
   version?: string;

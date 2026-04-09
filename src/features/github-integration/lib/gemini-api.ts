@@ -31,6 +31,14 @@ export class GeminiAPI {
     return aiService.generateDocumentation(repositoryInfo, files);
   }
 
+  async refineDocumentation(
+    currentDocumentation: string,
+    prompt: string,
+    files: Array<{ path: string; content: string }>
+  ): Promise<string> {
+    return aiService.refineDocumentation(currentDocumentation, prompt, files);
+  }
+
   async answerQuestion(
     question: string,
     codebaseContext: { 
