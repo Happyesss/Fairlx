@@ -507,17 +507,17 @@ export const WorkspaceIdClient = () => {
           <CardContent>
             {/* Header */}
             <div className="grid grid-cols-12 gap-3 pb-2 border-b border-border/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              <div className="col-span-4">Project</div>
-              <div className="col-span-2 text-center">Tasks</div>
-              <div className="col-span-2 text-center">Completed</div>
-              <div className="col-span-4">Progress</div>
+              <div className="col-span-4 flex items-center">Project</div>
+              <div className="col-span-2 flex items-center justify-center">Tasks</div>
+              <div className="col-span-2 flex items-center justify-center">Completed</div>
+              <div className="col-span-4 flex items-center">Progress</div>
             </div>
             <div className="divide-y divide-border/30">
               {projectStats.slice(0, 8).map((project) => (
                 <Link
                   key={project.id}
                   href={`/workspaces/${workspaceId}/projects/${project.id}`}
-                  className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 -mx-6 px-6 transition-colors w-full text-left cursor-pointer"
+                  className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors w-full text-left cursor-pointer px-4 -mx-4"
                 >
                   <div className="col-span-4 flex items-center gap-3 min-w-0">
                     <ProjectAvatar
@@ -597,7 +597,7 @@ export const WorkspaceIdClient = () => {
                     <Link
                       key={task.id}
                       href={`/workspaces/${workspaceId}/tasks/${task.id}`}
-                      className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 -mx-6 px-6 transition-colors"
+                      className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors px-4 -mx-4"
                     >
                       <div className="col-span-5 flex items-center gap-3 min-w-0">
                         <MemberAvatar
@@ -710,7 +710,7 @@ export const WorkspaceIdClient = () => {
                         <Button
                           variant="secondary"
                           size="sm"
-                          className="w-full h-8 text-xs bg-white dark:bg-white/10 border border-red-500/20 hover:bg-red-50 dark:hover:bg-white/15 transition-colors"
+                          className="w-full h-8 text-xs bg-white dark:bg-muted/50 border border-red-500/20 hover:bg-red-50 dark:hover:bg-muted transition-colors text-foreground"
                         >
                           <Clock className="mr-1.5 h-3 w-3" />
                           View Details

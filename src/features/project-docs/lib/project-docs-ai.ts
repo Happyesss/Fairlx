@@ -22,9 +22,9 @@ export class ProjectDocsAI {
   /**
    * Answer a question about the project using provided context
    */
-  async answerProjectQuestion(prompt: string): Promise<string> {
+  async answerProjectQuestion(prompt: string, maxTokens: number = 2000): Promise<string> {
     return aiService.generate(prompt, {
-      maxTokens: 2000,
+      maxTokens,
       temperature: 0.3
     });
   }

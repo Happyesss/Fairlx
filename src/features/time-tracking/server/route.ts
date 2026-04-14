@@ -87,7 +87,7 @@ const app = new Hono()
 
       const query = [
         Query.equal("workspaceId", workspaceId),
-        Query.orderDesc("date"),
+        Query.orderDesc("logDate"),
       ];
 
       if (taskId) {
@@ -103,11 +103,11 @@ const app = new Hono()
       }
 
       if (startDate) {
-        query.push(Query.greaterThanEqual("date", startDate));
+        query.push(Query.greaterThanEqual("logDate", startDate));
       }
 
       if (endDate) {
-        query.push(Query.lessThanEqual("date", endDate));
+        query.push(Query.lessThanEqual("logDate", endDate));
       }
 
       const timeLogs = await databases.listDocuments<TimeLog>(
