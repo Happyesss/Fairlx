@@ -66,11 +66,17 @@ export class GitHubAPI {
     try {
       const response = await fetch(url, options);
       
-      // Retry on 429 (Rate Limit) or 5xx
-      if ((response.status === 429 || response.status >= 500) && retries > 0) {
+      // Retry on 429 (Rate Limit), 403 (could be secondary rate limit), or 5xx
+      if ((response.status === 429 || response.status === 403 || response.status >= 500) && retries > 0) {
+        // If it's a 403, we should check if it's actually a rate limit
+        // Secondary rate limits often return 403
         const retryAfter = response.headers.get("Retry-After");
         const delay = retryAfter ? parseInt(retryAfter) * 1000 : 1000 * (4 - retries);
-        await new Promise(r => setTimeout(r, delay));
+        
+        // Capped delay consistent with Gemini logic
+        const waitTime = Math.min(delay, 5000); 
+        
+        await new Promise(r => setTimeout(r, waitTime));
         return this.fetchWithRetry(url, options, retries - 1);
       }
       
@@ -120,7 +126,19 @@ export class GitHubAPI {
         throw new Error("REPO_NOT_FOUND");
       }
       if (response.status === 403) {
-        throw new Error("ACCESS_DENIED");
+        // Log the 403 body for debugging
+        try {
+          const errorBody = await response.json();
+          console.error("[GitHub API 403 Error]:", errorBody);
+          
+          if (errorBody.message?.includes("rate limit")) {
+            throw new Error("GITHUB_RATE_LIMIT");
+          }
+          
+          throw new Error(`ACCESS_DENIED: ${errorBody.message || "Forbidden"}`);
+        } catch {
+          throw new Error("ACCESS_DENIED");
+        }
       }
       throw new Error(`GitHub API error: ${response.statusText}`);
     }

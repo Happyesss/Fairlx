@@ -82,7 +82,7 @@ export const PREVIEWABLE_TYPES = [
 
 // Create document schema
 export const createProjectDocumentSchema = z.object({
-  name: z.string().trim().min(1, "Document name is required").max(255, "Name too long"),
+  title: z.string().trim().min(1, "Document title is required").max(255, "Title too long"),
   description: z.string().trim().max(1000, "Description too long").optional(),
   projectId: z.string().trim().min(1, "Project ID is required"),
   workspaceId: z.string().trim().min(1, "Workspace ID is required"),
@@ -94,7 +94,7 @@ export const createProjectDocumentSchema = z.object({
 // Update document schema
 export const updateProjectDocumentSchema = z.object({
   documentId: z.string().trim().min(1, "Document ID is required"),
-  name: z.string().trim().min(1).max(255).optional(),
+  title: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().max(1000).optional(),
   category: z.nativeEnum(DocumentCategory).optional(),
   version: z.string().trim().max(50).optional(),
@@ -119,7 +119,7 @@ export const getProjectDocumentsSchema = z.object({
 // Upload document schema (for form validation)
 export const uploadProjectDocumentSchema = z.object({
   file: z.any().refine((val) => val instanceof File, "File is required"),
-  name: z.string().trim().min(1, "Document name is required").max(255),
+  title: z.string().trim().min(1, "Document title is required").max(255),
   description: z.string().trim().max(1000).optional(),
   projectId: z.string().trim().min(1, "Project ID is required"),
   workspaceId: z.string().trim().min(1, "Workspace ID is required"),

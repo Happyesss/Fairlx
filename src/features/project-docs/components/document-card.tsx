@@ -61,7 +61,7 @@ export const DocumentCard = ({
 }: DocumentCardProps) => {
   const [ConfirmDialog, confirmDelete] = useConfirm(
     "Delete Document",
-    `Are you sure you want to delete "${document.name}"? This action cannot be undone.`,
+    `Are you sure you want to delete "${document.title}"? This action cannot be undone.`,
     "destructive"
   );
 
@@ -84,7 +84,7 @@ export const DocumentCard = ({
     downloadDocument({
       documentId: document.$id,
       workspaceId,
-      fileName: document.name,
+      fileName: document.title,
     });
   };
 
@@ -175,8 +175,8 @@ export const DocumentCard = ({
 
         {/* File Name */}
         <div className="flex-1 min-w-[150px]">
-          <p className="text-xs font-medium text-foreground truncate" title={document.name}>
-            {document.name}
+          <p className="text-xs font-medium text-foreground truncate" title={document.title}>
+            {document.title}
           </p>
         </div>
 

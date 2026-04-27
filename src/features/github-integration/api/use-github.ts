@@ -186,8 +186,6 @@ type GenerateDocumentationResponse = InferResponseType<
 >;
 
 export const useGenerateDocumentation = () => {
-  const queryClient = useQueryClient();
-
   return useMutation<
     GenerateDocumentationResponse,
     Error,
@@ -205,14 +203,76 @@ export const useGenerateDocumentation = () => {
 
       return await response.json();
     },
+    onSuccess: () => {
+      toast.success("Documentation generated for preview");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to generate documentation");
+    },
+  });
+};
+
+// Refine Documentation
+type RefineDocumentationRequest = InferRequestType<
+  typeof client.api.github.documentation.refine["$post"]
+>;
+type RefineDocumentationResponse = InferResponseType<
+  typeof client.api.github.documentation.refine["$post"],
+  200
+>;
+
+export const useRefineDocumentation = () => {
+  return useMutation<RefineDocumentationResponse, Error, RefineDocumentationRequest>({
+    mutationFn: async ({ json }) => {
+      const response = await client.api.github.documentation.refine["$post"]({ json });
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: string };
+        throw new Error(errorData.error || "Failed to refine documentation");
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast.success("Documentation refined for preview");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to refine documentation");
+    },
+  });
+};
+
+// Save Documentation
+type SaveDocumentationRequest = InferRequestType<
+  typeof client.api.github.documentation.save["$post"]
+>;
+type SaveDocumentationResponse = InferResponseType<
+  typeof client.api.github.documentation.save["$post"],
+  200
+>;
+
+export const useSaveDocumentation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<SaveDocumentationResponse, Error, SaveDocumentationRequest>({
+    mutationFn: async ({ json }) => {
+      const response = await client.api.github.documentation.save["$post"]({ json });
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: string };
+        throw new Error(errorData.error || "Failed to save documentation");
+      }
+
+      return await response.json();
+    },
     onSuccess: ({ data }) => {
-      toast.success("Documentation generated successfully");
+      toast.success("Documentation saved successfully");
       queryClient.invalidateQueries({
         queryKey: GITHUB_INTEGRATION_QUERY_KEYS.documentation(data.projectId),
       });
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to generate documentation");
+      toast.error(error.message || "Failed to save documentation");
     },
   });
 };
