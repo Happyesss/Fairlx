@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { ModeToggle } from "@/components/mode-toggle";
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -12,7 +12,6 @@ interface AuthLayoutProps {
 
 const AuthLayout = ({ children }: AuthLayoutProps) => {
   const pathname = usePathname();
-  const isSignIn = pathname === "/sign-in";
   const isOnboarding = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
 
   // For onboarding pages, use a completely clean full-screen layout (no header)
@@ -24,24 +23,27 @@ const AuthLayout = ({ children }: AuthLayoutProps) => {
     );
   }
 
-  // Default auth layout for sign-in/sign-up pages
+  // New Plane-inspired auth layout for sign-in/sign-up pages
   return (
-    <main className="bg-background min-h-screen">
-      <div className="mx-auto max-w-screen-2xl p-4">
-        <nav className="flex justify-between items-center">
-          <Link href="/">
-            <Image src="/Logo.png" alt="logo" width={50} height={39} />
-          </Link>
-          <Button asChild variant="secondary">
-            <Link href={isSignIn ? "/sign-up" : "/sign-in"}>
-              {isSignIn ? "Sign Up" : "Login"}
-            </Link>
-          </Button>
-        </nav>
-        <div className="flex flex-col items-center justify-center pt-4 md:pt-14">
+    <main className="flex min-h-screen flex-col bg-background transition-colors duration-300">
+      {/* Top Navigation */}
+      <nav className="flex items-center justify-between px-6 py-4 md:px-10">
+        <Link href="/" className="flex items-center gap-2.5 text-foreground no-underline">
+          <Image src="/Logo.png" alt="Fairlx" width={70} height={32} />
+        </Link>
+        <div className="flex items-center gap-3">
+          <ModeToggle />
+
+        </div>
+      </nav>
+
+      {/* Main Content Area */}
+      <div className="flex flex-1 items-center justify-center px-6 ">
+        <div className="w-full max-w-[440px]">
           {children}
         </div>
       </div>
+
     </main>
   );
 };
