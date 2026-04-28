@@ -3,9 +3,12 @@
  * 
  * This is a standalone AI utility specifically for the project-docs feature.
  * It provides AI-powered Q&A based on project documents, tasks, and details.
+ * 
+ * All methods return AIServiceResponse (text + tokenUsage + model)
+ * to enable token-accurate, model-aware billing.
  */
 
-import { aiService } from "@/lib/ai-service";
+import { aiService, type AIServiceResponse } from "@/lib/ai-service";
 
 /**
  * Project Docs AI class for handling AI-powered project context Q&A
@@ -22,7 +25,7 @@ export class ProjectDocsAI {
   /**
    * Answer a question about the project using provided context
    */
-  async answerProjectQuestion(prompt: string, maxTokens: number = 2000): Promise<string> {
+  async answerProjectQuestion(prompt: string, maxTokens: number = 2000): Promise<AIServiceResponse> {
     return aiService.generate(prompt, {
       maxTokens,
       temperature: 0.3
@@ -36,7 +39,7 @@ export class ProjectDocsAI {
     projectName: string,
     documents: Array<{ name: string; category: string; content: string }>,
     tasks: Array<{ name: string; status: string; description?: string }>
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const docContext = documents
       .slice(0, 10)
       .map((d) => `- **${d.name}** (${d.category}): ${d.content.slice(0, 500)}`)
@@ -84,7 +87,7 @@ Format in clean Markdown. Be concise but informative.`;
     documentName: string,
     documentContent: string,
     category: string
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const prompt = `Analyze this ${category} document and extract key insights:
 
 ## Document: ${documentName}

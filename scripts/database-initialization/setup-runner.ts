@@ -70,6 +70,7 @@ import { setupProjectWebhooks } from './collections/project-webhooks';
 import { setupProjectWebhookDeliveries } from './collections/project-webhook-deliveries';
 import { setupUserRecoveryCodes } from './collections/user-recovery-codes';
 import { setupEmailOtpCodes } from './collections/email-otp-codes';
+import { setupAIModelPricing } from './collections/ai-model-pricing';
 
 // ─── Storage Bucket Imports ──────────────────────────────────
 import { setupImagesBucket } from './storage/images-bucket';
@@ -115,6 +116,7 @@ const collectionSetups: Array<{
         { name: 'Storage Daily Snapshots', setup: setupStorageDailySnapshots },
         { name: 'Invoices', setup: setupInvoices },
         { name: 'Processed Events', setup: setupProcessedEvents },
+        { name: 'AI Model Pricing', setup: setupAIModelPricing },
         { name: 'Wallets', setup: setupWallets },
         { name: 'Wallet Transactions', setup: setupWalletTransactions },
         { name: 'GitHub Repositories', setup: setupGithubRepositories },

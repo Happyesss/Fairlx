@@ -205,41 +205,61 @@ export async function logComputeUsage(
 }
 
 /**
- * Log AI-specific compute usage
+ * Log AI-specific compute usage with token-accurate, model-aware billing.
+ *
+ * The costUSD is pre-calculated by the caller using getAIModelPricing() +
+ * calculateAICallCostUSD(). It is passed through metadata so the
+ * usage-ledger's existing instant deduction path uses the model-aware price
+ * instead of the flat compute-unit rate.
  */
 export async function logAIUsage(
     options: LogUsageOptions & {
         model: string;
-        tokensUsed?: number;
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        costUSD: number;
+        operationId?: string;
     }
 ): Promise<void> {
     try {
         const { writeUsageEvent } = await import("./usage-ledger");
         
+        const idempotencyKey = options.operationId
+            ? `ai:${options.model}:${options.workspaceId}:${options.operationId}`
+            : `ai:${options.model}:${options.workspaceId}:${Date.now()}`;
+
         await writeUsageEvent(options.databases, {
-            idempotencyKey: `ai:${options.model}:${options.workspaceId}:${Date.now()}`,
+            idempotencyKey,
             workspaceId: options.workspaceId,
             projectId: options.projectId,
             resourceType: ResourceType.COMPUTE,
-            units: options.units,
+            units: options.totalTokens || options.units,
             source: UsageSource.AI,
             billingEntityId: options.billingEntityId,
             billingEntityType: options.billingEntityType,
             metadata: {
                 ...options.metadata,
                 model: options.model,
-                tokensUsed: options.tokensUsed,
+                promptTokens: options.promptTokens,
+                completionTokens: options.completionTokens,
+                totalTokens: options.totalTokens,
+                tokensUsed: options.totalTokens, // backward compat
+                costUSD: options.costUSD,
                 isAI: true,
+                aiTier: (options.metadata?.aiTier as string) ?? "standard",
                 sourceContext: options.sourceContext ?? {
                     type: options.projectId ? 'project' : 'workspace',
-                    displayName: 'AI Motion Call',
+                    displayName: 'AI Call',
                 },
             },
         });
     } catch (err) {
+        // Non-blocking: AI experience must not be interrupted by billing errors
         console.error("[UsageMetering] logAIUsage failed:", {
             workspaceId: options.workspaceId,
             model: options.model,
+            costUSD: options.costUSD,
             error: err instanceof Error ? err.message : String(err),
         });
     }

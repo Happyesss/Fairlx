@@ -263,15 +263,28 @@ export async function writeUsageEvent(
         // WHY: Wallet balance should drop as soon as usage occurs.
         // We defer this call to avoid blocking the main API response, but it runs
         // immediately in the background execution context.
+        //
+        // AI events carry pre-calculated costUSD in metadata (model-aware pricing).
+        // Non-AI events continue using the flat-rate calculator.
         if (resolvedBillingEntityId) {
             setImmediate(async () => {
                 try {
-                    const { calculateEventCostUSD } = await import("@/lib/billing/pricing");
-                    const costUSD = calculateEventCostUSD(
-                        params.resourceType,
-                        params.units,
-                        params.weightedUnits
-                    );
+                    let costUSD: number;
+
+                    // Check if metadata contains a pre-calculated costUSD (set by logAIUsage)
+                    const metadataCostUSD = params.metadata?.costUSD;
+                    if (typeof metadataCostUSD === "number" && metadataCostUSD > 0) {
+                        // AI events: use model-aware pricing from metadata
+                        costUSD = metadataCostUSD;
+                    } else {
+                        // Non-AI events: use flat-rate calculator
+                        const { calculateEventCostUSD } = await import("@/lib/billing/pricing");
+                        costUSD = calculateEventCostUSD(
+                            params.resourceType,
+                            params.units,
+                            params.weightedUnits
+                        );
+                    }
 
                     if (costUSD > 0) {
                         const { getOrCreateWallet, deductFromWallet } = await import("@/features/wallet/services/wallet-service");
@@ -283,7 +296,7 @@ export async function writeUsageEvent(
                         await deductFromWallet(databases, wallet.$id, costUSD, {
                             referenceId: event.$id,
                             idempotencyKey: `deduct:${params.idempotencyKey}`,
-                            description: `Instant Charge: ${params.resourceType.toUpperCase()}`,
+                            description: `Instant Charge: ${params.resourceType.toUpperCase()}${params.metadata?.model ? ` (${params.metadata.model})` : ""}`,
                         });
                     }
                 } catch (err) {

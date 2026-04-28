@@ -15,13 +15,22 @@ import {
 } from "@/components/ui/table";
 import { UsageEvent, UsageSummary } from "../types";
 import { WorkspaceUsageDrawer } from "./workspace-usage-drawer";
+import { 
+    USAGE_RATE_TRAFFIC_GB, 
+    USAGE_RATE_STORAGE_GB_MONTH, 
+    USAGE_RATE_COMPUTE_UNIT 
+} from "@/config";
 
 interface WorkspaceUsageData {
     workspaceId: string;
     workspaceName: string;
+    trafficBytes: number;
     trafficGB: number;
+    storageBytes: number;
     storageGB: number;
     computeUnits: number;
+    aiTokens: number;
+    aiCostUSD: number;
     estimatedCost: number;
     status: "active" | "archived";
 }
@@ -35,10 +44,11 @@ interface WorkspaceUsageBreakdownProps {
 }
 
 // Pricing (example rates - should match billing config)
+// Pricing rates from global config (converted from cents to USD)
 const PRICING = {
-    trafficPerGB: 0.10,
-    storagePerGB: 0.02,
-    computePerUnit: 0.001,
+    trafficPerGB: USAGE_RATE_TRAFFIC_GB / 100,
+    storagePerGB: USAGE_RATE_STORAGE_GB_MONTH / 100,
+    computePerUnit: USAGE_RATE_COMPUTE_UNIT / 100,
 };
 
 export function WorkspaceUsageBreakdown({
@@ -66,21 +76,31 @@ export function WorkspaceUsageBreakdown({
         return workspaces.map((ws) => {
             const data = byWorkspace[ws.$id] || { traffic: 0, storage: 0, compute: 0 };
 
-            const trafficGB = (data.traffic || 0) / (1024 * 1024 * 1024);
-            const storageGB = (data.storage || 0) / (1024 * 1024 * 1024);
+            const trafficBytes = data.traffic || 0;
+            const storageBytes = Math.max(0, data.storage || 0);
+            
+            const trafficGB = trafficBytes / (1024 * 1024 * 1024);
+            const storageGB = storageBytes / (1024 * 1024 * 1024);
             const computeUnits = data.compute || 0;
+            const aiTokens = data.ai || 0;
+            const aiCostUSD = data.aiCost || 0;
 
             const estimatedCost =
                 (trafficGB * PRICING.trafficPerGB) +
                 (storageGB * PRICING.storagePerGB) +
-                (computeUnits * PRICING.computePerUnit);
+                (computeUnits * PRICING.computePerUnit) +
+                aiCostUSD;
 
             return {
                 workspaceId: ws.$id,
                 workspaceName: ws.name,
+                trafficBytes,
                 trafficGB,
+                storageBytes,
                 storageGB,
                 computeUnits,
+                aiTokens,
+                aiCostUSD,
                 estimatedCost,
                 status: "active" as const,
             };
@@ -100,12 +120,15 @@ export function WorkspaceUsageBreakdown({
     const totals = useMemo(() =>
         workspaceData.reduce(
             (acc, ws) => ({
+                trafficBytes: acc.trafficBytes + ws.trafficBytes,
                 trafficGB: acc.trafficGB + ws.trafficGB,
+                storageBytes: acc.storageBytes + ws.storageBytes,
                 storageGB: acc.storageGB + ws.storageGB,
                 computeUnits: acc.computeUnits + ws.computeUnits,
+                aiTokens: acc.aiTokens + ws.aiTokens,
                 estimatedCost: acc.estimatedCost + ws.estimatedCost,
             }),
-            { trafficGB: 0, storageGB: 0, computeUnits: 0, estimatedCost: 0 }
+            { trafficBytes: 0, trafficGB: 0, storageBytes: 0, storageGB: 0, computeUnits: 0, aiTokens: 0, estimatedCost: 0 }
         ),
         [workspaceData]
     );
@@ -121,6 +144,16 @@ export function WorkspaceUsageBreakdown({
 
     const formatNumber = (num: number, decimals = 2) => {
         return num.toFixed(decimals);
+    };
+
+    const formatBytes = (bytes: number) => {
+        if (bytes <= 0) return "0 B";
+        const k = 1024;
+        const dm = 2;
+        const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const safeIndex = Math.max(0, Math.min(i, sizes.length - 1));
+        return parseFloat((bytes / Math.pow(k, safeIndex)).toFixed(dm)) + " " + sizes[safeIndex];
     };
 
     if (isLoading) {
@@ -215,6 +248,16 @@ export function WorkspaceUsageBreakdown({
                                         </div>
                                     </TableHead>
                                     <TableHead
+                                        className="cursor-pointer hover:bg-muted/50"
+                                        onClick={() => handleSort("aiTokens")}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <TrendingUp className="h-3 w-3" />
+                                            AI Usage
+                                            {sortBy === "aiTokens" && (sortOrder === "desc" ? " ↓" : " ↑")}
+                                        </div>
+                                    </TableHead>
+                                    <TableHead
                                         className="cursor-pointer hover:bg-muted/50 text-right"
                                         onClick={() => handleSort("estimatedCost")}
                                     >
@@ -235,11 +278,12 @@ export function WorkspaceUsageBreakdown({
                                                 </Badge>
                                             </div>
                                         </TableCell>
-                                        <TableCell>{formatNumber(workspace.trafficGB)} GB</TableCell>
-                                        <TableCell>{formatNumber(workspace.storageGB)} GB</TableCell>
+                                        <TableCell>{formatBytes(workspace.trafficBytes)}</TableCell>
+                                        <TableCell>{formatBytes(workspace.storageBytes)}</TableCell>
                                         <TableCell>{workspace.computeUnits.toLocaleString()}</TableCell>
+                                        <TableCell>{workspace.aiTokens.toLocaleString()} tokens</TableCell>
                                         <TableCell className="text-right font-medium">
-                                            ${formatNumber(workspace.estimatedCost)}
+                                            ${formatNumber(workspace.estimatedCost, 4)}
                                         </TableCell>
                                         <TableCell>
                                             <Button
@@ -256,11 +300,12 @@ export function WorkspaceUsageBreakdown({
                                 {/* Totals Row */}
                                 <TableRow className="bg-muted/50 font-semibold">
                                     <TableCell className="font-bold">Total</TableCell>
-                                    <TableCell>{formatNumber(totals.trafficGB)} GB</TableCell>
-                                    <TableCell>{formatNumber(totals.storageGB)} GB</TableCell>
+                                    <TableCell>{formatBytes(totals.trafficBytes)}</TableCell>
+                                    <TableCell>{formatBytes(totals.storageBytes)}</TableCell>
                                     <TableCell>{totals.computeUnits.toLocaleString()}</TableCell>
+                                    <TableCell>{totals.aiTokens.toLocaleString()} tokens</TableCell>
                                     <TableCell className="text-right font-bold">
-                                        ${formatNumber(totals.estimatedCost)}
+                                        ${formatNumber(totals.estimatedCost, 4)}
                                     </TableCell>
                                     <TableCell></TableCell>
                                 </TableRow>
