@@ -8,6 +8,8 @@ import { UsageSummary } from "../types";
 interface UsageKPICardsProps {
     summary: UsageSummary | null;
     isLoading: boolean;
+    currency?: string;
+    exchangeRate?: number;
 }
 
 interface KPICardProps {
@@ -22,11 +24,14 @@ interface KPICardProps {
 
 function KPICard({ title, value, subtitle, icon, trend, trendValue, className }: KPICardProps) {
     return (
-        <Card className={cn("relative overflow-hidden", className)}>
+        <Card className={cn(
+            "relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group border-border/50 bg-card/50 backdrop-blur-sm",
+            className
+        )}>
             <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                     <div className="space-y-2">
-                        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+                        <p className="text-sm font-medium text-muted-foreground group-hover:text-primary/80 transition-colors">{title}</p>
                         <div className="flex items-baseline gap-2">
                             <h3 className="text-2xl font-bold tracking-tight">{value}</h3>
                             {trend && trendValue && (
@@ -51,20 +56,27 @@ function KPICard({ title, value, subtitle, icon, trend, trendValue, className }:
                             <p className="text-xs text-muted-foreground">{subtitle}</p>
                         )}
                     </div>
-                    <div className="rounded-lg bg-primary/5 p-3 text-primary border border-primary/10">
+                    <div className="rounded-xl bg-primary/5 p-3 text-primary border border-primary/10 group-hover:bg-primary/10 group-hover:scale-110 transition-all duration-300">
                         {icon}
                     </div>
                 </div>
             </CardContent>
+            {/* Background Accent Gradient */}
+            <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all duration-500" />
         </Card>
     );
 }
 
-export function UsageKPICards({ summary, isLoading }: UsageKPICardsProps) {
+export function UsageKPICards({
+    summary,
+    isLoading,
+    currency = "USD",
+    exchangeRate = 1
+}: UsageKPICardsProps) {
     if (isLoading) {
         return (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {[...Array(4)].map((_, i) => (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {[...Array(5)].map((_, i) => (
                     <Card key={i} className="animate-pulse">
                         <CardContent className="p-6">
                             <div className="space-y-3">
@@ -85,43 +97,62 @@ export function UsageKPICards({ summary, isLoading }: UsageKPICardsProps) {
         return num.toFixed(decimals);
     };
 
-    const formatCurrency = (amount: number) => {
+    const formatCurrency = (amountUsd: number) => {
+        const converted = amountUsd * exchangeRate;
         return new Intl.NumberFormat("en-US", {
             style: "currency",
-            currency: "USD",
+            currency: currency,
             minimumFractionDigits: 2,
-        }).format(amount);
+            maximumFractionDigits: converted < 0.1 && converted > 0 ? 6 : 2,
+        }).format(converted);
+    };
+
+    const formatBytes = (bytes: number) => {
+        if (bytes <= 0) return "0 B";
+        const k = 1024;
+        const dm = 2;
+        const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const safeIndex = Math.max(0, Math.min(i, sizes.length - 1));
+        return parseFloat((bytes / Math.pow(k, safeIndex)).toFixed(dm)) + " " + sizes[safeIndex];
     };
 
     return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             <KPICard
                 title="Traffic Used"
-                value={summary ? `${formatNumber(summary.trafficTotalGB)} GB` : "0 GB"}
-                subtitle={summary ? `${formatNumber(summary.trafficTotalBytes)} bytes total` : undefined}
+                value={summary ? formatBytes(summary.trafficTotalBytes) : "0 B"}
+                subtitle={summary ? `${formatNumber(summary.trafficTotalGB)} GB total` : undefined}
                 icon={<Activity className="h-5 w-5" />}
                 className="border-l-4 border-l-blue-500"
             />
             <KPICard
                 title="Storage Used"
-                value={summary ? `${formatNumber(summary.storageAvgGB)} GB` : "0 GB"}
-                subtitle="Average this period"
+                value={summary ? formatBytes(Math.max(0, summary.storageAvgBytes)) : "0 B"}
+                subtitle="Total current storage"
                 icon={<HardDrive className="h-5 w-5" />}
                 className="border-l-4 border-l-amber-500"
             />
             <KPICard
-                title="Compute Used"
+                title="Job Compute"
                 value={summary ? formatNumber(summary.computeTotalUnits, 0) : "0"}
-                subtitle="Compute units"
+                subtitle="Runner units"
                 icon={<Cpu className="h-5 w-5" />}
                 className="border-l-4 border-l-purple-500"
+            />
+            <KPICard
+                title="AI Usage"
+                value={summary ? formatNumber(summary.aiTokensTotal, 0) : "0"}
+                subtitle="Tokens"
+                icon={<Activity className="h-5 w-5" />}
+                className="border-l-4 border-l-pink-500"
             />
             <KPICard
                 title="Estimated Cost"
                 value={summary ? formatCurrency(summary.estimatedCost.total) : "$0.00"}
                 subtitle={
                     summary
-                        ? `Traffic: ${formatCurrency(summary.estimatedCost.traffic)} | Storage: ${formatCurrency(summary.estimatedCost.storage)} | Compute: ${formatCurrency(summary.estimatedCost.compute)}`
+                        ? `Traffic: ${formatCurrency(summary.estimatedCost.traffic)} | AI: ${formatCurrency(summary.estimatedCost.ai)}`
                         : undefined
                 }
                 icon={<DollarSign className="h-5 w-5" />}

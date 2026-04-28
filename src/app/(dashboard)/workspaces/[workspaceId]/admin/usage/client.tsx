@@ -175,6 +175,41 @@ export function UsageDashboardClient() {
         }
     };
 
+    const events = dashboardData?.data?.events?.documents || [];
+    const totalEvents = dashboardData?.data?.events?.total || 0;
+    const rawSummary = (dashboardData?.data?.summary || null) as UsageSummary | null;
+    const alerts = dashboardData?.data?.alerts?.documents || [];
+
+    // REFINED SUMMARY: Correct cumulative storage balance
+    const summary = useMemo(() => {
+        if (!rawSummary) return null;
+        
+        // Calculate the cumulative ending balance for storage from daily deltas
+        // This ensures "Storage Used" shows current utilization, not just period net change
+        let cumulativeBytes = 0;
+        rawSummary.dailyUsage.forEach(day => {
+            cumulativeBytes = Math.max(0, cumulativeBytes + Number(day.storage || 0));
+        });
+        
+        // Recalculate storage cost based on the ending balance
+        const storageRate = 2.0; // cents/GB-mo
+        const currentStorageGB = cumulativeBytes / (1024 * 1024 * 1024);
+        const storageCost = (currentStorageGB * storageRate) / 100;
+        
+        const newEstimatedCost = {
+            ...rawSummary.estimatedCost,
+            storage: Number(storageCost.toFixed(6)),
+            total: Number((rawSummary.estimatedCost.total - rawSummary.estimatedCost.storage + storageCost).toFixed(6))
+        };
+        
+        return {
+            ...rawSummary,
+            storageAvgBytes: cumulativeBytes,
+            storageAvgGB: cumulativeBytes / (1024 * 1024 * 1024),
+            estimatedCost: newEstimatedCost
+        };
+    }, [rawSummary]);
+
     // Loading state
     if (isMemberLoading || isOrgPermissionLoading) {
         return <PageLoader />;
@@ -189,10 +224,7 @@ export function UsageDashboardClient() {
         );
     }
 
-    const events = dashboardData?.data?.events?.documents || [];
-    const totalEvents = dashboardData?.data?.events?.total || 0;
-    const summary = (dashboardData?.data?.summary || null) as UsageSummary | null;
-    const alerts = dashboardData?.data?.alerts?.documents || [];
+
 
     return (
         <div>
@@ -326,14 +358,25 @@ export function UsageDashboardClient() {
                 </div>
 
                 {/* Main Grid Layout - Matching workspace dashboard 12-column grid */}
-                <div className="grid grid-cols-12 gap-4">
+                <div className="grid grid-cols-12 gap-6">
                     {/* Left Section (9 columns) */}
-                    <div className="col-span-12 xl:col-span-9 space-y-4">
+                    <div className="col-span-12 xl:col-span-9 space-y-6">
                         {/* KPI Cards */}
-                        <UsageKPICards summary={summary} isLoading={isSummaryLoading} />
+                        <UsageKPICards
+                            summary={summary}
+                            isLoading={isSummaryLoading}
+                            currency={currency}
+                            exchangeRate={rate}
+                        />
 
                         {/* Charts */}
-                        <UsageCharts events={events} summary={summary} isLoading={isEventsLoading || isSummaryLoading} />
+                        <UsageCharts
+                            events={events}
+                            summary={summary}
+                            isLoading={isEventsLoading || isSummaryLoading}
+                            currency={currency}
+                            exchangeRate={rate}
+                        />
 
                         {/* Events Table */}
                         <UsageEventsTable
@@ -367,21 +410,23 @@ export function UsageDashboardClient() {
                     </div>
 
                     {/* Right Sidebar (3 columns) - Matching workspace dashboard */}
-                    <div className="col-span-12 xl:col-span-3 flex flex-col space-y-4">
-                        {/* Cost Summary - with selected currency */}
-                        <CostSummary
-                            summary={summary}
-                            isLoading={isSummaryLoading}
-                            currency={currency}
-                            exchangeRate={rate}
-                        />
+                    <div className="col-span-12 xl:col-span-3">
+                        <div className="flex flex-col space-y-6 sticky top-6">
+                            {/* Cost Summary - with selected currency */}
+                            <CostSummary
+                                summary={summary}
+                                isLoading={isSummaryLoading}
+                                currency={currency}
+                                exchangeRate={rate}
+                            />
 
-                        {/* Alerts Manager */}
-                        <UsageAlertsManager
-                            alerts={alerts}
-                            workspaceId={workspaceId}
-                            isLoading={isAlertsLoading}
-                        />
+                            {/* Alerts Manager */}
+                            <UsageAlertsManager
+                                alerts={alerts}
+                                workspaceId={workspaceId}
+                                isLoading={isAlertsLoading}
+                            />
+                        </div>
                     </div>
                 </div>
 

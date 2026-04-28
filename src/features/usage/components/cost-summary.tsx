@@ -37,8 +37,17 @@ export function CostSummary({
             style: "currency",
             currency,
             minimumFractionDigits: 2,
-            maximumFractionDigits: 6,
+            maximumFractionDigits: converted < 0.1 && converted > 0 ? 6 : 2,
         }).format(converted);
+    };
+
+    const formatBytes = (bytes: number) => {
+        if (!bytes || bytes === 0) return "0 B";
+        const k = 1024;
+        const dm = 2;
+        const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
     };
 
     if (isLoading) {
@@ -110,8 +119,8 @@ export function CostSummary({
                             <div>
                                 <p className="font-medium">Traffic</p>
                                 <p className="text-sm text-muted-foreground">
-                                    {summary?.trafficTotalGB.toFixed(4) || "0"} GB ×{" "}
-                                    {formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}
+                                    {formatBytes(summary?.trafficTotalBytes || 0)} ×{" "}
+                                    {formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}/GB
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -123,8 +132,8 @@ export function CostSummary({
                             <div>
                                 <p className="font-medium">Storage</p>
                                 <p className="text-sm text-muted-foreground">
-                                    {summary?.storageAvgGB.toFixed(4) || "0"} GB-mo ×{" "}
-                                    {formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}
+                                    {formatBytes(summary?.storageAvgBytes || 0)}-mo ×{" "}
+                                    {formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}/GB
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -134,7 +143,7 @@ export function CostSummary({
 
                         <div className="flex items-center justify-between py-2">
                             <div>
-                                <p className="font-medium">Compute</p>
+                                <p className="font-medium">Compute (Jobs)</p>
                                 <p className="text-sm text-muted-foreground">
                                     {summary?.computeTotalUnits.toLocaleString() || "0"} units ×{" "}
                                     {formatCurrency(USAGE_RATE_COMPUTE_UNIT / 100)}
@@ -142,6 +151,18 @@ export function CostSummary({
                             </div>
                             <span className="font-mono font-medium">
                                 {formatCurrency(summary?.estimatedCost.compute || 0)}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center justify-between py-2">
+                            <div>
+                                <p className="font-medium">AI Usage</p>
+                                <p className="text-sm text-muted-foreground">
+                                    {summary?.aiTokensTotal?.toLocaleString() || "0"} tokens (dynamic pricing)
+                                </p>
+                            </div>
+                            <span className="font-mono font-medium">
+                                {formatCurrency(summary?.estimatedCost.ai || 0)}
                             </span>
                         </div>
 

@@ -25,6 +25,8 @@ interface UsageChartsProps {
     events: UsageEvent[];
     summary: UsageSummary | null;
     isLoading: boolean;
+    currency?: string;
+    exchangeRate?: number;
 }
 
 // Module color palette for consistent styling
@@ -190,19 +192,32 @@ function EmptyState({ message }: { message: string }) {
     );
 }
 
-export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
+export function UsageCharts({
+    events,
+    summary,
+    isLoading,
+    currency = "USD",
+    exchangeRate = 1
+}: UsageChartsProps) {
     // Determine the best unit for display based on max value
     const { timeSeriesData, displayUnit } = useMemo(() => {
         const data = summary?.dailyUsage || [];
         if (!data.length) return { timeSeriesData: [], displayUnit: "B", divisor: 1 };
 
-        // Find max traffic/storage value to determine scale
+        // We need to calculate cumulative storage because the backend provides deltas
+        let cumulativeStorage = 0;
+        
+        // Find max traffic/storage/compute value to determine scale
         let maxVal = 0;
         data.forEach((p) => {
             const traffic = Number(p.traffic || 0);
-            const storage = Number(p.storage || 0);
+            // Calculate what the storage would be at this point
+            const currentStorage = cumulativeStorage + Number(p.storage || 0);
+            cumulativeStorage = Math.max(0, currentStorage); // Prevent negative storage
+            
             const docs = Number(p.docs || 0);
-            maxVal = Math.max(maxVal, traffic, storage, docs);
+            const ai = Number(p.ai || 0);
+            maxVal = Math.max(maxVal, traffic, cumulativeStorage, docs, ai);
         });
 
         let unit = "B";
@@ -211,15 +226,20 @@ export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
         else if (maxVal >= 1024 * 1024) { unit = "MB"; div = 1024 * 1024; }
         else if (maxVal >= 1024) { unit = "KB"; div = 1024; }
 
-        const scaledData = data.map((p) => ({
-            ...p,
-            traffic: Number(p.traffic || 0) / div,
-            storage: Number(p.storage || 0) / div,
-            docs: Number(p.docs || 0) / div,
-            github: Number(p.github || 0) / div,
-            ai: Number(p.ai || 0) / div,
-            compute: Number(p.compute || 0) / div,
-        }));
+        // Reset for the actual mapping
+        let runningStorage = 0;
+        const scaledData = data.map((p) => {
+            runningStorage = Math.max(0, runningStorage + Number(p.storage || 0));
+            return {
+                ...p,
+                traffic: Number(p.traffic || 0) / div,
+                storage: runningStorage / div,
+                docs: Number(p.docs || 0) / div,
+                github: Number(p.github || 0) / div,
+                ai: Number(p.ai || 0) / div,
+                compute: Number(p.compute || 0) / div,
+            };
+        });
 
         return { timeSeriesData: scaledData, displayUnit: unit };
     }, [summary]);
@@ -282,6 +302,47 @@ export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
         }));
     }, [events]);
 
+    // Aggregate AI events by model for the AI Costs tab
+    const aiCostBreakdown = useMemo(() => {
+        const aiEvents = events.filter((e) => {
+            if (e.source?.toLowerCase() === "ai") return true;
+            try {
+                const meta = typeof e.metadata === "string" ? JSON.parse(e.metadata) : e.metadata;
+                return meta?.isAI === true;
+            } catch { return false; }
+        });
+
+        if (!aiEvents.length) return { models: [], totalCost: 0, totalCalls: 0, totalTokens: 0 };
+
+        const byModel: Record<string, { calls: number; promptTokens: number; completionTokens: number; totalTokens: number; costUSD: number }> = {};
+
+        for (const event of aiEvents) {
+            const meta = typeof event.metadata === "string" ? JSON.parse(event.metadata) : (event.metadata || {});
+            const model = (meta.model as string) || "unknown";
+            const costUsd = Number(meta.costUSD || 0);
+            const convertedCost = costUsd * exchangeRate;
+            if (!byModel[model]) {
+                byModel[model] = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, costUSD: 0 };
+            }
+            byModel[model].calls++;
+            byModel[model].promptTokens += Number(meta.promptTokens || 0);
+            byModel[model].completionTokens += Number(meta.completionTokens || 0);
+            byModel[model].totalTokens += Number(meta.totalTokens || meta.tokensUsed || 0);
+            byModel[model].costUSD += convertedCost;
+        }
+
+        const models = Object.entries(byModel)
+            .map(([model, data]) => ({ model, ...data }))
+            .sort((a, b) => b.costUSD - a.costUSD);
+
+        return {
+            models,
+            totalCost: models.reduce((s, m) => s + m.costUSD, 0),
+            totalCalls: models.reduce((s, m) => s + m.calls, 0),
+            totalTokens: models.reduce((s, m) => s + m.totalTokens, 0),
+        };
+    }, [events, exchangeRate]);
+
     if (isLoading) {
         return (
             <Card className="animate-pulse">
@@ -321,6 +382,7 @@ export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
                         <TabsTrigger value="timeline">Usage Over Time</TabsTrigger>
                         <TabsTrigger value="modules">By Module</TabsTrigger>
                         <TabsTrigger value="sources">By Source</TabsTrigger>
+                        <TabsTrigger value="ai-costs">AI Costs</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="timeline" className="h-80">
@@ -373,6 +435,14 @@ export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
                                         stackId="1"
                                         stroke={MODULE_COLORS.storage}
                                         fill={`url(#gradient-storage)`}
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="ai"
+                                        name="AI"
+                                        stackId="1"
+                                        stroke={MODULE_COLORS.ai}
+                                        fill={`url(#gradient-ai)`}
                                     />
                                     <Area
                                         type="monotone"
@@ -460,6 +530,102 @@ export function UsageCharts({ events, summary, isLoading }: UsageChartsProps) {
                                     <Bar dataKey="compute" name="Compute" stackId="a" fill={MODULE_COLORS.compute} />
                                 </BarChart>
                             </ResponsiveContainer>
+                        )}
+                    </TabsContent>
+
+                    <TabsContent value="ai-costs" className="min-h-80">
+                        {aiCostBreakdown.models.length === 0 ? (
+                            <EmptyState message="No AI usage data available" />
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="rounded-lg border border-border bg-muted/50 p-4">
+                                        <div className="text-sm text-muted-foreground">Total Cost</div>
+                                        <div className="text-2xl font-bold text-emerald-500">
+                                            {new Intl.NumberFormat("en-US", { style: "currency", currency }).format(aiCostBreakdown.totalCost)}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-lg border border-border bg-muted/50 p-4">
+                                        <div className="text-sm text-muted-foreground">Total Calls</div>
+                                        <div className="text-2xl font-bold">{aiCostBreakdown.totalCalls.toLocaleString()}</div>
+                                    </div>
+                                    <div className="rounded-lg border border-border bg-muted/50 p-4">
+                                        <div className="text-sm text-muted-foreground">Total Tokens</div>
+                                        <div className="text-2xl font-bold">{aiCostBreakdown.totalTokens.toLocaleString()}</div>
+                                    </div>
+                                </div>
+
+                                {/* Per-model table */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b border-border text-muted-foreground">
+                                                <th className="text-left py-2 px-3 font-medium">Model</th>
+                                                <th className="text-right py-2 px-3 font-medium">Calls</th>
+                                                <th className="text-right py-2 px-3 font-medium">Input Tokens</th>
+                                                <th className="text-right py-2 px-3 font-medium">Output Tokens</th>
+                                                <th className="text-right py-2 px-3 font-medium">Cost ({currency})</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {aiCostBreakdown.models.map((m) => (
+                                                <tr key={m.model} className="border-b border-border/50 hover:bg-muted/30">
+                                                    <td className="py-2 px-3">
+                                                        <span className="inline-flex items-center rounded-full bg-pink-500/10 px-2.5 py-0.5 text-xs font-medium text-pink-400">
+                                                            {m.model}
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-right py-2 px-3">{m.calls.toLocaleString()}</td>
+                                                    <td className="text-right py-2 px-3">{m.promptTokens.toLocaleString()}</td>
+                                                    <td className="text-right py-2 px-3">{m.completionTokens.toLocaleString()}</td>
+                                                    <td className="text-right py-2 px-3 font-semibold text-emerald-500">
+                                                        {new Intl.NumberFormat("en-US", { style: "currency", currency }).format(m.costUSD)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="border-t border-border font-semibold">
+                                                <td className="py-2 px-3">Total</td>
+                                                <td className="text-right py-2 px-3">{aiCostBreakdown.totalCalls.toLocaleString()}</td>
+                                                <td className="text-right py-2 px-3">{aiCostBreakdown.models.reduce((s, m) => s + m.promptTokens, 0).toLocaleString()}</td>
+                                                <td className="text-right py-2 px-3">{aiCostBreakdown.models.reduce((s, m) => s + m.completionTokens, 0).toLocaleString()}</td>
+                                                <td className="text-right py-2 px-3 text-emerald-500">
+                                                    {new Intl.NumberFormat("en-US", { style: "currency", currency }).format(aiCostBreakdown.totalCost)}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                {/* Cost bar chart by model */}
+                                {aiCostBreakdown.models.length > 1 && (
+                                    <div className="h-48">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={aiCostBreakdown.models} layout="vertical">
+                                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                                <XAxis type="number" className="text-xs" tickFormatter={(v: number) => `$${v.toFixed(4)}`} />
+                                                <YAxis dataKey="model" type="category" className="text-xs" width={120} />
+                                                <Tooltip
+                                                    content={({ active, payload }) => {
+                                                        if (!active || !payload?.[0]) return null;
+                                                        const d = payload[0].payload as { model: string; costUSD: number; calls: number; totalTokens: number };
+                                                        return (
+                                                            <div style={{ backgroundColor: 'rgba(0,0,0,0.95)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: 12, fontSize: 12 }}>
+                                                                <p style={{ color: '#fff', fontWeight: 600 }}>{d.model}</p>
+                                                                <p style={{ color: '#10b981' }}>Cost: ${d.costUSD.toFixed(4)}</p>
+                                                                <p style={{ color: '#d1d5db' }}>{d.calls} calls · {d.totalTokens.toLocaleString()} tokens</p>
+                                                            </div>
+                                                        );
+                                                    }}
+                                                />
+                                                <Bar dataKey="costUSD" name="Cost (USD)" fill="#ec4899" radius={[0, 4, 4, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </TabsContent>
                 </Tabs>

@@ -14,6 +14,29 @@ interface ChatMessage {
   content: string;
 }
 
+/**
+ * Token usage metadata returned by every AI call.
+ * Enables model-aware, token-accurate billing.
+ */
+export interface AITokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Response from every AIService method.
+ * Contains the text result AND token usage for billing.
+ */
+export interface AIServiceResponse {
+  /** The generated text content */
+  text: string;
+  /** Actual token usage from Gemini usageMetadata */
+  tokenUsage: AITokenUsage;
+  /** The model that was used (normalized, e.g. "gemini-2.5-flash") */
+  model: string;
+}
+
 
 /**
  * Unified AI Service class for all AI-powered features
@@ -79,7 +102,7 @@ export class AIService {
       maxTokens?: number;
     },
     retries = 4
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     this.ensureConfigured();
 
     const model = options?.model || this.defaultModel;
@@ -166,7 +189,17 @@ export class AIService {
       }
 
       const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      // Extract token usage from Gemini usageMetadata
+      const usageMetadata = data.usageMetadata;
+      const tokenUsage: AITokenUsage = {
+        promptTokens: usageMetadata?.promptTokenCount ?? 0,
+        completionTokens: usageMetadata?.candidatesTokenCount ?? 0,
+        totalTokens: usageMetadata?.totalTokenCount ?? 0,
+      };
+
+      return { text, tokenUsage, model };
     } catch (err) {
       // Re-throw quota exhaustion immediately — do not retry
       if (err instanceof Error && err.message.startsWith("QUOTA_EXHAUSTED")) {
@@ -191,7 +224,7 @@ export class AIService {
       temperature?: number;
       maxTokens?: number;
     }
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const messages: ChatMessage[] = [];
     
     if (options?.systemPrompt) {
@@ -209,7 +242,7 @@ export class AIService {
   /**
    * Summarize a code file
    */
-  async summarizeFile(filePath: string, content: string): Promise<string> {
+  async summarizeFile(filePath: string, content: string): Promise<AIServiceResponse> {
     const prompt = `Analyze this code file and provide a concise summary (max 200 words):
 
 File: ${filePath}
@@ -232,7 +265,7 @@ Summarize:
   async generateDocumentation(
     repositoryInfo: { name: string; description?: string; language?: string },
     files: Array<{ path: string; content: string; summary?: string }>
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const fileContext = files
       .map((f, index) => {
         const preview = f.content.slice(0, 3000);
@@ -292,7 +325,7 @@ Construct a comprehensive technical manual in Markdown. The style must be extrem
     currentDocumentation: string,
     prompt: string,
     files: Array<{ path: string; content: string }>
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const fileContext = files
       .slice(0, 5)
       .map(f => `File: ${f.path}\nContent Preview: ${f.content.slice(0, 1000)}`)
@@ -336,7 +369,7 @@ Apply the user's requested changes precisely while maintaining the ultra-profess
         url: string;
       }>;
     }
-  ): Promise<string> {
+  ): Promise<AIServiceResponse> {
     const fileContext = codebaseContext.files
       .slice(0, 10)
       .map((f) => `File: ${f.path}\n${f.summary || f.content.slice(0, 1000)}\n---`)
@@ -400,7 +433,7 @@ Format your response in clean Markdown.`;
   /**
    * Summarize a git commit
    */
-  async summarizeCommit(commitDiff: string, commitMessage: string): Promise<string> {
+  async summarizeCommit(commitDiff: string, commitMessage: string): Promise<AIServiceResponse> {
     const prompt = `Summarize this git commit in a clear, concise way (max 150 words):
 
 Commit Message: ${commitMessage}
@@ -424,7 +457,7 @@ Be technical but clear. Focus on the "what" and "why".`;
   /**
    * Analyze code quality
    */
-  async analyzeCodeQuality(files: Array<{ path: string; content: string }>): Promise<string> {
+  async analyzeCodeQuality(files: Array<{ path: string; content: string }>): Promise<AIServiceResponse> {
     const codeSnippets = files.slice(0, 5).map((f) => `${f.path}:\n\`\`\`\n${f.content.slice(0, 2000)}\n\`\`\``).join("\n\n");
 
     const prompt = `Analyze the code quality of this project and provide actionable insights:

@@ -164,8 +164,8 @@ export type UsageEventMetadata = {
     requestBytes?: number;
     responseBytes?: number;
 
-    // Storage metadata
-    operation?: "upload" | "download" | "delete";
+    // Storage/AI operation metadata
+    operation?: string;
     fileName?: string;
     fileType?: string;
 
@@ -176,7 +176,13 @@ export type UsageEventMetadata = {
 
     // AI-specific metadata
     model?: string;
-    tokensUsed?: number;
+    tokensUsed?: number;          // Kept for backward compatibility
+    promptTokens?: number;        // Actual input tokens from Gemini usageMetadata
+    completionTokens?: number;    // Actual output tokens from Gemini usageMetadata
+    totalTokens?: number;         // promptTokens + completionTokens
+    costUSD?: number;             // Exact USD cost based on model-aware pricing
+    aiTier?: "economy" | "standard" | "flagship"; // Model pricing tier
+    isAI?: boolean;               // Flag for AI events (for ledger cost routing)
 
     // Generic
     [key: string]: unknown;
@@ -193,10 +199,12 @@ export type UsageSummary = {
     storageAvgBytes: number;
     storageAvgGB: number;
     computeTotalUnits: number;
+    aiTokensTotal: number;
     estimatedCost: {
         traffic: number;
         storage: number;
         compute: number;
+        ai: number;
         total: number;
     };
     eventCount: number;
@@ -207,6 +215,8 @@ export type UsageSummary = {
             [ResourceType.TRAFFIC]: number;
             [ResourceType.STORAGE]: number;
             [ResourceType.COMPUTE]: number;
+            ai: number;
+            aiCost: number;
         }>;
     };
     dailyUsage: Array<{
