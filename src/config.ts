@@ -121,6 +121,18 @@ export const BILLING_GRACE_PERIOD_DAYS = parseInt(process.env.BILLING_GRACE_PERI
 export const BILLING_CURRENCY = process.env.BILLING_CURRENCY || "USD";
 
 // ===============================
+// Trial Credit Configuration
+// ===============================
+/** Trial credit amount in USD (e.g., 30 = $30.00). Configurable via env. */
+export const TRIAL_CREDIT_USD = parseFloat(
+    process.env.NEXT_PUBLIC_TRIAL_CREDIT_USD || 
+    process.env.TRIAL_CREDIT_USD || 
+    "30"
+);
+/** Trial duration in days. After expiry, orgs without billing or balance are locked. */
+export const TRIAL_CREDIT_DAYS = parseInt(process.env.TRIAL_CREDIT_DAYS || "60");
+
+// ===============================
 // Wallet Security Configuration
 // ===============================
 /** Maximum daily top-up amount per wallet (USD cents). Default: $50,000 */

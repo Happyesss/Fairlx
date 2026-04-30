@@ -213,6 +213,50 @@ const app = new Hono()
     })
 
     /**
+     * POST /cron/billing/expire-trials
+     * 
+     * Identify organizations whose welcome trial has expired.
+     * If they don't have a billing method or wallet balance,
+     * lock them (suspend account, freeze wallet).
+     * 
+     * Schedule: Daily at 2:00 AM UTC
+     */
+    .post("/billing/expire-trials", async (c) => {
+        const authHeader = c.req.header("Authorization");
+
+        if (!verifyCronSecret(authHeader)) {
+            return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const { checkAndExpireOrgTrials } = await import(
+                "../services/trial-expiry-service"
+            );
+
+            const results = await checkAndExpireOrgTrials();
+
+            const duration = Date.now() - startTime;
+
+            return c.json({
+                success: true,
+                checked: results.checked,
+                locked: results.locked.length,
+                skipped: results.skipped.length,
+                errors: results.errors.length,
+                results: results,
+                durationMs: duration,
+            });
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            }, 500);
+        }
+    })
+
+    /**
      * POST /cron/usage/aggregate-daily
      * 
      * Roll up yesterday's raw usage events into daily summary records.
@@ -456,6 +500,7 @@ const app = new Hono()
                 "POST /cron/billing/process-cycle",
                 "POST /cron/billing/enforce-grace",
                 "POST /cron/billing/send-reminders",
+                "POST /cron/billing/expire-trials",
                 "POST /cron/storage/snapshot",
                 "POST /cron/usage/aggregate-daily",
                 "POST /cron/usage/aggregate-all",

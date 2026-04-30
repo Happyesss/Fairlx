@@ -1,8 +1,10 @@
 "use client";
 
-import React, { createContext, useContext, useMemo } from "react";
+import React, { createContext, useContext, useMemo, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useGetAccountLifecycle, LifecycleRouting } from "@/features/auth/api/use-account-lifecycle";
 import { AccountLifecycleState } from "@/features/auth/types";
+import { AppTour } from "./app-tour";
 
 /**
  * Initial unresolved lifecycle state.
@@ -26,6 +28,9 @@ const INITIAL_STATE: AccountLifecycleState = {
     orgRole: null,
     mustAcceptLegal: false,
     legalBlocked: false,
+    isTrialExpired: false,
+    trialCreditGranted: false,
+    trialCreditExpiresAt: null,
 };
 
 const INITIAL_ROUTING: LifecycleRouting = {
@@ -33,6 +38,9 @@ const INITIAL_ROUTING: LifecycleRouting = {
     redirectTo: null, // CRITICAL: Don't redirect during initial load
     allowedPaths: [],
     blockedPaths: [], // Don't block anything during initial load
+    isTrialExpired: false,
+    trialCreditGranted: false,
+    trialCreditExpiresAt: null,
 };
 
 interface AccountLifecycleContextValue {
@@ -128,12 +136,26 @@ export function AccountLifecycleProvider({ children }: AccountLifecycleProviderP
         };
     }, [lifecycleState, lifecycleRouting, refreshLifecycle, isLoaded]);
 
+    const pathname = usePathname();
+
+    // SECURITY & UX: Re-verify lifecycle state on every navigation
+    // This ensures that state transitions (e.g. finishing onboarding) are reflected immediately
+    // without requiring manual refreshes or waiting for the poll interval.
+    useEffect(() => {
+        if (isLoaded) {
+            refreshLifecycle();
+        }
+    }, [pathname, isLoaded, refreshLifecycle]);
+
     // NOTE: Route guards are handled exclusively by LifecycleGuard.
     // This provider MUST NOT redirect - it only provides state.
 
     return (
         <AccountLifecycleContext.Provider value={value}>
             {children}
+            {value.isFullySetup && (
+                <AppTour />
+            )}
         </AccountLifecycleContext.Provider>
     );
 }

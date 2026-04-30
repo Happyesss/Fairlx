@@ -278,6 +278,21 @@ async function handlePaymentSuccess(
             } catch {
                 // Don't fail the webhook if billing account update fails
             }
+
+            // If account belongs to an organization, check if we need to unlock it
+            try {
+                const account = await databases.getDocument(
+                    DATABASE_ID,
+                    BILLING_ACCOUNTS_ID,
+                    billingAccountId
+                );
+                if (account.organizationId) {
+                    const { unlockOrgAfterPayment } = await import("../services/trial-expiry-service");
+                    await unlockOrgAfterPayment(account.organizationId);
+                }
+            } catch {
+                // Don't fail the webhook if trial unlock fails
+            }
         }
 
         // Find and update associated invoice (if top-up was for a specific invoice)

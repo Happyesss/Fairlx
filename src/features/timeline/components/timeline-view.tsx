@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { client } from "@/lib/rpc";
 import { TimelineClient } from "./timeline-client";
 import { processTimelineData } from "../server/process-timeline-data";
 import { TimelineZoomLevel } from "../types";
 import { PopulatedWorkItem, Sprint } from "@/features/sprints/types";
 import { PageLoader } from "@/components/page-loader";
 import { PageError } from "@/components/page-error";
+import { useGetSprints } from "@/features/sprints/api/use-get-sprints";
+import { useGetWorkItems } from "@/features/sprints/api/use-get-work-items";
 
 interface TimelineViewProps {
   workspaceId: string;
@@ -19,63 +19,35 @@ interface TimelineViewProps {
 
 /**
  * Client-side Timeline view wrapper for use in task-view-switcher
- * Fetches timeline data on the client and renders the TimelineClient component
+ * Fetches timeline data using standardized hooks
  */
 export function TimelineView({ workspaceId, projectId, initialWorkItems, initialSprints }: TimelineViewProps) {
-  // Fetch sprints - use enabled to control when query runs
-  const { data: fetchedSprintsData, isLoading: isLoadingSprints, error: sprintsError } = useQuery({
-    queryKey: ["sprints", workspaceId, projectId],
-    queryFn: async () => {
-      const response = await client.api.sprints.$get({
-        query: {
-          workspaceId,
-          projectId: projectId!,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch sprints");
-      }
-
-      const result = await response.json();
-      return result.data;
-    },
-    enabled: !!projectId && !initialSprints,
+  // Fetch sprints using standardized hook
+  const { data: fetchedSprintsData, isLoading: isLoadingSprints, error: sprintsError } = useGetSprints({
+    workspaceId,
+    projectId: projectId || "", // Optional: if empty, gets all sprints in workspace
+    enabled: !initialSprints,
   });
 
   const sprintsData = initialSprints || fetchedSprintsData;
 
-  // Fetch work items - include children for timeline visualization
-  const { data: fetchedWorkItemsData, isLoading: isLoadingWorkItems, error: workItemsError } = useQuery({
-    queryKey: ["work-items", workspaceId, projectId, "timeline"],
-    queryFn: async () => {
-      const response = await client.api["work-items"].$get({
-        query: {
-          workspaceId,
-          projectId: projectId!,
-          includeChildren: "true",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch work items");
-      }
-
-      const result = await response.json();
-      return result.data;
-    },
-    enabled: !!projectId && !initialWorkItems,
+  // Fetch work items using standardized hook
+  const { data: fetchedWorkItemsData, isLoading: isLoadingWorkItems, error: workItemsError } = useGetWorkItems({
+    workspaceId,
+    projectId: projectId || "", // Optional: if empty, gets all work items in workspace
+    includeChildren: true,
+    enabled: !initialWorkItems,
   });
 
   const workItemsData = initialWorkItems || fetchedWorkItemsData;
 
   // Process the data once both are loaded
   const processedData = useMemo(() => {
-    if (!sprintsData || !workItemsData) return null;
+    if (!sprintsData?.documents || !workItemsData?.documents) return null;
 
     const timelineData = {
-      sprints: sprintsData,
-      workItems: workItemsData,
+      sprints: sprintsData as unknown as { documents: Sprint[], total: number },
+      workItems: workItemsData as unknown as { documents: PopulatedWorkItem[], total: number },
     };
 
     return processTimelineData(timelineData, TimelineZoomLevel.WEEKS);
@@ -109,7 +81,7 @@ export function TimelineView({ workspaceId, projectId, initialWorkItems, initial
   }
 
   // No data state
-  if (!processedData || !sprintsData || !workItemsData) {
+  if (!processedData || !sprintsData?.documents || !workItemsData?.documents) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <PageError message="No timeline data available" />
@@ -122,8 +94,8 @@ export function TimelineView({ workspaceId, projectId, initialWorkItems, initial
     <div className="h-[calc(100vh-200px)]">
       <TimelineClient
         initialData={processedData}
-        sprints={sprintsData.documents}
-        workItems={workItemsData.documents}
+        sprints={sprintsData.documents as Sprint[]}
+        workItems={workItemsData.documents as PopulatedWorkItem[]}
         workspaceId={workspaceId}
         projectId={projectId}
         showHeader={false}

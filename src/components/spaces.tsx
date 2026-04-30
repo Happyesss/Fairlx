@@ -54,7 +54,7 @@ export const Spaces = () => {
   }, {} as Record<string, typeof spaces>);
 
   return (
-    <div className="flex flex-col px-3 py-3 border-t border-sidebar-border">
+    <div id="sidebar-spaces-list" className="flex flex-col px-3 py-3 border-t border-sidebar-border">
       <div className="flex items-center justify-between">
         <button
           onClick={() => setIsExpanded(!isExpanded)}

@@ -32,7 +32,7 @@ export async function setupWalletTransactions(databases: Databases, databaseId: 
     // Core Attributes
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'walletId', 256, true);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'type',
-        ['TOPUP', 'USAGE', 'REFUND', 'ADJUSTMENT', 'HOLD', 'RELEASE', 'REWARD_CREDIT'], true);
+        ['TOPUP', 'USAGE', 'REFUND', 'ADJUSTMENT', 'HOLD', 'RELEASE', 'REWARD_CREDIT', 'TRIAL_CREDIT'], true);
     await ensureFloatAttribute(databases, databaseId, COLLECTION_ID, 'amount', true);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'direction', ['credit', 'debit'], true);
 

@@ -55,6 +55,9 @@ export async function resolveAccountLifecycleState(): Promise<AccountLifecycleSt
             orgRole: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
         };
     }
 }
@@ -97,6 +100,9 @@ function convertToLegacyState(
         orgRole: lifecycle.orgRole,
         mustAcceptLegal: lifecycle.mustAcceptLegal,
         legalBlocked: lifecycle.legalBlocked,
+        isTrialExpired: lifecycle.isTrialExpired,
+        trialCreditGranted: lifecycle.trialCreditGranted,
+        trialCreditExpiresAt: lifecycle.trialCreditExpiresAt,
     };
 }
 
@@ -134,6 +140,9 @@ export async function getLifecycleState(): Promise<ResolvedLifecycle> {
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             redirectTo: "/sign-in",
             allowedPaths: ["/sign-in", "/sign-up", "/oauth"],
             blockedPaths: ["*"],
@@ -184,6 +193,9 @@ export async function getLifecycleStateWithLegacy(): Promise<{
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             redirectTo: "/sign-in",
             allowedPaths: ["/sign-in", "/sign-up", "/oauth"],
             blockedPaths: ["*"],
@@ -208,6 +220,9 @@ export async function getLifecycleStateWithLegacy(): Promise<{
                 orgRole: null,
                 mustAcceptLegal: false,
                 legalBlocked: false,
+                isTrialExpired: false,
+                trialCreditGranted: false,
+                trialCreditExpiresAt: null,
             },
             lifecycle,
         };

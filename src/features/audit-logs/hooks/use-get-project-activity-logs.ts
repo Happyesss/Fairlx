@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useTourActive, DUMMY_ACTIVITY_LOGS } from "@/lib/tour-dummy-data";
 import { client } from "@/lib/rpc";
 
 interface useGetProjectActivityLogsProps {
@@ -13,9 +14,16 @@ export const useGetProjectActivityLogs = ({
   projectId,
   limit = 10,
 }: useGetProjectActivityLogsProps) => {
+  const isTourActive = useTourActive();
+
   const query = useInfiniteQuery({
-    queryKey: ["activity-logs", workspaceId, projectId],
+    queryKey: ["activity-logs", workspaceId, projectId, isTourActive],
     queryFn: async ({ pageParam }: { pageParam?: string }) => {
+      // DUMMY DATA FOR TOUR
+      if (isTourActive) {
+        return DUMMY_ACTIVITY_LOGS;
+      }
+
       const response = await client.api["audit-logs"]["$get"]({
         query: {
           workspaceId,
@@ -26,6 +34,7 @@ export const useGetProjectActivityLogs = ({
       });
 
       if (!response.ok) {
+        if (isTourActive) return DUMMY_ACTIVITY_LOGS;
         throw new Error("Failed to fetch activity logs");
       }
 
@@ -49,9 +58,17 @@ export const useGetRecentProjectActivityLogs = ({
   limit = 5,
   enabled,
 }: useGetProjectActivityLogsProps) => {
+  const isTourActive = useTourActive();
+
   const query = useQuery({
-    queryKey: ["activity-logs", "recent", workspaceId, projectId, limit],
+    queryKey: ["activity-logs", "recent", workspaceId, projectId, limit, isTourActive],
     queryFn: async () => {
+      // DUMMY DATA FOR TOUR
+      if (isTourActive) {
+        console.log("[Tour] Returning dummy project activity logs");
+        return DUMMY_ACTIVITY_LOGS;
+      }
+
       const response = await client.api["audit-logs"]["$get"]({
         query: {
           workspaceId,
@@ -61,6 +78,7 @@ export const useGetRecentProjectActivityLogs = ({
       });
 
       if (!response.ok) {
+        if (isTourActive) return DUMMY_ACTIVITY_LOGS;
         throw new Error("Failed to fetch activity logs");
       }
 

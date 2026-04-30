@@ -31,6 +31,10 @@ export type AccountLifecycleState = {
     mustAcceptLegal: boolean;
     /** If true, user is blocked because org hasn't accepted legal terms */
     legalBlocked: boolean;
+    /** True when the org's trial credit has expired */
+    isTrialExpired: boolean;
+    trialCreditGranted?: boolean;
+    trialCreditExpiresAt?: string | null;
 };
 
 // Legacy alias for backward compatibility during migration
