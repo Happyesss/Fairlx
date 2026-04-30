@@ -37,7 +37,7 @@ export const Navbar = () => {
   const { title } = pathnameMap[pathnameKey] || defaultMap;
 
   return (
-    <nav className="py-[15px] px-6 flex items-center border-b border-border sticky top-0 left-0 right-0 z-10 justify-between bg-background">
+    <nav id="navbar" className="py-[15px] px-6 flex items-center border-b border-border sticky top-0 left-0 right-0 z-10 justify-between bg-background">
       <div className="flex flex-col ">
         <div className="hidden lg:flex">
           <Breadcrumb />
@@ -46,7 +46,7 @@ export const Navbar = () => {
           <h1 className="text-lg font-semibold">{title}</h1>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div id="navbar-actions" className="flex items-center gap-2">
         <MobileSidebar />
         <ModeToggle />
         <NotificationBell />

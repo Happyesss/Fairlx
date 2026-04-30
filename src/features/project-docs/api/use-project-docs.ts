@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { client } from "@/lib/rpc";
+import { useTourActive, DUMMY_DOCUMENTS } from "@/lib/tour-dummy-data";
 import { DocumentCategory, PopulatedProjectDocument } from "../types";
 
 // Query keys
@@ -35,9 +36,25 @@ export const useGetProjectDocuments = (
     includeArchived?: boolean;
   }
 ) => {
+  const isTourActive = useTourActive();
+
   return useQuery<DocumentsResponse>({
-    queryKey: [...PROJECT_DOCS_QUERY_KEYS.documents(projectId), options],
+    queryKey: [...PROJECT_DOCS_QUERY_KEYS.documents(projectId), options, isTourActive],
     queryFn: async () => {
+      // DUMMY DATA FOR TOUR
+      if (isTourActive) {
+        console.log("[Tour] Returning dummy project documents");
+        return {
+          data: DUMMY_DOCUMENTS.documents as unknown as PopulatedProjectDocument[],
+          stats: {
+            totalDocuments: DUMMY_DOCUMENTS.total,
+            totalSize: 1024 * 1024 * 2.5, // 2.5 MB
+            remainingSize: 1024 * 1024 * 100, // 100 MB
+            byCategory: { "PRD": 1, "UI DESIGN": 1 }
+          }
+        };
+      }
+
       const response = await client.api["project-docs"].$get({
         query: {
           projectId,

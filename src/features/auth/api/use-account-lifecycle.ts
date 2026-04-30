@@ -17,6 +17,12 @@ export interface LifecycleRouting {
     allowedPaths: string[];
     /** Paths blocked in current state */
     blockedPaths: string[];
+    /** True when the org's trial credit has expired */
+    isTrialExpired: boolean;
+    /** True when the org has been granted a trial credit (even if not yet expired) */
+    trialCreditGranted: boolean;
+    /** The date when the trial credit expires */
+    trialCreditExpiresAt: string | null;
 }
 
 /**
@@ -42,6 +48,9 @@ const INITIAL_LIFECYCLE_STATE: AccountLifecycleState = {
     orgRole: null,
     mustAcceptLegal: false,
     legalBlocked: false,
+    isTrialExpired: false,
+    trialCreditGranted: false,
+    trialCreditExpiresAt: null,
 };
 
 /**
@@ -54,6 +63,9 @@ const INITIAL_ROUTING: LifecycleRouting = {
     redirectTo: null, // CRITICAL: No redirect during initial load
     allowedPaths: [],
     blockedPaths: [], // Don't block anything during initial load
+    isTrialExpired: false,
+    trialCreditGranted: false,
+    trialCreditExpiresAt: null,
 };
 
 
@@ -93,14 +105,15 @@ export const useGetAccountLifecycle = () => {
             const result = await response.json();
             return result as LifecycleQueryResult;
         },
-        // PERF: 2 min staleTime — lifecycle rarely changes mid-session.
-        // Background refetches still run; if state changes, guard will redirect.
-        staleTime: 2 * 60 * 1000,
+        // PERF: 0 staleTime — lifecycle should always be re-verified on significant actions.
+        // This ensures that state transitions (like finishing onboarding) reflect immediately.
+        staleTime: 0,
         // PERF: Keep previous data across remounts so LifecycleGuard can render
         // children immediately with cached data instead of showing skeleton.
         placeholderData: keepPreviousData,
         refetchOnWindowFocus: true, // Re-verify status when coming back to app
-        refetchInterval: 2 * 60 * 1000, // Poll every 2 minutes
+        refetchOnMount: true, // Re-verify on every mount of the provider/hook
+        refetchInterval: 1 * 60 * 1000, // Poll every 1 minute for background updates
         refetchIntervalInBackground: false, // Don't poll when tab is not focused
         retry: 1,
         // Disable query during SSR to prevent hydration mismatch

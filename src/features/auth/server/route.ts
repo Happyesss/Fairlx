@@ -68,6 +68,9 @@ const app = new Hono()
         redirectTo: result.lifecycle.redirectTo,
         allowedPaths: result.lifecycle.allowedPaths,
         blockedPaths: result.lifecycle.blockedPaths,
+        isTrialExpired: result.lifecycle.isTrialExpired ?? false,
+        trialCreditGranted: result.lifecycle.trialCreditGranted ?? false,
+        trialCreditExpiresAt: result.lifecycle.trialCreditExpiresAt ?? null,
       }
     });
   })

@@ -72,6 +72,12 @@ export interface ResolvedLifecycle {
     billingStatus: BillingStatus | null;
     mustAcceptLegal: boolean;
     legalBlocked: boolean;
+    /** True when the org's trial credit has expired (used by UI to show trial-specific banner) */
+    isTrialExpired: boolean;
+    /** True when the org has been granted a trial credit (even if not yet expired) */
+    trialCreditGranted: boolean;
+    /** The date when the trial credit expires */
+    trialCreditExpiresAt: string | null;
     redirectTo: string | null;
     allowedPaths: string[];
     blockedPaths: string[];
@@ -108,6 +114,7 @@ const ORGANIZATION_ROUTES = [
 ];
 
 const BILLING_ROUTES = [
+    "/organization/billing",
     "/organization/settings/billing",
     "/settings/billing",
     "/billing",
@@ -216,9 +223,9 @@ export function getLifecycleRouting(state: LifecycleState): {
 
         case LifecycleState.SUSPENDED:
             return {
-                redirectTo: null,
+                redirectTo: "/organization/billing",
                 allowedPaths: [...BILLING_ROUTES, ...PROFILE_ROUTES],
-                blockedPaths: ["/workspaces/*", "/onboarding"],
+                blockedPaths: ["/workspaces/*", "/onboarding", "/welcome"],
             };
 
         case LifecycleState.DELETED:
@@ -270,6 +277,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             ...routing,
         };
     }
@@ -297,6 +307,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             ...routing,
         };
     }
@@ -319,6 +332,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             ...routing,
         };
     }
@@ -341,6 +357,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus: null,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             ...routing,
         };
     }
@@ -460,6 +479,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal: false,
             legalBlocked: false,
+            isTrialExpired: orgDoc?.isTrialExpired === true,
+            trialCreditGranted: orgDoc?.trialCreditGranted === true,
+            trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
             ...routing,
         };
     }
@@ -484,6 +506,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked: false,
+                isTrialExpired: false,
+                trialCreditGranted: false,
+                trialCreditExpiresAt: null,
                 ...routing,
             };
         }
@@ -505,6 +530,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal,
             legalBlocked: false,
+            isTrialExpired: false,
+            trialCreditGranted: false,
+            trialCreditExpiresAt: null,
             ...routing,
         };
     }
@@ -528,6 +556,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus: null,
                 mustAcceptLegal,
                 legalBlocked,
+                isTrialExpired: false,
+                trialCreditGranted: false,
+                trialCreditExpiresAt: null,
                 ...routing,
             };
         }
@@ -550,6 +581,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked,
+                isTrialExpired: orgDoc?.isTrialExpired === true,
+                trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -573,6 +607,9 @@ async function resolveUserLifecycleStateInternal(
                     billingStatus,
                     mustAcceptLegal,
                     legalBlocked,
+                    isTrialExpired: orgDoc?.isTrialExpired === true,
+                    trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                    trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                     ...routing,
                 };
             }
@@ -594,6 +631,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked,
+                isTrialExpired: orgDoc?.isTrialExpired === true,
+                trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -617,6 +657,9 @@ async function resolveUserLifecycleStateInternal(
                     billingStatus,
                     mustAcceptLegal,
                     legalBlocked,
+                    isTrialExpired: orgDoc?.isTrialExpired === true,
+                    trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                    trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                     ...routing,
                 };
             }
@@ -638,6 +681,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked,
+                isTrialExpired: orgDoc?.isTrialExpired === true,
+                trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -660,6 +706,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked,
+                isTrialExpired: orgDoc?.isTrialExpired === true,
+                trialCreditGranted: orgDoc?.trialCreditGranted === true,
+                trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -681,6 +730,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal,
             legalBlocked,
+            isTrialExpired: orgDoc?.isTrialExpired === true,
+            trialCreditGranted: orgDoc?.trialCreditGranted === true,
+            trialCreditExpiresAt: orgDoc?.trialCreditExpiresAt ?? null,
             ...routing,
         };
     }
@@ -702,6 +754,9 @@ async function resolveUserLifecycleStateInternal(
         billingStatus: null,
         mustAcceptLegal: false,
         legalBlocked: false,
+        isTrialExpired: false,
+        trialCreditGranted: false,
+        trialCreditExpiresAt: null,
         ...routing,
     };
 }

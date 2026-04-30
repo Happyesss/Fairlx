@@ -5,6 +5,7 @@ import {
     ensureEnumAttribute,
     ensureIntegerAttribute,
     ensureDatetimeAttribute,
+    ensureBooleanAttribute,
     ensureIndex,
     sleep,
 } from '../lib/db-helpers';
@@ -36,10 +37,17 @@ export async function setupOrganizations(databases: Databases, databaseId: strin
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'deletedBy', 256, false);
     await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'billingFrozenAt', false);
 
+    // Trial credit tracking
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'trialCreditGranted', false, false);
+    await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'trialCreditExpiresAt', false);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'isTrialExpired', false, false);
+
     await sleep(2000);
 
     // Indexes
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'ownerId_idx', IndexType.Key, ['ownerId']);
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'domain_idx', IndexType.Key, ['domain']);
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'createdBy_idx', IndexType.Key, ['createdBy']);
+    await ensureIndex(databases, databaseId, COLLECTION_ID, 'trialCreditGranted_idx', IndexType.Key, ['trialCreditGranted']);
+    await ensureIndex(databases, databaseId, COLLECTION_ID, 'trialCreditExpiresAt_idx', IndexType.Key, ['trialCreditExpiresAt']);
 }

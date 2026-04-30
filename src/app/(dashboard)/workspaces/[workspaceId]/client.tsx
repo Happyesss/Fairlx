@@ -289,7 +289,7 @@ export const WorkspaceIdClient = () => {
   })()
 
   return (
-    <div className="space-y-6 pb-8">
+    <div id="dashboard-analytics" className="space-y-6 pb-8">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* Header                                                        */}
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -850,7 +850,9 @@ export const WorkspaceIdClient = () => {
                           &quot;{item.title}&quot;
                         </p>
                         <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                          {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
+                          {item.updatedAt && !isNaN(item.updatedAt.getTime()) 
+                            ? formatDistanceToNow(item.updatedAt, { addSuffix: true })
+                            : "recently"}
                         </p>
                       </div>
                     </div>

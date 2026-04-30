@@ -12,6 +12,8 @@ on:
     - cron: '0 1 * * *'
     # Send reminders - daily at 9 AM UTC
     - cron: '0 9 * * *'
+    # Expire trials - daily at 2 AM UTC
+    - cron: '0 2 * * *'
     # Evaluate usage alerts - hourly at the 30th minute
     - cron: '30 * * * *'
     # Sync AI model pricing - every 30 minutes at :05 and :35
@@ -26,6 +28,7 @@ on:
         options:
           - process-cycle
           - enforce-grace
+          - expire-trials
           - send-reminders
           - evaluate-alerts
           - aggregate-daily
@@ -60,6 +63,8 @@ jobs:
                 echo "job=storage-snapshot" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "01" ]; then
                 echo "job=enforce-grace" >> $GITHUB_OUTPUT
+              elif [ "$HOUR" == "02" ]; then
+                echo "job=expire-trials" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "03" ] && [ "$DAY" == "01" ]; then
                 echo "job=process-cycle" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "09" ]; then
@@ -145,6 +150,26 @@ jobs:
             exit 1
           fi
           echo "✅ Grace periods enforced successfully"
+
+      - name: Expire trials
+        if: steps.job.outputs.job == 'expire-trials'
+        run: |
+          echo "⏳ Running daily trial expiry check..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            "$API_BASE_URL/api/cron/billing/expire-trials")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed with status $http_code"
+            exit 1
+          fi
+          echo "✅ Trials expired successfully"
 
       - name: Send reminder emails
         if: steps.job.outputs.job == 'send-reminders'

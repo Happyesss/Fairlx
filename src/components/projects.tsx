@@ -10,6 +10,7 @@ import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useCreateProjectModal } from "@/features/projects/hooks/use-create-project-modal";
 import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
+import { useTourActive } from "@/lib/tour-dummy-data";
 
 import {
   Select,
@@ -34,8 +35,11 @@ export const Projects = () => {
   const { data } = useGetProjects({ workspaceId });
   const { isAdmin } = useCurrentMember({ workspaceId });
   const [isExpanded, setIsExpanded] = useState(true);
+  const isTourActive = useTourActive();
 
   const projectId = params.projectId as string;
+  // If tour is active and no project selected, pretend "Fairlx" is selected
+  const activeProjectId = !projectId && isTourActive ? "p1" : projectId;
 
   const onSelect = (id: string) => {
     // Always navigate to the project, even if it's already selected
@@ -48,7 +52,7 @@ export const Projects = () => {
   };
 
   return (
-    <div className="flex flex-col px-3 py-3 border-t border-sidebar-border">
+    <div id="sidebar-projects-list" className="flex flex-col px-3 py-3 border-t border-sidebar-border">
       <div className="flex items-center justify-between">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
@@ -70,9 +74,9 @@ export const Projects = () => {
       </div>
 
       <div className={`transition-all duration-700 pl-2   overflow-hidden ${isExpanded ? 'max-h-96 mt-2' : ' mt-0 max-h-0'}`}>
-        <Select onValueChange={onSelect} value={projectId}>
+        <Select onValueChange={onSelect} value={activeProjectId}>
           <SelectTrigger className="w-full p-2 font-medium text-xs bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground/90">
-            <SelectValue placeholder="No project selected." />
+            <SelectValue placeholder={isTourActive ? "Fairlx" : "No project selected."} />
           </SelectTrigger>
 
           <SelectContent>
