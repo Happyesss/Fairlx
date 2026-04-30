@@ -28,7 +28,7 @@ const ORGANIZATIONS_ID = process.env.NEXT_PUBLIC_APPWRITE_ORGANIZATIONS_ID!;
 const WALLETS_ID = process.env.NEXT_PUBLIC_APPWRITE_WALLETS_ID!;
 
 const TRIAL_CREDIT_DAYS = 60;
-const DEFAULT_TRIAL_CREDIT = 60; // Matching the updated default
+const DEFAULT_TRIAL_CREDIT = 30; // Updated to match the new $30 standard
 
 /**
  * Migration Script: Trial Credits
