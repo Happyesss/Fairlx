@@ -70,7 +70,7 @@ export const ProjectIdClient = () => {
   };
 
   return (
-    <div className="flex flex-col gap-y-4">
+    <div id="project-dashboard" className="flex flex-col gap-y-4">
 
       <div className="flex items-center mb-4 justify-between">
 

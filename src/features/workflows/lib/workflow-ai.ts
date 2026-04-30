@@ -84,7 +84,8 @@ The JSON MUST follow this exact structure (no markdown in the JSON):
 
 Respond with a helpful text answer first, followed by the JSON block if applicable.`;
 
-    return aiService.generate(prompt, { maxTokens: 2000 });
+    const response = await aiService.generate(prompt, { maxTokens: 2000 });
+    return response.text;
   }
 
   /**
@@ -123,11 +124,11 @@ Rules:
 - isInitial should be true only for starting statuses
 - isFinal should be true only for end statuses`;
 
-    const response = await aiService.generate(aiPrompt, { maxTokens: 500, temperature: 0.2 });
+    const aiResponse = await aiService.generate(aiPrompt, { maxTokens: 500, temperature: 0.2 });
 
     try {
       // Extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = aiResponse.text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
       
       const suggestion = JSON.parse(jsonMatch[0]) as StatusSuggestion;
@@ -182,10 +183,10 @@ Rules:
 - Do not create a transition that already exists
 - requiresApproval should be true for critical transitions`;
 
-    const response = await aiService.generate(aiPrompt, { maxTokens: 300, temperature: 0.2 });
+    const aiResponse = await aiService.generate(aiPrompt, { maxTokens: 300, temperature: 0.2 });
 
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = aiResponse.text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
       
       const suggestion = JSON.parse(jsonMatch[0]) as TransitionSuggestion;
@@ -248,10 +249,10 @@ Requirements:
 - IN_PROGRESS statuses: blue/yellow colors
 - CLOSED statuses: green/emerald colors`;
 
-    const response = await aiService.generate(aiPrompt, { maxTokens: 2000, temperature: 0.4 });
+    const aiResponse = await aiService.generate(aiPrompt, { maxTokens: 2000, temperature: 0.4 });
 
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = aiResponse.text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
       
       const suggestion = JSON.parse(jsonMatch[0]) as WorkflowSuggestion;
@@ -301,7 +302,8 @@ Provide a structured analysis with:
 
 Be concise and actionable.`;
 
-    return aiService.generate(prompt, { maxTokens: 1500 });
+    const response = await aiService.generate(prompt, { maxTokens: 1500 });
+    return response.text;
   }
 }
 

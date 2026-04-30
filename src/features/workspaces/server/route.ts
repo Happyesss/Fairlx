@@ -208,13 +208,15 @@ const app = new Hono()
       // CRITICAL: Invalidate lifecycle cache to reflect transition out of onboarding
       await invalidateCache(CK.authLifecycle(user.$id));
 
-      // LOG COMPUTE USAGE: Workspace Creation
-      logComputeUsage({
-        databases,
-        workspaceId: workspace.$id,
-        units: 1,
-        jobType: "workspace_create",
-      });
+      // LOG COMPUTE USAGE: Workspace Creation (Exempt first workspace from charges)
+      if (!isFirstWorkspace) {
+        logComputeUsage({
+          databases,
+          workspaceId: workspace.$id,
+          units: 1,
+          jobType: "workspace_create",
+        });
+      }
 
       return c.json({ data: workspace });
     }

@@ -79,6 +79,7 @@ jobs:
           NEXT_PUBLIC_APPWRITE_STORAGE_SNAPSHOTS_ID: ${{ vars.NEXT_PUBLIC_APPWRITE_STORAGE_SNAPSHOTS_ID }}
           NEXT_PUBLIC_APPWRITE_INVOICES_ID: ${{ vars.NEXT_PUBLIC_APPWRITE_INVOICES_ID }}
           NEXT_PUBLIC_APPWRITE_PROCESSED_EVENTS_ID: ${{ vars.NEXT_PUBLIC_APPWRITE_PROCESSED_EVENTS_ID }}
+          NEXT_PUBLIC_AI_MODEL_PRICING_ID: ${{ vars.NEXT_PUBLIC_AI_MODEL_PRICING_ID }}
           NEXT_PUBLIC_APPWRITE_BILLING_SETTINGS_ID: ${{ vars.NEXT_PUBLIC_APPWRITE_BILLING_SETTINGS_ID }}
           # Payment Processing & Currency
           # Primary currency: USD (for display & wallet storage)
@@ -154,6 +155,9 @@ jobs:
           # Redis (server-side caching layer)
           REDIS_URL: ${{ secrets.REDIS_URL }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          # Trial Credits
+          NEXT_PUBLIC_TRIAL_CREDIT_USD: ${{ vars.NEXT_PUBLIC_TRIAL_CREDIT_USD }}
+          TRIAL_CREDIT_DAYS: ${{ vars.TRIAL_CREDIT_DAYS }}
         run: npm run build
 
       - name: Clean up before transfer
@@ -238,6 +242,7 @@ jobs:
             NEXT_PUBLIC_APPWRITE_STORAGE_SNAPSHOTS_ID=${{ vars.NEXT_PUBLIC_APPWRITE_STORAGE_SNAPSHOTS_ID }}
             NEXT_PUBLIC_APPWRITE_INVOICES_ID=${{ vars.NEXT_PUBLIC_APPWRITE_INVOICES_ID }}
             NEXT_PUBLIC_APPWRITE_PROCESSED_EVENTS_ID=${{ vars.NEXT_PUBLIC_APPWRITE_PROCESSED_EVENTS_ID }}
+            NEXT_PUBLIC_AI_MODEL_PRICING_ID=${{ vars.NEXT_PUBLIC_AI_MODEL_PRICING_ID }}
             NEXT_PUBLIC_APPWRITE_BILLING_SETTINGS_ID=${{ vars.NEXT_PUBLIC_APPWRITE_BILLING_SETTINGS_ID }}
             CASHFREE_APP_ID=${{ vars.CASHFREE_APP_ID }}
             CASHFREE_SECRET_KEY=${{ secrets.CASHFREE_SECRET_KEY }}
@@ -293,6 +298,8 @@ jobs:
             R2_PUBLIC_URL=${{ vars.R2_PUBLIC_URL }}
             REDIS_URL=${{ secrets.REDIS_URL }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            NEXT_PUBLIC_TRIAL_CREDIT_USD=${{ vars.NEXT_PUBLIC_TRIAL_CREDIT_USD }}
+            TRIAL_CREDIT_DAYS=${{ vars.TRIAL_CREDIT_DAYS }}
             EOF
             chmod 600 .env.local
 

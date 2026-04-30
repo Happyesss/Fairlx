@@ -167,6 +167,9 @@ export async function getBYOBLifecycleState(
         billingStatus: null, // BYOB billing not yet implemented
         mustAcceptLegal: false, // BYOB legal managed separately
         legalBlocked: false,
+        isTrialExpired: false, // BYOB doesn't use trial credits
+        trialCreditGranted: false,
+        trialCreditExpiresAt: null,
         redirectTo: byobRedirectTo,
         allowedPaths: byobAllowedPaths,
         blockedPaths: byobBlockedPaths,
@@ -202,6 +205,9 @@ export async function getBYOBLifecycleState(
         orgRole,
         mustAcceptLegal: false,
         legalBlocked: false,
+        isTrialExpired: false,
+        trialCreditGranted: false,
+        trialCreditExpiresAt: null,
     };
 
     return { legacyState, lifecycle };

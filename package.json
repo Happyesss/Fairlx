@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--max-old-space-size=4096' tsx server.ts",
-    "dev:next-only": "next dev",
+    "dev": "NODE_OPTIONS='--max-old-space-size=8192' tsx server.ts",
+    "dev:next-only": "NODE_OPTIONS='--max-old-space-size=8192' next dev",
     "build": "next build",
     "start": "next start",
     "start:socket": "NODE_ENV=production node dist/server.js",

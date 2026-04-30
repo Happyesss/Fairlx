@@ -10,8 +10,9 @@ import {
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { getMember } from "@/features/members/utils";
-import { trackUsage, createIdempotencyKey } from "@/lib/track-usage";
-import { ResourceType, UsageSource, UsageModule } from "@/features/usage/types";
+import { logAIUsage } from "@/lib/usage-metering";
+import { getAIModelPricing, calculateAICallCostUSD } from "@/lib/ai-model-pricing";
+import { UsageModule } from "@/features/usage/types";
 
 import { generateDocumentationSchema, refineDocumentationSchema, saveDocumentationSchema } from "../schemas";
 import { GitHubRepository, CodeDocumentation } from "../types";
@@ -97,7 +98,7 @@ const app = new Hono()
           // Generate comprehensive documentation
           const filesToDocument = files.slice(0, 20);
 
-          const documentation = await geminiAPI.generateDocumentation(
+          const aiResponse = await geminiAPI.generateDocumentation(
             {
               name: repository.repositoryName,
               description: repoInfo.description || undefined,
@@ -106,26 +107,36 @@ const app = new Hono()
             filesToDocument
           );
 
-          // Track usage (non-blocking)
-          trackUsage({
+          // Calculate model-aware cost and log with full token data
+          const pricing = await getAIModelPricing(databases, aiResponse.model);
+          const costUSD = calculateAICallCostUSD(pricing, aiResponse.tokenUsage.promptTokens, aiResponse.tokenUsage.completionTokens);
+
+          logAIUsage({
+            databases,
             workspaceId: project.workspaceId,
             projectId,
-            module: UsageModule.GITHUB,
-            resourceType: ResourceType.COMPUTE,
-            units: 1 + filesToDocument.length,
-            source: UsageSource.AI,
+            model: aiResponse.model,
+            promptTokens: aiResponse.tokenUsage.promptTokens,
+            completionTokens: aiResponse.tokenUsage.completionTokens,
+            totalTokens: aiResponse.tokenUsage.totalTokens,
+            costUSD,
+            units: aiResponse.tokenUsage.totalTokens,
             metadata: {
               operation: "generate_documentation",
               repositoryName: repository.repositoryName,
               filesProcessed: filesToDocument.length,
-              documentationLength: documentation.length,
+              aiTier: pricing.tier,
+              module: UsageModule.GITHUB,
             },
-            idempotencyKey: createIdempotencyKey(UsageModule.GITHUB, "doc_gen", projectId),
+            sourceContext: {
+              type: "project",
+              displayName: repository.repositoryName,
+            },
           });
 
           return c.json({ 
             data: {
-              content: documentation,
+              content: aiResponse.text,
               fileStructure,
               mermaidDiagram,
               projectId,
@@ -177,25 +188,39 @@ const app = new Hono()
         // Fetch a few files for context
         const files = await repoApi.getAllFiles(repository.owner, repository.repositoryName, repository.branch, "", 10);
 
-        const refinedDocumentation = await geminiAPI.refineDocumentation(
+        const aiResponse = await geminiAPI.refineDocumentation(
           currentContent,
           prompt,
           files.map((f: { path: string; content: string }) => ({ path: f.path, content: f.content }))
         );
 
-        // Track usage for refinement
-        trackUsage({
+        // Calculate model-aware cost and log with full token data
+        const pricing = await getAIModelPricing(databases, aiResponse.model);
+        const costUSD = calculateAICallCostUSD(pricing, aiResponse.tokenUsage.promptTokens, aiResponse.tokenUsage.completionTokens);
+
+        logAIUsage({
+          databases,
           workspaceId: project.workspaceId,
           projectId,
-          module: UsageModule.GITHUB,
-          resourceType: ResourceType.COMPUTE,
-          units: 2, // Refinement cost
-          source: UsageSource.AI,
-          metadata: { operation: "refine_documentation", promptLength: prompt.length },
-          idempotencyKey: createIdempotencyKey(UsageModule.GITHUB, `doc_refine_${user.$id}`, Date.now().toString()),
+          model: aiResponse.model,
+          promptTokens: aiResponse.tokenUsage.promptTokens,
+          completionTokens: aiResponse.tokenUsage.completionTokens,
+          totalTokens: aiResponse.tokenUsage.totalTokens,
+          costUSD,
+          units: aiResponse.tokenUsage.totalTokens,
+          metadata: {
+            operation: "refine_documentation",
+            promptLength: prompt.length,
+            aiTier: pricing.tier,
+            module: UsageModule.GITHUB,
+          },
+          sourceContext: {
+            type: "project",
+            displayName: repository.repositoryName,
+          },
         });
 
-        return c.json({ data: { content: refinedDocumentation } });
+        return c.json({ data: { content: aiResponse.text } });
       } catch (error) {
         return c.json({ error: "Failed to refine documentation", message: error instanceof Error ? error.message : "Unknown error" }, 500);
       }

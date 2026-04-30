@@ -1,4 +1,5 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useTourActive, DUMMY_SPRINTS } from "@/lib/tour-dummy-data";
 
 import { client } from "@/lib/rpc";
 
@@ -17,13 +18,21 @@ export const useGetSprints = ({
   status,
   enabled = true,
 }: UseGetSprintsProps) => {
+  const isTourActive = useTourActive();
+
   const query = useQuery({
-    queryKey: ["sprints", workspaceId, projectId, status],
-    enabled: Boolean(workspaceId) && Boolean(projectId) && enabled,
+    queryKey: ["sprints", workspaceId, projectId, status, isTourActive],
+    enabled: Boolean(workspaceId) && enabled,
     placeholderData: keepPreviousData,
     queryFn: async () => {
-      if (!workspaceId || !projectId) {
-        throw new Error("workspaceId and projectId are required to fetch sprints.");
+      // DUMMY DATA FOR TOUR
+      if (isTourActive) {
+        console.log("[Tour] Returning dummy sprints");
+        return DUMMY_SPRINTS;
+      }
+
+      if (!workspaceId) {
+        throw new Error("workspaceId is required to fetch sprints.");
       }
 
       const response = await client.api.sprints.$get({
@@ -35,6 +44,7 @@ export const useGetSprints = ({
       });
 
       if (!response.ok) {
+        if (isTourActive) return DUMMY_SPRINTS;
         throw new Error("Failed to fetch sprints.");
       }
 

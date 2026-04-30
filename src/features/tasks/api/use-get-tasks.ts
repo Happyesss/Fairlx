@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { client } from "@/lib/rpc";
+import { useTourActive, DUMMY_TASKS } from "@/lib/tour-dummy-data";
 
 import { TaskStatus, TaskPriority } from "../types";
 
@@ -49,21 +50,30 @@ export const useGetTasks = ({
   const sanitizedLabels = labels?.map((label) => label.trim()).filter(Boolean);
   const sanitizedParentId = sanitizeString(parentId ?? undefined);
 
+  const isTourActive = useTourActive();
+
   const query = useQuery({
     queryKey: [
       "tasks",
       sanitizedWorkspaceId,
-      sanitizedProjectId,
-      sanitizedStatus,
-      sanitizedAssigneeId,
-      sanitizedDueDate,
-      sanitizedSearch,
+      projectId,
+      search,
+      assigneeId,
+      dueDate,
+      status,
       sanitizedPriority,
       sanitizedLabels,
       sanitizedParentId,
+      isTourActive,
     ],
     enabled: Boolean(sanitizedWorkspaceId),
     queryFn: async () => {
+      // DUMMY DATA FOR TOUR - RETURN IMMEDIATELY
+      if (isTourActive) {
+        console.log("[Tour] Returning dummy tasks");
+        return DUMMY_TASKS;
+      }
+
       if (!sanitizedWorkspaceId) {
         throw new Error("workspaceId is required to fetch tasks.");
       }

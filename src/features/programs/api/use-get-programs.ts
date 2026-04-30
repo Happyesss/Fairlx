@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTourActive, DUMMY_PROGRAMS } from "@/lib/tour-dummy-data";
 
 import { client } from "@/lib/rpc";
 
@@ -34,6 +35,8 @@ export const useGetPrograms = ({
   const sanitizedProgramLeadId = sanitizeString(programLeadId ?? undefined);
   const sanitizedSearch = sanitizeString(search ?? undefined);
 
+  const isTourActive = useTourActive();
+
   const query = useQuery({
     queryKey: [
       "programs",
@@ -41,6 +44,7 @@ export const useGetPrograms = ({
       sanitizedStatus,
       sanitizedProgramLeadId,
       sanitizedSearch,
+      isTourActive,
     ],
     enabled: Boolean(sanitizedWorkspaceId),
     queryFn: async () => {
@@ -58,10 +62,19 @@ export const useGetPrograms = ({
       });
 
       if (!response.ok) {
+        if (isTourActive) return DUMMY_PROGRAMS;
         throw new Error("Failed to fetch programs.");
       }
 
       const { data } = await response.json();
+
+      if (isTourActive) {
+        return {
+          ...data,
+          documents: [...data.documents, ...DUMMY_PROGRAMS.documents],
+          total: data.total + DUMMY_PROGRAMS.total,
+        };
+      }
 
       return data;
     },

@@ -31,6 +31,8 @@ jobs:
         echo "BILLING_CURRENCY=USD" >> $GITHUB_ENV
         echo "BYOB_ENCRYPTION_SECRET=test_secret_32_characters_long_123" >> $GITHUB_ENV
         echo "NEXT_PUBLIC_APPWRITE_BYOB_TENANTS_ID=byob_tenants" >> $GITHUB_ENV
+        echo "NEXT_PUBLIC_TRIAL_CREDIT_USD=30" >> $GITHUB_ENV
+        echo "TRIAL_CREDIT_DAYS=60" >> $GITHUB_ENV
 
     - name: Type check
       run: npx tsc --noEmit

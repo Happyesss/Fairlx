@@ -213,6 +213,50 @@ const app = new Hono()
     })
 
     /**
+     * POST /cron/billing/expire-trials
+     * 
+     * Identify organizations whose welcome trial has expired.
+     * If they don't have a billing method or wallet balance,
+     * lock them (suspend account, freeze wallet).
+     * 
+     * Schedule: Daily at 2:00 AM UTC
+     */
+    .post("/billing/expire-trials", async (c) => {
+        const authHeader = c.req.header("Authorization");
+
+        if (!verifyCronSecret(authHeader)) {
+            return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const { checkAndExpireOrgTrials } = await import(
+                "../services/trial-expiry-service"
+            );
+
+            const results = await checkAndExpireOrgTrials();
+
+            const duration = Date.now() - startTime;
+
+            return c.json({
+                success: true,
+                checked: results.checked,
+                locked: results.locked.length,
+                skipped: results.skipped.length,
+                errors: results.errors.length,
+                results: results,
+                durationMs: duration,
+            });
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            }, 500);
+        }
+    })
+
+    /**
      * POST /cron/usage/aggregate-daily
      * 
      * Roll up yesterday's raw usage events into daily summary records.
@@ -395,6 +439,55 @@ const app = new Hono()
     })
 
     /**
+     * POST /cron/ai/sync-pricing
+     *
+     * Sync AI model pricing from Google sources.
+     * 1. Scrapes https://ai.google.dev/pricing for current per-model rates
+     * 2. Calls models.list API to auto-discover new models
+     * 3. Updates DB records (never overwrites admin overrides)
+     *
+     * Schedule: every 30 minutes (0,30 * * * *)
+     */
+    .post("/ai/sync-pricing", async (c) => {
+        const authHeader = c.req.header("Authorization");
+
+        if (!verifyCronSecret(authHeader)) {
+            return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const { syncAIModelPricing } = await import("@/lib/ai-pricing-sync-job");
+            const { createAdminClient } = await import("@/lib/appwrite");
+            const { databases: adminDb } = await createAdminClient();
+
+            // Use the Gemini API key from env
+            const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+            if (!apiKey) {
+                return c.json({
+                    success: false,
+                    error: "No Gemini API key configured (NEXT_PUBLIC_GEMINI_API_KEY or GEMINI_API_KEY)",
+                }, 500);
+            }
+
+            const results = await syncAIModelPricing(adminDb, apiKey);
+            const duration = Date.now() - startTime;
+
+            return c.json({
+                success: true,
+                ...results,
+                durationMs: duration,
+            });
+        } catch (error) {
+            return c.json({
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            }, 500);
+        }
+    })
+
+    /**
      * GET /cron/health
      *
      * Health check endpoint for monitoring.
@@ -407,9 +500,11 @@ const app = new Hono()
                 "POST /cron/billing/process-cycle",
                 "POST /cron/billing/enforce-grace",
                 "POST /cron/billing/send-reminders",
-                "POST /cron/storage/snapshot",       // NEW: daily storage snapshot (midnight UTC)
-                "POST /cron/usage/aggregate-daily",  // runs at 2 AM UTC, after snapshot
+                "POST /cron/billing/expire-trials",
+                "POST /cron/storage/snapshot",
+                "POST /cron/usage/aggregate-daily",
                 "POST /cron/usage/aggregate-all",
+                "POST /cron/ai/sync-pricing",        // NEW: 30-min AI pricing sync
             ],
         });
     });

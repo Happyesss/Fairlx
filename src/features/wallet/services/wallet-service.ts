@@ -932,6 +932,113 @@ export async function refundToWallet(
 }
 
 // ============================================================================
+// TRIAL CREDIT OPERATIONS
+// ============================================================================
+
+/**
+ * creditTrialToWallet
+ *
+ * Credit the welcome trial amount to an org wallet.
+ * Recorded as TRIAL_CREDIT transaction type.
+ * Uses idempotency key "trial-credit-{organizationId}" so it is safe to
+ * call more than once (e.g. on retry after partial failure).
+ *
+ * INVARIANT: Only one TRIAL_CREDIT per organization, ever.
+ */
+export async function creditTrialToWallet(
+    databases: Databases,
+    walletId: string,
+    amount: number,
+    options: {
+        organizationId: string;
+        description: string;
+        trialExpiresAt: Date;
+    }
+): Promise<{ success: boolean; alreadyCredited?: boolean; error?: string }> {
+    if (amount <= 0) {
+        return { success: false, error: "Amount must be positive" };
+    }
+
+    const idempotencyKey = `trial-credit-${options.organizationId}`;
+    const { acquireProcessingLock, releaseProcessingLock } = await import("@/lib/processed-events-registry");
+
+    // Distributed lock — prevents two concurrent creation calls from double-crediting
+    if (!(await acquireProcessingLock(databases, `wallet_trial_credit:${idempotencyKey}`, "wallet"))) {
+        return { success: true, alreadyCredited: true };
+    }
+
+    try {
+        // Idempotency check — has this trial credit already been recorded?
+        const existing = await databases.listDocuments(
+            DATABASE_ID,
+            WALLET_TRANSACTIONS_ID,
+            [
+                Query.equal("idempotencyKey", idempotencyKey),
+                Query.limit(1),
+            ]
+        );
+        if (existing.total > 0) {
+            return { success: true, alreadyCredited: true };
+        }
+
+        // Fetch current wallet for balance
+        const wallet = await databases.getDocument<Wallet>(DATABASE_ID, WALLETS_ID, walletId);
+
+        const balanceBefore = Number(wallet.balance.toFixed(6));
+        const amountFixed = Number(amount.toFixed(6));
+        const balanceAfter = Number((balanceBefore + amountFixed).toFixed(6));
+        const now = new Date().toISOString();
+
+        // 1. Generate tamper-evident signature
+        const signature = generateTransactionSignature({
+            walletId,
+            type: WalletTransactionType.TRIAL_CREDIT,
+            amount: amountFixed,
+            balanceBefore,
+            balanceAfter,
+            referenceId: options.organizationId,
+            timestamp: now,
+        });
+
+        // 2. Write immutable transaction record FIRST
+        // If this fails (e.g. schema error), the balance isn't touched
+        await databases.createDocument<WalletTransaction>(
+            DATABASE_ID,
+            WALLET_TRANSACTIONS_ID,
+            ID.unique(),
+            {
+                walletId,
+                type: WalletTransactionType.TRIAL_CREDIT,
+                amount: amountFixed,
+                direction: "credit",
+                balanceBefore,
+                balanceAfter,
+                currency: wallet.currency,
+                referenceId: options.organizationId,
+                idempotencyKey,
+                signature,
+                description: options.description,
+                metadata: JSON.stringify({
+                    trialExpiresAt: options.trialExpiresAt.toISOString(),
+                    isTrialCredit: true,
+                }),
+            }
+        );
+
+        // 3. Update wallet balance with optimistic locking
+        await updateWalletWithVersion(databases, walletId, wallet.version, {
+            balance: balanceAfter,
+            lastTopUpAt: now,
+        });
+
+        return { success: true };
+    } catch (error) {
+        await releaseProcessingLock(databases, `wallet_trial_credit:${idempotencyKey}`, "wallet");
+        throw error;
+    }
+}
+
+// ============================================================================
 // TRANSACTION QUERIES
 // ============================================================================
 

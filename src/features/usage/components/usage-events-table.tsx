@@ -399,9 +399,33 @@ export function UsageEventsTable({
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant={getSourceBadgeVariant(event.source)}>
-                                                {event.source.toUpperCase()}
-                                            </Badge>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <Badge variant={getSourceBadgeVariant(event.source)}>
+                                                    {event.source.toUpperCase()}
+                                                </Badge>
+                                                {/* Inline AI details: model + tokens + cost */}
+                                                {event.source?.toLowerCase() === "ai" && (() => {
+                                                    const meta = typeof event.metadata === "string"
+                                                        ? (() => { try { return JSON.parse(event.metadata as string); } catch { return {}; } })()
+                                                        : (event.metadata || {});
+                                                    const model = meta.model as string | undefined;
+                                                    const promptTokens = Number(meta.promptTokens || 0);
+                                                    const completionTokens = Number(meta.completionTokens || 0);
+                                                    const costUSD = Number(meta.costUSD || 0);
+                                                    if (!model) return null;
+                                                    return (
+                                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                            <span className="inline-flex items-center rounded-full bg-pink-500/10 px-2 py-0.5 text-[10px] font-medium text-pink-400">
+                                                                {model}
+                                                            </span>
+                                                            <span>{promptTokens.toLocaleString()} in / {completionTokens.toLocaleString()} out</span>
+                                                            {costUSD > 0 && (
+                                                                <span className="font-semibold text-emerald-500">${costUSD.toFixed(4)}</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="font-mono">
                                             {formatUnits(event.units, event.resourceType)}

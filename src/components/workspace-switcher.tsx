@@ -98,7 +98,7 @@ export const WorkspaceSwitcher = () => {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col px-3 pt-3 pb-4 border-t border-sidebar-border">
+      <div id="workspace-switcher" className="flex flex-col px-3 pt-3 pb-4 border-t border-sidebar-border">
         <ConfirmDialog />
 
         {/* Organization indicator for ORG accounts with refresh */}

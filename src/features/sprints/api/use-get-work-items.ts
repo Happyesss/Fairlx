@@ -1,4 +1,5 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useTourActive, DUMMY_WORK_ITEMS } from "@/lib/tour-dummy-data";
 
 import { client } from "@/lib/rpc";
 import { QUERY_CONFIG } from "@/lib/query-config";
@@ -40,6 +41,8 @@ export const useGetWorkItems = ({
   limit,
   enabled = true,
 }: UseGetWorkItemsProps) => {
+  const isTourActive = useTourActive();
+
   const query = useQuery({
     queryKey: [
       "work-items",
@@ -57,12 +60,19 @@ export const useGetWorkItems = ({
       labels,
       includeChildren,
       limit,
+      isTourActive,
     ],
     enabled: Boolean(workspaceId) && enabled,
     staleTime: QUERY_CONFIG.DYNAMIC.staleTime,
     gcTime: QUERY_CONFIG.DYNAMIC.gcTime,
     placeholderData: keepPreviousData,
     queryFn: async () => {
+      // DUMMY DATA FOR TOUR
+      if (isTourActive) {
+        console.log("[Tour] Returning dummy work items");
+        return DUMMY_WORK_ITEMS;
+      }
+
       if (!workspaceId) {
         throw new Error("workspaceId is required to fetch work items.");
       }
@@ -87,6 +97,7 @@ export const useGetWorkItems = ({
       });
 
       if (!response.ok) {
+        if (isTourActive) return DUMMY_WORK_ITEMS;
         throw new Error("Failed to fetch work items.");
       }
 

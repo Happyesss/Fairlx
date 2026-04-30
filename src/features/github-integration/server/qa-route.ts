@@ -5,8 +5,9 @@ import { z } from "zod";
 import { CODE_DOCS_ID, DATABASE_ID, GITHUB_REPOS_ID, PROJECTS_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { getMember } from "@/features/members/utils";
-import { trackUsage, createIdempotencyKey, estimateTokens } from "@/lib/track-usage";
-import { ResourceType, UsageSource, UsageModule } from "@/features/usage/types";
+import { logAIUsage } from "@/lib/usage-metering";
+import { getAIModelPricing, calculateAICallCostUSD } from "@/lib/ai-model-pricing";
+import { UsageModule } from "@/features/usage/types";
 import { GitHubAPI } from "../lib/github-api";
 import { GeminiAPI } from "../lib/gemini-api";
 import { GitHubRepository } from "../types";
@@ -171,31 +172,40 @@ const app = new Hono()
           commits,
         };
 
-        const answer = await geminiAPI.answerQuestion(question, codebaseContext);
+        const aiResponse = await geminiAPI.answerQuestion(question, codebaseContext);
 
-        // Track usage for GitHub Q&A (non-blocking)
-        trackUsage({
+        // Calculate model-aware cost and log with full token data
+        const pricing = await getAIModelPricing(databases, aiResponse.model);
+        const costUSD = calculateAICallCostUSD(pricing, aiResponse.tokenUsage.promptTokens, aiResponse.tokenUsage.completionTokens);
+
+        logAIUsage({
+          databases,
           workspaceId: project.workspaceId,
           projectId,
-          module: UsageModule.GITHUB,
-          resourceType: ResourceType.COMPUTE,
-          units: 1,
-          source: UsageSource.AI,
+          model: aiResponse.model,
+          promptTokens: aiResponse.tokenUsage.promptTokens,
+          completionTokens: aiResponse.tokenUsage.completionTokens,
+          totalTokens: aiResponse.tokenUsage.totalTokens,
+          costUSD,
+          units: aiResponse.tokenUsage.totalTokens,
           metadata: {
             operation: "ask_question",
             repositoryName: repository.repositoryName,
             filesUsed: files.length,
             questionLength: question.length,
-            answerLength: answer.length,
-            tokensEstimate: estimateTokens(question + answer),
+            aiTier: pricing.tier,
+            module: UsageModule.GITHUB,
           },
-          idempotencyKey: createIdempotencyKey(UsageModule.GITHUB, "qa", projectId),
+          sourceContext: {
+            type: "project",
+            displayName: repository.repositoryName,
+          },
         });
 
         return c.json({
           data: {
             question,
-            answer,
+            answer: aiResponse.text,
             timestamp: new Date().toISOString(),
           },
         });

@@ -79,6 +79,9 @@ export const USAGE_ALERTS_ID = process.env.NEXT_PUBLIC_APPWRITE_USAGE_ALERTS_ID!
 export const STORAGE_SNAPSHOTS_ID = process.env.NEXT_PUBLIC_APPWRITE_STORAGE_SNAPSHOTS_ID!;
 export const INVOICES_ID = process.env.NEXT_PUBLIC_APPWRITE_INVOICES_ID!;
 
+// AI Model Pricing Collection (dynamic, synced from Google every 30 min)
+export const AI_MODEL_PRICING_ID = process.env.NEXT_PUBLIC_AI_MODEL_PRICING_ID || "ai_model_pricing";
+
 // ===============================
 // Organizations & Account Management
 // ===============================
@@ -100,9 +103,9 @@ export const ORG_MEMBER_PERMISSIONS_ID = process.env.NEXT_PUBLIC_APPWRITE_ORG_ME
 export const ORG_DELETE_GRACE_PERIOD_DAYS = parseInt(process.env.ORG_DELETE_GRACE_PERIOD_DAYS || "30");
 
 // Usage Billing Rates (cents per unit)
-export const USAGE_RATE_TRAFFIC_GB = parseFloat(process.env.USAGE_RATE_TRAFFIC_GB || "0.10");
-export const USAGE_RATE_STORAGE_GB_MONTH = parseFloat(process.env.USAGE_RATE_STORAGE_GB_MONTH || "0.05");
-export const USAGE_RATE_COMPUTE_UNIT = parseFloat(process.env.USAGE_RATE_COMPUTE_UNIT || "0.001");
+export const USAGE_RATE_TRAFFIC_GB = parseFloat(process.env.USAGE_RATE_TRAFFIC_GB || "12.0");
+export const USAGE_RATE_STORAGE_GB_MONTH = parseFloat(process.env.USAGE_RATE_STORAGE_GB_MONTH || "2.0");
+export const USAGE_RATE_COMPUTE_UNIT = parseFloat(process.env.USAGE_RATE_COMPUTE_UNIT || "1.0");
 
 // ===============================
 // Billing & Payments Collections
@@ -116,6 +119,18 @@ export const PROCESSED_EVENTS_ID = process.env.NEXT_PUBLIC_APPWRITE_PROCESSED_EV
 // ===============================
 export const BILLING_GRACE_PERIOD_DAYS = parseInt(process.env.BILLING_GRACE_PERIOD_DAYS || "14");
 export const BILLING_CURRENCY = process.env.BILLING_CURRENCY || "USD";
+
+// ===============================
+// Trial Credit Configuration
+// ===============================
+/** Trial credit amount in USD (e.g., 30 = $30.00). Configurable via env. */
+export const TRIAL_CREDIT_USD = parseFloat(
+    process.env.NEXT_PUBLIC_TRIAL_CREDIT_USD || 
+    process.env.TRIAL_CREDIT_USD || 
+    "30"
+);
+/** Trial duration in days. After expiry, orgs without billing or balance are locked. */
+export const TRIAL_CREDIT_DAYS = parseInt(process.env.TRIAL_CREDIT_DAYS || "60");
 
 // ===============================
 // Wallet Security Configuration

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Navigation } from "./navigation";
+import { Rocket } from "lucide-react";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { Projects } from "./projects";
 import { ProjectTools } from "./project-tools";
@@ -88,14 +89,14 @@ export const Sidebar = () => {
   }
 
   return (
-    <aside className="h-full bg-sidebar w-full overflow-hidden border-r border-sidebar-border flex flex-col">
+    <aside id="sidebar" className="h-full bg-sidebar w-full overflow-hidden border-r border-sidebar-border flex flex-col">
       <div className="flex items-center w-full py-5 px-4 border-b border-sidebar-border flex-shrink-0">
         <Link href={hasWorkspace ? "/" : "/welcome"} className="flex items-center">
           <Image src="/Logo.png" className="object-contain" alt="logo" width={80} height={90} />
         </Link>
       </div>
 
-      <div className="flex flex-col flex-1 overflow-hidden overflow-y-auto">
+      <div id="sidebar-nav" className="flex flex-col flex-1 overflow-hidden overflow-y-auto">
         {/* Navigation: Pass allowed route keys from server */}
         {/* Show navigation if user has org/workspace OR if they're on a workspace URL */}
         {(hasOrg || hasWorkspace || showWorkspaceContent) && (
@@ -123,6 +124,18 @@ export const Sidebar = () => {
             <p>Create a workspace to get started</p>
           </div>
         )}
+
+        {/* Help & Support */}
+        <div className="px-3 pt-6 pb-2">
+          <p className="text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50 pl-2.5 mb-2">Help</p>
+          <button 
+            onClick={() => (window as Window & { startAppTour?: () => void }).startAppTour?.()}
+            className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-md font-medium hover:bg-sidebar-accent hover:text-sidebar-foreground transition text-sidebar-foreground/70"
+          >
+            <Rocket className="size-[17px]" />
+            <p className="text-[12px] tracking-tight font-medium">Restart App Tour</p>
+          </button>
+        </div>
 
         {/* ORG OWNER/ADMIN with no workspaces - show guidance */}
         {!hasWorkspace && hasOrg && (

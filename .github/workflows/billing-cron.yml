@@ -12,8 +12,12 @@ on:
     - cron: '0 1 * * *'
     # Send reminders - daily at 9 AM UTC
     - cron: '0 9 * * *'
+    # Expire trials - daily at 2 AM UTC
+    - cron: '0 2 * * *'
     # Evaluate usage alerts - hourly at the 30th minute
     - cron: '30 * * * *'
+    # Sync AI model pricing - every 30 minutes at :05 and :35
+    - cron: '5,35 * * * *'
   workflow_dispatch:
     inputs:
       job:
@@ -24,10 +28,12 @@ on:
         options:
           - process-cycle
           - enforce-grace
+          - expire-trials
           - send-reminders
           - evaluate-alerts
           - aggregate-daily
           - storage-snapshot
+          - sync-pricing
 
 # Note: All billing operations use USD as the primary currency.
 # Razorpay payments are processed in INR with live conversion rates.
@@ -57,6 +63,8 @@ jobs:
                 echo "job=storage-snapshot" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "01" ]; then
                 echo "job=enforce-grace" >> $GITHUB_OUTPUT
+              elif [ "$HOUR" == "02" ]; then
+                echo "job=expire-trials" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "03" ] && [ "$DAY" == "01" ]; then
                 echo "job=process-cycle" >> $GITHUB_OUTPUT
               elif [ "$HOUR" == "09" ]; then
@@ -74,6 +82,10 @@ jobs:
             elif [ "$MINUTE" == "15" ] || [ "$MINUTE" == "45" ]; then
               echo "job=aggregate-daily" >> $GITHUB_OUTPUT
             
+            # 4. AI PRICING SYNC (Every 30 minutes at :05 and :35)
+            elif [ "$MINUTE" == "05" ] || [ "$MINUTE" == "35" ]; then
+              echo "job=sync-pricing" >> $GITHUB_OUTPUT
+              
             else
               echo "job=none" >> $GITHUB_OUTPUT
             fi
@@ -139,6 +151,26 @@ jobs:
           fi
           echo "✅ Grace periods enforced successfully"
 
+      - name: Expire trials
+        if: steps.job.outputs.job == 'expire-trials'
+        run: |
+          echo "⏳ Running daily trial expiry check..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            "$API_BASE_URL/api/cron/billing/expire-trials")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed with status $http_code"
+            exit 1
+          fi
+          echo "✅ Trials expired successfully"
+
       - name: Send reminder emails
         if: steps.job.outputs.job == 'send-reminders'
         run: |
@@ -198,6 +230,26 @@ jobs:
             exit 1
           fi
           echo "✅ Daily usage aggregated successfully"
+
+      - name: Sync AI model pricing
+        if: steps.job.outputs.job == 'sync-pricing'
+        run: |
+          echo "🤖 Syncing AI model pricing from Google sources..."
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            "$API_BASE_URL/api/cron/ai/sync-pricing")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response: $body"
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Failed with status $http_code"
+            exit 1
+          fi
+          echo "✅ AI model pricing synced successfully"
 
       - name: Skip (no matching job)
         if: steps.job.outputs.job == 'none'

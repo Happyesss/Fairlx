@@ -30,7 +30,7 @@ const app = new Hono()
       "query",
       z.object({
         workspaceId: z.string(),
-        projectId: z.string(),
+        projectId: z.string().optional(),
         status: z.nativeEnum(SprintStatus).optional(),
       })
     ),
@@ -50,18 +50,23 @@ const app = new Hono()
         return c.json({ error: "Unauthorized" }, 401);
       }
 
-      // Project membership check
-      const { resolveUserProjectAccess, hasProjectPermission, ProjectPermissionKey } = await import("@/lib/permissions/resolveUserProjectAccess");
-      const access = await resolveUserProjectAccess(databases, user.$id, projectId);
-      if (!access.hasAccess || !hasProjectPermission(access, ProjectPermissionKey.VIEW_SPRINTS)) {
-        return c.json({ error: "Forbidden: No access to this project" }, 403);
+      // Project membership check - only if projectId is provided
+      if (projectId) {
+        const { resolveUserProjectAccess, hasProjectPermission, ProjectPermissionKey } = await import("@/lib/permissions/resolveUserProjectAccess");
+        const access = await resolveUserProjectAccess(databases, user.$id, projectId);
+        if (!access.hasAccess || !hasProjectPermission(access, ProjectPermissionKey.VIEW_SPRINTS)) {
+          return c.json({ error: "Forbidden: No access to this project" }, 403);
+        }
       }
 
       const query = [
         Query.equal("workspaceId", workspaceId),
-        Query.equal("projectId", projectId),
         Query.orderAsc("position"),
       ];
+
+      if (projectId) {
+        query.push(Query.equal("projectId", projectId));
+      }
 
       if (status) {
         query.push(Query.equal("status", status));

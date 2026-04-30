@@ -148,6 +148,13 @@ const app = new Hono()
                     ownerId: user.$id,
                     createdBy: user.$id,
                     billingStartAt: new Date().toISOString(),
+                    billingSettings: JSON.stringify({
+                        legal: {
+                            currentVersion: "v1",
+                            acceptedAt: new Date().toISOString(),
+                            acceptedBy: user.$id
+                        }
+                    }),
                 }
             );
 
@@ -169,6 +176,8 @@ const app = new Hono()
             // Update user prefs to set accountType = ORG
             const account = c.get("account");
             const currentPrefs = user.prefs || {};
+            const isByob = !!currentPrefs.byobOrgSlug;
+
             await account.updatePrefs({
                 ...currentPrefs,
                 accountType: "ORG",
@@ -190,6 +199,58 @@ const app = new Hono()
 
             // CRITICAL: Invalidate lifecycle cache
             await invalidateCache(CK.authLifecycle(user.$id));
+
+            // ─── Trial Credit & Billing Setup (non-blocking) ───────────
+            if (!isByob) {
+                try {
+                    const { TRIAL_CREDIT_USD, TRIAL_CREDIT_DAYS } = await import("@/config");
+                    const { setupOrganizationBilling } = await import("@/features/billing/services/billing-service");
+                    const { getOrCreateWallet, creditTrialToWallet } = await import("@/features/wallet/services/wallet-service");
+
+                    // 1. Billing account
+                    await setupOrganizationBilling(organization.$id, {
+                        billingEmail: user.email,
+                    });
+
+                    // 2. Wallet
+                    const wallet = await getOrCreateWallet(adminDatabases, {
+                        organizationId: organization.$id,
+                    });
+
+                    // 3. Trial credit
+                    const trialExpiresAt = new Date();
+                    trialExpiresAt.setDate(trialExpiresAt.getDate() + TRIAL_CREDIT_DAYS);
+
+                    const creditResult = await creditTrialToWallet(
+                        adminDatabases,
+                        wallet.$id,
+                        TRIAL_CREDIT_USD,
+                        {
+                            organizationId: organization.$id,
+                            description: `Welcome trial credit — $${TRIAL_CREDIT_USD} free for ${TRIAL_CREDIT_DAYS} days`,
+                            trialExpiresAt,
+                        }
+                    );
+
+                    // 4. Update org document with trial tracking fields
+                    if (creditResult.success && !creditResult.alreadyCredited) {
+                        // For Cloud users, the organization is created in the Cloud DB, so we can update it using adminDatabases.
+                        await adminDatabases.updateDocument(
+                            DATABASE_ID,
+                            ORGANIZATIONS_ID,
+                            organization.$id,
+                            {
+                                trialCreditGranted: true,
+                                trialCreditExpiresAt: trialExpiresAt.toISOString(),
+                                isTrialExpired: false,
+                            }
+                        );
+                    }
+                } catch (trialError) {
+                    // Non-blocking: org creation succeeds even if trial credit fails
+                    console.error("[org-creation] Trial credit setup failed (non-blocking):", trialError);
+                }
+            }
 
             return c.json({ data: organization });
         }
