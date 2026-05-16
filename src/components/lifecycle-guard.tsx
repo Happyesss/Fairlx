@@ -171,8 +171,16 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
     }
 
     // Special Component Interception: Legal Acceptance
+    // We render children behind the modal to avoid a "total roadblock" feeling
     if (lifecycleState.isAuthenticated && (lifecycleState.mustAcceptLegal || lifecycleState.legalBlocked)) {
-        return <LegalAcceptanceModal />;
+        return (
+            <>
+                <div className="opacity-50 pointer-events-none grayscale-[0.5] blur-[2px]">
+                    {children}
+                </div>
+                <LegalAcceptanceModal />
+            </>
+        );
     }
 
     // If redirecting, show same skeleton (prevents flash)
