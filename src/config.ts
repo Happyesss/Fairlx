@@ -143,11 +143,11 @@ export const PERSONAL_TRIAL_CREDIT_USD = (() => {
     return isNaN(parsed) ? 10 : parsed;
 })();
 
-/** Personal trial duration in days (default: 30). */
+/** Personal trial duration in days (default: 60). */
 export const PERSONAL_TRIAL_CREDIT_DAYS = (() => {
-    const val = process.env.PERSONAL_TRIAL_CREDIT_DAYS || "30";
+    const val = process.env.PERSONAL_TRIAL_CREDIT_DAYS || "60";
     const parsed = parseInt(val, 10);
-    return isNaN(parsed) ? 30 : parsed;
+    return isNaN(parsed) ? 60 : parsed;
 })();
 
 // Legacy Aliases
