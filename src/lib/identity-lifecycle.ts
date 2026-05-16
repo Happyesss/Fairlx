@@ -511,9 +511,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked: false,
-                isTrialExpired: false,
-                trialCreditGranted: false,
-                trialCreditExpiresAt: null,
+                isTrialExpired: user.prefs?.isTrialExpired === true,
+                trialCreditGranted: user.prefs?.trialCreditGranted === true,
+                trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -535,9 +535,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal,
             legalBlocked: false,
-            isTrialExpired: false,
-            trialCreditGranted: false,
-            trialCreditExpiresAt: null,
+            isTrialExpired: user.prefs?.isTrialExpired === true,
+            trialCreditGranted: user.prefs?.trialCreditGranted === true,
+            trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
             ...routing,
         };
     }
