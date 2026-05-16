@@ -407,11 +407,9 @@ async function resolveUserLifecycleStateInternal(
         orgRole = primaryMembership.role as typeof orgRole;
         orgMemberStatus = primaryMembership.status as OrgMemberStatus;
 
-        // CRITICAL: If user has no account type but is in an org, treat as ORG
-        // This ensures invited members skip the "Personal or Org" choice in onboarding
-        if (!effectiveAccountType) {
-            effectiveAccountType = "ORG";
-        }
+        // CRITICAL: If user has an org membership, treat as ORG account regardless of preference.
+        // This ensures invited members see the restricted views even if they previously chose PERSONAL.
+        effectiveAccountType = "ORG";
     }
 
     // ROUND 2: Fetch org doc + billing IN PARALLEL
@@ -513,9 +511,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked: false,
-                isTrialExpired: false,
-                trialCreditGranted: false,
-                trialCreditExpiresAt: null,
+                isTrialExpired: user.prefs?.isTrialExpired === true,
+                trialCreditGranted: user.prefs?.trialCreditGranted === true,
+                trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -537,9 +535,9 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal,
             legalBlocked: false,
-            isTrialExpired: false,
-            trialCreditGranted: false,
-            trialCreditExpiresAt: null,
+            isTrialExpired: user.prefs?.isTrialExpired === true,
+            trialCreditGranted: user.prefs?.trialCreditGranted === true,
+            trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
             ...routing,
         };
     }

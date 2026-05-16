@@ -218,6 +218,55 @@ const app = new Hono()
         });
       }
 
+      // ─── Trial Credit & Billing Setup (non-blocking) for Personal First Workspace ───────────
+      if (isFirstWorkspace && accountType === "PERSONAL") {
+        try {
+          const { PERSONAL_TRIAL_CREDIT_USD, PERSONAL_TRIAL_CREDIT_DAYS } = await import("@/config");
+          const { setupPersonalBilling } = await import("@/features/billing/services/billing-service");
+          const { getOrCreateWallet, creditTrialToWallet } = await import("@/features/wallet/services/wallet-service");
+          const { createAdminClient } = await import("@/lib/appwrite");
+          const { users } = await createAdminClient();
+
+          // 1. Billing account
+          await setupPersonalBilling(user.$id, {
+            billingEmail: user.email,
+          });
+
+          // 2. Wallet
+          const wallet = await getOrCreateWallet(databases, {
+            userId: user.$id,
+          });
+
+          // 3. Credit Trial
+          const trialExpiresAt = new Date();
+          trialExpiresAt.setDate(trialExpiresAt.getDate() + PERSONAL_TRIAL_CREDIT_DAYS);
+
+          const creditResult = await creditTrialToWallet(
+            databases,
+            wallet.$id,
+            PERSONAL_TRIAL_CREDIT_USD,
+            {
+              userId: user.$id,
+              description: `Welcome trial credit — $${PERSONAL_TRIAL_CREDIT_USD} free for ${PERSONAL_TRIAL_CREDIT_DAYS} days`,
+              trialExpiresAt,
+            }
+          );
+
+          if (creditResult.success) {
+            // Update user prefs to reflect trial status
+            await users.updatePrefs(user.$id, {
+              ...user.prefs,
+              trialCreditGranted: true,
+              trialCreditExpiresAt: trialExpiresAt.toISOString(),
+              isTrialExpired: false,
+            });
+          }
+        } catch (trialError: unknown) {
+          const errorMessage = trialError instanceof Error ? trialError.message : String(trialError);
+          console.error("[workspace-creation] Personal trial credit setup failed:", errorMessage);
+        }
+      }
+
       return c.json({ data: workspace });
     }
   )

@@ -497,32 +497,40 @@ export function OrganizationBillingSettings({
                             </AlertDescription>
                         </Alert>
 
-                        {/* Current Balance */}
-                        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
-                            <div className="flex items-center gap-3">
-                                <div className={cn(
-                                    "p-2 rounded-full",
-                                    walletBalance > 0
-                                        ? "bg-green-100 dark:bg-green-900/30"
-                                        : "bg-orange-100 dark:bg-orange-900/30"
-                                )}>
-                                    {walletBalance > 0 ? (
-                                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                                    ) : (
-                                        <AlertTriangle className="h-5 w-5 text-orange-600" />
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="text-2xl font-bold">
-                                        {new Intl.NumberFormat("en-US", {
-                                            style: "currency",
-                                            currency: walletCurrency,
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 6,
-                                        }).format(walletBalance)}
+                        {/* Current Balance - PREMIUM ENHANCED SECTION */}
+                        <div className="relative overflow-hidden group border-none shadow-xl rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 p-8 text-white mb-6">
+                            {/* Animated shapes */}
+                            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+                            <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-40 h-40 bg-blue-400/10 rounded-full blur-2xl" />
+
+                            <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                                <div className="space-y-1">
+                                    <span className="text-blue-200 text-xs uppercase tracking-widest font-bold">Total Available Balance</span>
+                                    <div className="flex items-baseline gap-2 mt-2">
+                                        <span className="text-6xl font-extrabold tracking-tighter">
+                                            {new Intl.NumberFormat("en-US", {
+                                                style: "currency",
+                                                currency: walletCurrency,
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 6,
+                                            }).format(walletBalance)}
+                                        </span>
+                                        <span className="text-blue-200 font-medium text-lg uppercase">{walletCurrency}</span>
                                     </div>
-                                    <div className="text-sm text-muted-foreground">
-                                        Available Balance
+                                    <div className="flex items-center gap-2 mt-4 text-sm text-blue-100/80 bg-white/10 backdrop-blur-md w-fit px-3 py-1 rounded-full border border-white/10">
+                                        {walletBalance > 0 ? (
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                        ) : (
+                                            <AlertTriangle className="h-4 w-4 text-orange-400" />
+                                        )}
+                                        {walletBalance > 0 ? "Account in Good Standing" : "Top-up Required"}
+                                    </div>
+                                </div>
+
+                                <div className="hidden md:block">
+                                    <div className="flex flex-col items-end gap-2 text-[11px] text-blue-200/60 italic">
+                                        <span>* Balance used for AI, storage, and traffic</span>
+                                        <span>* Minimum top-up amount $1</span>
                                     </div>
                                 </div>
                             </div>
@@ -539,68 +547,74 @@ export function OrganizationBillingSettings({
                         )}
 
                         {/* Add Credits Section */}
-                        <div className="border rounded-lg border-dashed p-6">
-                            <div className="space-y-4">
-                                <div className="flex gap-2">
-                                    <div className="flex-1">
-                                        <Label htmlFor="topup-amount" className="text-sm font-medium mb-2 block">
-                                            Amount ($)
+                        <div className="border rounded-2xl bg-muted/30 p-6">
+                            <div className="flex flex-col md:flex-row items-center gap-6">
+                                <div className="flex-1 w-full space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="topup-amount" className="text-sm font-semibold">
+                                            Top-up Amount ($)
                                         </Label>
-                                        <Input
-                                            id="topup-amount"
-                                            type="number"
-                                            min="1"
-                                            step="100"
-                                            placeholder="500"
-                                            value={topupAmount}
-                                            onChange={(e) => setTopupAmount(e.target.value)}
-                                            disabled={isAddingCredits || !canManageBilling}
-                                        />
+                                        <div className="relative">
+                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                id="topup-amount"
+                                                type="number"
+                                                min="1"
+                                                className="pl-9 h-12 text-lg font-bold"
+                                                placeholder="100"
+                                                value={topupAmount}
+                                                onChange={(e) => setTopupAmount(e.target.value)}
+                                                disabled={isAddingCredits || !canManageBilling}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Quick top-up amounts */}
+                                    <div className="flex flex-wrap gap-2">
+                                        {[5, 10, 25, 50, 100].map((amt) => (
+                                            <Button
+                                                key={amt}
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setTopupAmount(String(amt))}
+                                                disabled={isAddingCredits || !canManageBilling}
+                                                className={cn(
+                                                    "h-8 px-4 text-xs font-bold transition-all",
+                                                    topupAmount === String(amt) && "border-primary bg-primary/10 text-primary scale-105"
+                                                )}
+                                            >
+                                                ${amt}
+                                            </Button>
+                                        ))}
                                     </div>
                                 </div>
 
-                                {/* Quick top-up amounts */}
-                                <div className="flex flex-wrap gap-2">
-                                    {[1, 5, 10, 25, 50].map((amt) => (
-                                        <Button
-                                            key={amt}
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setTopupAmount(String(amt))}
-                                            disabled={isAddingCredits || !canManageBilling}
-                                            className={cn(
-                                                "text-xs",
-                                                topupAmount === String(amt) && "border-primary bg-primary/10"
-                                            )}
-                                        >
-                                            ${amt}
-                                        </Button>
-                                    ))}
+                                <div className="w-full md:w-64 pt-4 md:pt-0">
+                                    <Button
+                                        onClick={handleAddCredits}
+                                        disabled={isAddingCredits || !topupAmount || Number(topupAmount) < 1 || !canManageBilling}
+                                        className="w-full h-24 flex-col gap-2 rounded-2xl shadow-lg hover:shadow-primary/20 transition-all"
+                                        size="lg"
+                                    >
+                                        {isAddingCredits ? (
+                                            <Loader2 className="h-6 w-6 animate-spin" />
+                                        ) : (
+                                            <Plus className="h-6 w-6" />
+                                        )}
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-base font-bold">
+                                                {isAddingCredits ? "Processing..." : `Add $${topupAmount || '0'}`}
+                                            </span>
+                                            {!isAddingCredits && <span className="text-[10px] font-medium opacity-70">Credit Wallet Now</span>}
+                                        </div>
+                                    </Button>
                                 </div>
-
-                                <Button
-                                    onClick={handleAddCredits}
-                                    disabled={isAddingCredits || !topupAmount || Number(topupAmount) < 1 || !canManageBilling}
-                                    className="w-full"
-                                    size="lg"
-                                >
-                                    {isAddingCredits ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            Add {topupAmount ? `$${Number(topupAmount)}` : "$0"} to Wallet
-                                        </>
-                                    )}
-                                </Button>
-
-                                <p className="text-xs text-muted-foreground text-center">
-                                    Payments processed securely by Cashfree. Minimum $1.
-                                </p>
                             </div>
+                            
+                            <p className="mt-4 text-[11px] text-muted-foreground text-center flex items-center justify-center gap-2">
+                                <Info className="h-3 w-3" />
+                                Payments processed securely by Cashfree. Minimum $1. Credits are valid for AI & resource costs.
+                            </p>
                         </div>
                     </CardContent>
                 </Card>

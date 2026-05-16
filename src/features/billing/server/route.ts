@@ -10,6 +10,7 @@ import {
     BILLING_AUDIT_LOGS_ID,
     INVOICES_ID,
     WALLETS_ID,
+    WALLET_TRANSACTIONS_ID,
     BILLING_CURRENCY,
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
@@ -143,6 +144,9 @@ const app = new Hono()
             // Get wallet balance
             let walletBalance = 0;
             let walletLockedBalance = 0;
+            let trialExpiresAt: string | undefined;
+            let initialTrialAmount = 0;
+
             try {
                 const walletQuery = queryOrgId
                     ? [Query.equal("organizationId", queryOrgId)]
@@ -155,11 +159,41 @@ const app = new Hono()
                 );
 
                 if (wallets.total > 0) {
-                    walletBalance = wallets.documents[0].balance;
-                    walletLockedBalance = wallets.documents[0].lockedBalance;
+                    const wallet = wallets.documents[0];
+                    walletBalance = wallet.balance;
+                    walletLockedBalance = wallet.lockedBalance;
+
+                    // CHECK FOR TRIAL CREDIT EXPIRATION
+                    // WHY: Trial credits have a 30/60 day expiration. We need to show this to the user.
+                    try {
+                        const trialTxns = await adminDatabases.listDocuments(
+                            DATABASE_ID,
+                            WALLET_TRANSACTIONS_ID,
+                            [
+                                Query.equal("walletId", wallet.$id),
+                                Query.equal("type", "TRIAL_CREDIT"),
+                                Query.limit(1),
+                            ]
+                        );
+
+                        if (trialTxns.total > 0) {
+                            const trialTx = trialTxns.documents[0];
+                            initialTrialAmount = trialTx.amount;
+                            if (trialTx.metadata) {
+                                try {
+                                    const meta = JSON.parse(trialTx.metadata);
+                                    if (meta.trialExpiresAt) {
+                                        trialExpiresAt = meta.trialExpiresAt;
+                                    }
+                                } catch { /* ignore parse errors */ }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("[billing-account] Error fetching trial transactions:", e);
+                    }
                 }
-            } catch {
-                // Wallet not found, balance = 0
+            } catch (error) {
+                console.error("[billing-account] Error fetching wallet:", error);
             }
 
             // Calculate days until suspension if in DUE status
@@ -180,6 +214,8 @@ const app = new Hono()
                 availableBalance: walletBalance - walletLockedBalance,
                 needsSetup: false,
                 daysUntilSuspension,
+                trialExpiresAt,
+                initialTrialAmount,
                 currency: BILLING_CURRENCY,
             });
         }
