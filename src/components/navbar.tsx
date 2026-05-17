@@ -37,8 +37,8 @@ export const Navbar = () => {
   const { title } = pathnameMap[pathnameKey] || defaultMap;
 
   return (
-    <nav id="navbar" className="py-[15px] px-6 flex items-center border-b border-border sticky top-0 left-0 right-0 z-10 justify-between bg-background">
-      <div className="flex flex-col ">
+    <nav id="navbar" className="h-[73px] px-6 flex items-center border-b border-border sticky top-0 z-10 bg-background justify-between w-full">
+      <div className="flex flex-col">
         <div className="hidden lg:flex">
           <Breadcrumb />
         </div>

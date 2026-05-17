@@ -59,6 +59,8 @@ import { useGetMySpaceSprints } from "@/features/my-space/api/use-get-my-space-s
 
 import { useTaskFilters } from "../hooks/use-task-filters";
 import { TaskStatus, TaskPriority, PopulatedTask } from "../types";
+import { useCreateWorkItemModal } from "@/features/sprints/hooks/use-create-work-item-modal";
+import { PlusIcon } from "lucide-react";
 
 // Custom sliding TabsList for this component only
 interface SlidingTabsListProps extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
@@ -258,6 +260,7 @@ export const TaskViewSwitcher = ({
   const [view, setView] = useQueryState("task-view", { defaultValue: "dashboard" });
   const [completeSprintOpen, setCompleteSprintOpen] = useState(false);
   const { mutate: bulkUpdate } = useBulkUpdateWorkItems();
+  const { open: openCreateWorkItem } = useCreateWorkItemModal();
 
   const workspaceId = useWorkspaceId();
   const paramProjectId = useProjectId();
@@ -453,14 +456,29 @@ export const TaskViewSwitcher = ({
           </SlidingTabsList>
 
           {isAdmin && view === "kanban" && setupState.activeSprint && !showMyTasksOnly && (
-            <Button
-              onClick={() => setCompleteSprintOpen(true)}
-              size="xs"
-              variant="outline"
-              className="w-full font-medium px-3 py-2 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 hover:border-emerald-500/40 lg:w-auto dark:text-emerald-400"
-            >
-              Complete Sprint {setupState.activeSprint.name}
-            </Button>
+            <div className="flex items-center gap-x-2 w-full lg:w-auto">
+              {canCreateTasks && (
+                <Button
+                  onClick={() => openCreateWorkItem(
+                    paramProjectId || projectId || undefined,
+                    setupState.activeSprint?.$id
+                  )}
+                  size="xs"
+                  className="w-full font-medium px-3 py-2 lg:w-auto"
+                >
+                  <PlusIcon className="size-4 mr-2" />
+                  Create Work Item
+                </Button>
+              )}
+              <Button
+                onClick={() => setCompleteSprintOpen(true)}
+                size="xs"
+                variant="outline"
+                className="w-full font-medium px-3 py-2 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 hover:border-emerald-500/40 lg:w-auto dark:text-emerald-400"
+              >
+                Complete Sprint {setupState.activeSprint.name}
+              </Button>
+            </div>
           )}
 
         </div>
@@ -535,6 +553,7 @@ export const TaskViewSwitcher = ({
                     canDeleteTasks={canDeleteTasks}
                     members={members?.documents ?? []}
                     projectId={paramProjectId || projectId || undefined}
+                    activeSprintId={setupState.activeSprint?.$id}
                   />
                 </Suspense>
               </ProjectSetupOverlay>
@@ -548,6 +567,7 @@ export const TaskViewSwitcher = ({
                   canDeleteTasks={canDeleteTasks}
                   members={members?.documents ?? []}
                   projectId={paramProjectId || projectId || undefined}
+                  activeSprintId={setupState.activeSprint?.$id}
                 />
               </Suspense>
             )}

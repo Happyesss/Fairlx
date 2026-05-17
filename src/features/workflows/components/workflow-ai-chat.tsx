@@ -529,7 +529,7 @@ export const WorkflowAIChat = ({
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isProcessing || isLoadingContext}
-            className="min-h-[60px] max-h-[100px] pr-12 resize-none rounded-xl text-sm"
+            className="min-h-[60px] max-h-[100px] pr-12 resize-none rounded-xl text-xs"
             rows={2}
           />
           <Button

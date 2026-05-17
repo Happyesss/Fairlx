@@ -33,6 +33,7 @@ import {
     useGetUsageDashboard,
     useExportUsage,
 } from "@/features/usage/api";
+import { useGetBillingAccount } from "@/features/billing/api";
 import {
     UsageKPICards,
     UsageCharts,
@@ -129,6 +130,13 @@ export function UsageDashboardClient() {
         endDate: dateRange.to?.toISOString(),
         eventsLimit: fetchLimit,
         eventsOffset: fetchOffset,
+    });
+
+    // Fetch billing account for wallet balance
+    const { data: billingAccountData } = useGetBillingAccount({
+        organizationId: isOrg ? primaryOrganizationId : undefined,
+        userId: !isOrg ? user?.$id : undefined,
+        enabled: !!(isOrg ? primaryOrganizationId : user?.$id)
     });
 
     const isEventsLoading = isDashboardLoading;
@@ -367,6 +375,8 @@ export function UsageDashboardClient() {
                             isLoading={isSummaryLoading}
                             currency={currency}
                             exchangeRate={rate}
+                            walletBalance={billingAccountData?.walletBalance}
+                            walletCurrency={billingAccountData?.walletCurrency}
                         />
 
                         {/* Charts */}

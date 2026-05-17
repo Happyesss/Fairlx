@@ -129,8 +129,9 @@ export function AccountLifecycleProvider({ children }: AccountLifecycleProviderP
             isOrg,
             isFullySetup: state.hasWorkspace ?? false,
             isLoaded,
-            // Restricted mode: ORG + not OWNER + no workspace
-            isRestrictedOrgMember: isOrg && !isOwner && !state.hasWorkspace,
+            // Restricted mode: (ORG OR has membership) + not OWNER + no workspace
+            // This ensures invited members see the holding state even if accountType is not yet synced
+            isRestrictedOrgMember: (isOrg || state.hasOrg) && !isOwner && !state.hasWorkspace,
             canCreateWorkspace,
             canManageAuthProviders,
         };

@@ -2,15 +2,15 @@
 
 import { z } from "zod";
 import Image from "next/image";
-import { ImageIcon, ArrowLeftIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { ImageIcon, Settings, Trash2, Upload } from "lucide-react";
 import { useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   Form,
   FormControl,
@@ -37,7 +37,6 @@ export const EditWorkspaceForm = ({
   onCancel,
   initialValues,
 }: EditWorkspaceFormProps) => {
-  const router = useRouter();
   const { mutate, isPending } = useUpdateWorkspace();
   const { mutate: deleteWorkspace, isPending: isDeletingWorkspace } =
     useDeleteWorkspace();
@@ -96,162 +95,153 @@ export const EditWorkspaceForm = ({
 
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-2xl">
-        <DeleteDialog />
+    <div className="w-full max-w-3xl space-y-8">
+      <DeleteDialog />
 
-        {/* Header Section */}
-        <div className="mb-8 flex flex-col items-start">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={
-              onCancel
-                ? onCancel
-                : () => router.push(`/workspaces/${initialValues.$id}`)
-            }
-            className="gap-2"
-          >
-            <ArrowLeftIcon className="size-4" />
-            Back
-          </Button>
+      {/* Page Header */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center size-10 rounded-lg bg-primary/10">
+          <Settings className="size-5 text-primary" />
         </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Workspace Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage your workspace identity and configuration
+          </p>
+        </div>
+      </div>
 
-        {/* Main Settings Card */}
-        <Card className="w-full border border-border shadow-none rounded-2xl mb-8">
-          <CardContent className="p-8 md:p-10">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)}>
-                <div className="space-y-8">
-                  {/* Workspace Icon Section */}
-                  <FormField
-                    control={form.control}
-                    name="image"
-                    render={({ field }) => (
-                      <div className="flex flex-col items-center text-center gap-y-6">
-                        <div>
-                          <h3 className="text-lg font-semibold mb-2">
-                            Workspace Icon
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            JPG, PNG, SVG or JPEG, max 1MB
-                          </p>
+      <Separator />
+
+      {/* General Settings Card */}
+      <Card className="border border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">General</CardTitle>
+          <CardDescription>
+            Update your workspace name and icon
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+              {/* Workspace Icon Row */}
+              <FormField
+                control={form.control}
+                name="image"
+                render={({ field }) => (
+                  <div className="flex items-center gap-5">
+                    {/* Avatar */}
+                    <div className="shrink-0">
+                      {field.value ? (
+                        <div className="size-16 relative rounded-lg overflow-hidden ring-2 ring-border">
+                          <Image
+                            src={
+                              field.value instanceof File
+                                ? URL.createObjectURL(field.value)
+                                : field.value
+                            }
+                            alt="Workspace icon"
+                            fill
+                            className="object-cover"
+                            unoptimized
+                          />
                         </div>
+                      ) : (
+                        <Avatar className="size-16 rounded-lg">
+                          <AvatarFallback className="rounded-lg bg-muted">
+                            <ImageIcon className="size-6 text-muted-foreground" />
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
 
-                        <div className="relative">
-                          {field.value ? (
-                            <div className="size-[120px] relative rounded-xl overflow-hidden ring-2 ring-primary ring-offset-2">
-                              <Image
-                                src={
-                                  field.value instanceof File
-                                    ? URL.createObjectURL(field.value)
-                                    : field.value
-                                }
-                                alt="Logo"
-                                fill
-                                className="object-cover"
-                                unoptimized
-                              />
-                            </div>
-                          ) : (
-                            <Avatar className="size-[120px] ring-2 ring-border">
-                              <AvatarFallback className="bg-muted">
-                                <ImageIcon className="size-[48px] text-muted-foreground" />
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                        </div>
-
+                    {/* Label + Actions */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-sm font-medium leading-none">Workspace Icon</p>
+                      <p className="text-xs text-muted-foreground">
+                        JPG, PNG, SVG or JPEG — max 1MB
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
                         <input
                           className="hidden"
-                          accept=".jpg, .png, .jpeg, .svg"
+                          accept=".jpg,.png,.jpeg,.svg"
                           type="file"
                           ref={inputRef}
                           onChange={handleImageChange}
                           disabled={isPending}
                         />
-
-                        <div className="flex flex-col gap-y-2 sm:flex-row gap-x-2">
-                          {field.value ? (
-                            <>
-                              <Button
-                                variant="outline"
-                                type="button"
-                                disabled={isPending}
-                                onClick={() => inputRef.current?.click()}
-                              >
-                                Change Image
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                type="button"
-                                disabled={isPending}
-                                onClick={() => {
-                                  field.onChange(null);
-                                  if (inputRef.current) {
-                                    inputRef.current.value = "";
-                                  }
-                                }}
-                              >
-                                Remove Image
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => inputRef.current?.click()}
-                            >
-                              <ImageIcon className="size-4 mr-2" />
-                              Upload Image
-                            </Button>
-                          )}
-                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => inputRef.current?.click()}
+                          className="h-8 text-xs gap-1.5"
+                        >
+                          <Upload className="size-3" />
+                          {field.value ? "Change" : "Upload"}
+                        </Button>
+                        {field.value && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => {
+                              field.onChange(null);
+                              if (inputRef.current) inputRef.current.value = "";
+                            }}
+                            className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            Remove
+                          </Button>
+                        )}
                       </div>
-                    )}
-                  />
+                    </div>
+                  </div>
+                )}
+              />
 
-                  <div className="h-px bg-border" />
+              <Separator />
 
-                  {/* Workspace Name Section */}
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem className="space-y-3">
-                        <div>
-                          <FormLabel className="text-base font-semibold">
-                            Workspace Name
-                          </FormLabel>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            The name of your workspace
-                          </p>
-                        </div>
+              {/* Workspace Name Row */}
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                      <div className="sm:w-48 shrink-0">
+                        <FormLabel className="text-sm font-medium">Workspace Name</FormLabel>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Visible to all members
+                        </p>
+                      </div>
+                      <div className="flex-1">
                         <FormControl>
                           <Input
                             placeholder="Enter workspace name"
-                            className="h-11 text-base rounded-lg"
+                            className="h-9"
                             {...field}
                           />
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                        <FormMessage className="mt-1.5" />
+                      </div>
+                    </div>
+                  </FormItem>
+                )}
+              />
 
-                <div className="h-px bg-border my-8" />
-
-                {/* Action Buttons */}
-                <div className="flex flex-col-reverse sm:flex-row gap-4 justify-center">
+              <div className="flex justify-end pt-2">
+                <div className="flex items-center gap-3">
                   {onCancel && (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={onCancel}
                       disabled={isPending}
-                      className="sm:flex-1"
+                      size="sm"
                     >
                       Cancel
                     </Button>
@@ -259,44 +249,49 @@ export const EditWorkspaceForm = ({
                   <Button
                     type="submit"
                     disabled={isPending}
-                    className="sm:flex-1"
-                    size="lg"
+                    size="sm"
                   >
                     Save Changes
                   </Button>
                 </div>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+              </div>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
 
-        {/* Danger Zone Card */}
-        <Card className="w-full border-2 border-destructive/20 bg-destructive/10 rounded-2xl">
-          <CardContent className="p-3 md:p-4">
-            <div className="flex flex-col text-center">
-              <h3 className="text-xl font-bold text-destructive mb-3">
-                Danger Zone
-              </h3>
-              <p className="text-sm  text-muted-foreground mb-2">
-                Deleting a workspace is irreversible and will remove all associated data.
+      {/* Danger Zone Card */}
+      <Card className="border border-destructive/30">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Trash2 className="size-4 text-destructive" />
+            <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+          </div>
+          <CardDescription>
+            Irreversible actions that permanently affect your workspace
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+            <div>
+              <p className="text-sm font-medium">Delete this workspace</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Once deleted, all data including projects, tasks, and members will be permanently removed.
               </p>
-
-              <div className="h-px bg-destructive/20 mb-4" />
-
-              <Button
-                size="sm"
-                variant="destructive"
-                type="button"
-                disabled={isPending || isDeletingWorkspace}
-                onClick={handleDelete}
-                className="w-full sm:w-auto mx-auto"
-              >
-                Delete Workspace
-              </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              type="button"
+              disabled={isPending || isDeletingWorkspace}
+              onClick={handleDelete}
+              className="shrink-0"
+            >
+              Delete Workspace
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

@@ -84,7 +84,7 @@ The JSON MUST follow this exact structure (no markdown in the JSON):
 
 Respond with a helpful text answer first, followed by the JSON block if applicable.`;
 
-    const response = await aiService.generate(prompt, { maxTokens: 2000 });
+    const response = await aiService.generate(prompt, { maxTokens: 4000 });
     return response.text;
   }
 

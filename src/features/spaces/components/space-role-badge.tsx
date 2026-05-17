@@ -98,9 +98,9 @@ export const MasterBadge = ({
   className 
 }: MasterBadgeProps) => {
   const sizeClasses = {
-    sm: "text-[9px] h-5 px-2 gap-1",
-    md: "text-[10px] h-6 px-2.5 gap-1.5",
-    lg: "text-xs h-7 px-3 gap-2",
+    sm: "text-[9px] font-medium h-5 px-2 gap-1 rounded-sm",
+    md: "text-[10px] h-6 px-2.5 gap-1.5 rounded-md",
+    lg: "text-xs h-7 px-3 gap-2 rounded-lg",
   };
 
   const iconSizes = {
@@ -115,7 +115,7 @@ export const MasterBadge = ({
       className={cn(
         "font-bold border-0 shadow-sm",
         sizeClasses[size],
-        "bg-purple-600 text-white",
+        "bg-blue-600 text-white",
         className
       )}
     >

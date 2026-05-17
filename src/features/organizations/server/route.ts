@@ -203,7 +203,7 @@ const app = new Hono()
             // ─── Trial Credit & Billing Setup (non-blocking) ───────────
             if (!isByob) {
                 try {
-                    const { TRIAL_CREDIT_USD, TRIAL_CREDIT_DAYS } = await import("@/config");
+                    const { ORG_TRIAL_CREDIT_USD, ORG_TRIAL_CREDIT_DAYS } = await import("@/config");
                     const { setupOrganizationBilling } = await import("@/features/billing/services/billing-service");
                     const { getOrCreateWallet, creditTrialToWallet } = await import("@/features/wallet/services/wallet-service");
 
@@ -219,17 +219,17 @@ const app = new Hono()
                     });
 
                     // 3. Credit Trial
-                    // console.log(`[org-creation] Crediting trial to wallet ${wallet.$id} (Amount: ${TRIAL_CREDIT_USD})...`);
+                    // console.log(`[org-creation] Crediting trial to wallet ${wallet.$id} (Amount: ${ORG_TRIAL_CREDIT_USD})...`);
                     const trialExpiresAt = new Date();
-                    trialExpiresAt.setDate(trialExpiresAt.getDate() + TRIAL_CREDIT_DAYS);
+                    trialExpiresAt.setDate(trialExpiresAt.getDate() + ORG_TRIAL_CREDIT_DAYS);
 
                     const creditResult = await creditTrialToWallet(
                         adminDatabases,
                         wallet.$id,
-                        TRIAL_CREDIT_USD,
+                        ORG_TRIAL_CREDIT_USD,
                         {
                             organizationId: organization.$id,
-                            description: `Welcome trial credit — $${TRIAL_CREDIT_USD} free for ${TRIAL_CREDIT_DAYS} days`,
+                            description: `Welcome trial credit — $${ORG_TRIAL_CREDIT_USD} free for ${ORG_TRIAL_CREDIT_DAYS} days`,
                             trialExpiresAt,
                         }
                     );
@@ -254,13 +254,12 @@ const app = new Hono()
                     } else {
                         console.error(`[org-creation] Trial credit failed: ${creditResult.error}`);
                     }
-                } catch (trialError: any) {
+                } catch (trialError: unknown) {
                     // Non-blocking: org creation succeeds even if trial credit fails
+                    const errorMessage = trialError instanceof Error ? trialError.message : String(trialError);
                     console.error("[org-creation] Trial credit setup failed (non-blocking):", {
-                        message: trialError?.message || "Unknown error",
-                        code: trialError?.code,
-                        response: trialError?.response,
-                        stack: trialError?.stack
+                        message: errorMessage,
+                        error: trialError
                     });
                 }
             }

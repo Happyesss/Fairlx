@@ -55,16 +55,27 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
 
         // 1. Force Redirect (Server Authority)
         // If server explicitly says "Go here" AND we aren't already there.
+        // EXCEPTION: Allow access to any path in allowedPaths even if redirectTo is set.
         if (lifecycleRouting.redirectTo) {
             const targetPath = lifecycleRouting.redirectTo;
             const isAtTarget = pathname === targetPath || pathname.startsWith(targetPath + "/");
+            
+            // Check if current path is explicitly allowed despite the redirect target
+            const isAllowed = lifecycleRouting.allowedPaths.some(allowed => {
+                if (allowed === "*") return true;
+                if (allowed.endsWith("/*")) {
+                    const prefix = allowed.slice(0, -2);
+                    return pathname.startsWith(prefix);
+                }
+                return pathname === allowed || pathname.startsWith(allowed + "/");
+            });
 
-            if (!isAtTarget) {
+            if (!isAtTarget && !isAllowed) {
                 redirectingRef.current = true;
                 router.push(targetPath);
                 return;
             }
-            // We're at the redirect target - no further checks needed
+            // We're at the target or an allowed page - no further checks needed
             return;
         }
 
@@ -160,8 +171,16 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
     }
 
     // Special Component Interception: Legal Acceptance
+    // We render children behind the modal to avoid a "total roadblock" feeling
     if (lifecycleState.isAuthenticated && (lifecycleState.mustAcceptLegal || lifecycleState.legalBlocked)) {
-        return <LegalAcceptanceModal />;
+        return (
+            <>
+                <div className="opacity-50 pointer-events-none grayscale-[0.5] blur-[2px]">
+                    {children}
+                </div>
+                <LegalAcceptanceModal />
+            </>
+        );
     }
 
     // If redirecting, show same skeleton (prevents flash)

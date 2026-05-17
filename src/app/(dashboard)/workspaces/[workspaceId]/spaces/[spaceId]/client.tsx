@@ -6,10 +6,8 @@ import {
   Workflow,
   Plus,
   FolderKanban,
-  ChevronRight,
   FolderPlus,
   X,
-  Crown,
   GitBranch,
 } from "lucide-react";
 import Link from "next/link";
@@ -20,9 +18,7 @@ import { SpaceWorkflowsModal } from "@/features/workflows/components/space-workf
 import { PageError } from "@/components/page-error";
 import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -174,7 +170,7 @@ export const SpaceIdClient = () => {
   /* Legacy Team Handlers Removed */
 
   return (
-    <div className="flex flex-col gap-y-6">
+    <div className="flex flex-col ">
       <ConfirmProjectDialog />
       <CreateProjectModal />
 
@@ -188,57 +184,55 @@ export const SpaceIdClient = () => {
       />
 
       {/* Professional Header */}
-      <div className="bg-gradient-to-r from-background to-muted/30 rounded-xl border p-6">
+      <div className="py-2 px-3">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           {/* Left: Space Info */}
           <div className="flex items-start gap-4">
-            <div
-              className="size-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl shadow-lg"
-              style={{
-                backgroundColor: space.color || "#6366f1",
-                boxShadow: `0 8px 24px -4px ${space.color || "#6366f1"}40`
-              }}
-            >
-              {space.name.charAt(0).toUpperCase()}
-            </div>
+     
             <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold tracking-tight">{space.name}</h1>
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {space.key}
-                </Badge>
-                {isMaster && <MasterBadge size="sm" />}
-              </div>
-              <p className="text-muted-foreground max-w-xl">
-                {space.description || "No description provided"}
-              </p>
+              <div className="flex flex-col  gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">{space.name}</h1>
+                <div className="flex flex-col  gap-2 ">
 
-              {/* Space Master Info */}
-              {spaceOwner && (
-                <div className="flex items-center gap-2 pt-2">
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                    <Crown className="size-4 text-purple-600" />
-                    <span className="text-sm font-medium text-purple-700 dark:text-purple-400">
+                  <div className="flex items-center gap-2">
+                         <div className="px-2 py-0.5 rounded text-xs font-medium bg-muted/100 text-muted-foreground border border-muted/100">
+                          <p className="text-[10px]">{space.key}</p> 
+
+                     </div>
+                    {isMaster && <MasterBadge size="sm" />}
+                  </div>
+                    
+                  <div>
+
+                     {spaceOwner && (
+                <div className="flex items-center mt-1 gap-2 ">
+                  <div className="flex items-center gap-2 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                    <span className="text-xs font-medium text-blue-700 dark:text-blue-500">
                       Space Master:
                     </span>
-                    <Avatar className="size-5">
-                      <AvatarImage src={spaceOwner.profileImageUrl || undefined} />
-                      <AvatarFallback className="text-xs bg-purple-500/20 text-purple-700 dark:text-purple-400">
-                        {spaceOwner.name?.charAt(0) || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm font-medium">{spaceOwner.name}</span>
+                  
+                    <span className="text-xs font-medium">{spaceOwner.name}</span>
                   </div>
                 </div>
               )}
+                  </div>
+
+                </div>
+
+                
+              </div>
+             
+
+             
             </div>
+           
           </div>
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
-              size="sm"
+              size="xs"
               className="gap-2"
               onClick={() => setIsWorkflowsModalOpen(true)}
             >
@@ -247,7 +241,7 @@ export const SpaceIdClient = () => {
             </Button>
             {isMaster && (
               <Link href={`/workspaces/${workspaceId}/spaces/${spaceId}/settings`}>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="xs" className="gap-2">
                   <Settings className="size-4" />
                   Settings
                 </Button>
@@ -256,24 +250,19 @@ export const SpaceIdClient = () => {
           </div>
         </div>
 
-        {/* Stats Bar */}
-        <div className="flex items-center gap-6 mt-6 pt-4 border-t border-border/50">
-          <div className="flex items-center gap-2 text-sm">
-            <FolderKanban className="size-4 text-muted-foreground" />
-            <span className="font-medium">{spaceProjects.length}</span>
-            <span className="text-muted-foreground">Projects</span>
-          </div>
-        </div>
+          <p className="text-muted-foreground  text-sm tracking-normal mt-4">
+                {space.description || "No description provided"}
+              </p>
+
+      
       </div>
 
       {/* Projects Section */}
-      <Card className="border-none shadow-sm">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
+      <Card className=" mt-8 shadow-none border-none rounded-lg">
+        <CardHeader className="pb-6 border-t  mb-6">
+          <div className="flex items-center  justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <FolderKanban className="size-5 text-primary" />
-              </div>
+             
               <div>
                 <CardTitle className="text-lg">Projects</CardTitle>
                 <p className="text-sm text-muted-foreground">
@@ -283,11 +272,11 @@ export const SpaceIdClient = () => {
             </div>
             {isMaster && (
               <div className="flex items-center gap-2">
-                <Button onClick={handleCreateProject} size="sm" className="gap-2">
+                <Button onClick={handleCreateProject} size="xs" className="gap-2">
                   <Plus className="size-4" />
                   Create Project
                 </Button>
-                <Button onClick={() => setIsAddProjectOpen(true)} size="sm" variant="outline" className="gap-2">
+                <Button onClick={() => setIsAddProjectOpen(true)} size="xs" variant="outline" className="gap-2">
                   <FolderPlus className="size-4" />
                   Add Existing
                 </Button>
@@ -297,7 +286,7 @@ export const SpaceIdClient = () => {
         </CardHeader>
         <CardContent>
           {spaceProjects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-xl bg-muted/30">
+            <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl bg-muted/30">
               <div className="rounded-full bg-muted p-4 mb-4">
                 <FolderKanban className="h-8 w-8 text-muted-foreground" />
               </div>
@@ -318,92 +307,90 @@ export const SpaceIdClient = () => {
               {spaceProjects.map((project) => (
                 <Card
                   key={project.$id}
-                  className="group relative cursor-pointer hover:shadow-lg transition-all duration-200 border hover:border-primary/30 overflow-hidden"
+                  className="group cursor-pointer transition-all duration-200 border border-border/60  bg-card"
                   onClick={() => handleProjectClick(project.$id)}
                 >
-                  {/* Colored Top Border */}
-                  <div
-                    className="h-1 w-full"
-                    style={{ backgroundColor: project.color || space.color || "#6366f1" }}
-                  />
                   <CardContent className="p-5">
-                    <div className="flex items-start gap-3">
+                    {/* Top Row: Avatar + Action Buttons */}
+                    <div className="flex items-start justify-between mb-5">
                       <ProjectAvatar
                         name={project.name}
                         image={project.imageUrl}
-                        className="size-12 flex-shrink-0 rounded-lg"
+                        className="size-12 rounded-full flex-shrink-0"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h4 className="font-semibold text-base truncate group-hover:text-primary transition-colors">
-                            {project.name}
-                          </h4>
-                          <div className="flex items-center gap-1">
-                            {/* Workflow Icon */}
-                            <TooltipProvider delayDuration={100}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="size-7 hover:bg-primary/10 hover:text-primary"
-                                    onClick={(e) => handleWorkflowClick(project.$id, project.workflowId, e)}
-                                  >
-                                    <GitBranch className="size-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  <p>Project Workflow</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                      <div className="flex items-center gap-1.5">
+                        {/* Workflow Button */}
+                        <TooltipProvider delayDuration={100}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="xs"
+                                variant={project.workflowId ? "secondary" : "outline"}
+                                className="h-8 px-3 gap-1.5 text-xs font-medium rounded-lg"
+                                onClick={(e) => handleWorkflowClick(project.$id, project.workflowId, e)}
+                              >
+                                <GitBranch className="size-3.5" />
+                                {project.workflowId ? "Workflow" : "Add Workflow"}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent size="xs" side="top">
+                              <p>Project Workflow</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
 
-                            {/* Remove Button */}
-                            {isMaster && (
-                              <TooltipProvider delayDuration={100}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="size-7 hover:bg-destructive/10 hover:text-destructive"
-                                      disabled={isUpdatingProject}
-                                      onClick={(e) => handleRemoveProject(project.$id, e)}
-                                    >
-                                      <X className="size-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top">
-                                    <p>Remove from space</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed mb-3">
-                          {project.description || "No description provided"}
-                        </p>
-
-                        {/* Project Footer with Key and Workflow indicator */}
-                        <div className="flex items-center justify-between">
-                          {project.key && (
-                            <Badge variant="outline" className="text-xs font-mono">
-                              {project.key}
-                            </Badge>
-                          )}
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <GitBranch className="size-3" />
-                            <span>
-                              {project.workflowId 
-                                ? workflowMap.get(project.workflowId) || "Custom Workflow"
-                                : "Default Workflow"}
-                            </span>
-                          </div>
-                        </div>
+                        {/* Remove Button */}
+                        {isMaster && (
+                          <TooltipProvider delayDuration={100}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-lg"
+                                  disabled={isUpdatingProject}
+                                  onClick={(e) => handleRemoveProject(project.$id, e)}
+                                >
+                                  <X className="size-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" size="xs">
+                                <p>Remove from space</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </div>
                     </div>
-                    <ChevronRight className="size-4 text-muted-foreground group-hover:text-primary transition-all group-hover:translate-x-1 absolute bottom-5 right-4" />
+
+                    {/* Project Key + Name */}
+                    <div className="mb-4">
+                      {project.key && (
+                        <p className="text-xs font-medium text-muted-foreground mb-1.5 tracking-widest uppercase">
+                          {project.key}
+                        </p>
+                      )}
+                      <h4 className="font-semibold text-xl leading-snug tracking-tight group-hover:text-primary transition-colors line-clamp-2">
+                        {project.name}
+                      </h4>
+
+                       <p className="text-xs text-muted-foreground  tracking-normal leading-relaxed mt-2 line-clamp-3 ">
+                          {project.description || "No description provided"}
+                        </p>
+                    </div>
+
+                    {/* Tags */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-muted text-xs font-medium text-muted-foreground border border-border/40">
+                        <GitBranch className="size-3" />
+                        {project.workflowId
+                          ? workflowMap.get(project.workflowId) || "Custom Workflow"
+                          : "Default Workflow"}
+                      </span>
+
+                  
+                    </div>
+
                   </CardContent>
                 </Card>
               ))}

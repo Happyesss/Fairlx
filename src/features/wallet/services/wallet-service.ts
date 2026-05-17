@@ -974,7 +974,8 @@ export async function creditTrialToWallet(
     walletId: string,
     amount: number,
     options: {
-        organizationId: string;
+        organizationId?: string;
+        userId?: string;
         description: string;
         trialExpiresAt: Date;
     }
@@ -983,10 +984,14 @@ export async function creditTrialToWallet(
         return { success: false, error: "Amount must be positive" };
     }
 
-    const idempotencyKey = `trial-credit-${options.organizationId}`;
+    if (!options.organizationId && !options.userId) {
+        throw new Error("Either organizationId or userId is required for trial credit");
+    }
+
+    const idempotencyKey = `trial-credit-${options.organizationId || options.userId}`;
     try {
         // console.log(`[wallet-service] Attempting to credit trial to wallet ${walletId} (amount: ${amount})...`);
-        const { acquireProcessingLock, releaseProcessingLock } = await import("@/lib/processed-events-registry");
+        const { acquireProcessingLock } = await import("@/lib/processed-events-registry");
 
         // 1. Lock to prevent concurrent credit attempts
         if (!(await acquireProcessingLock(databases, `wallet_trial_credit:${idempotencyKey}`, "wallet"))) {
@@ -1024,7 +1029,7 @@ export async function creditTrialToWallet(
             amount: amountFixed,
             balanceBefore,
             balanceAfter,
-            referenceId: options.organizationId,
+            referenceId: options.organizationId || options.userId || "",
             timestamp: now,
         });
 
@@ -1046,7 +1051,8 @@ export async function creditTrialToWallet(
                 description: options.description || "Trial credit",
                 metadata: JSON.stringify({
                     trialExpiresAt: options.trialExpiresAt?.toISOString(),
-                    organizationId: options.organizationId,
+                    organizationId: options.organizationId || null,
+                    userId: options.userId || null,
                 }),
                 signature,
             }
@@ -1061,11 +1067,11 @@ export async function creditTrialToWallet(
         // console.log(`[wallet-service] Trial credit successful for ${walletId}. Transaction: ${transaction.$id}`);
 
         return { success: true, transaction };
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[wallet-service] Error in creditTrialToWallet:`, {
-            message: error?.message,
-            code: error?.code,
-            stack: error?.stack
+            message: errorMessage,
+            error
         });
         const { releaseProcessingLock } = await import("@/lib/processed-events-registry");
         await releaseProcessingLock(databases, `wallet_trial_credit:${idempotencyKey}`, "wallet");

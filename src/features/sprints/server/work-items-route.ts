@@ -727,6 +727,7 @@ const app = new Hono()
               ...data,
               key,
               position: highestPosition + 1000,
+              startDate: data.startDate?.toISOString(),
               dueDate: data.dueDate?.toISOString(),
               sprintId: targetSprintId,
             }

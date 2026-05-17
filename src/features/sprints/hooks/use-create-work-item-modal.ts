@@ -10,22 +10,36 @@ export const useCreateWorkItemModal = () => {
     "work-item-project",
     parseAsString.withDefault("").withOptions({ clearOnDefault: true })
   );
+  
+  const [sprintId, setSprintId] = useQueryState(
+    "work-item-sprint",
+    parseAsString.withDefault("").withOptions({ clearOnDefault: true })
+  );
 
-  const open = (projectId?: string) => {
-    if (projectId) {
-      setProjectId(projectId);
-    }
+  const [initialStatus, setInitialStatus] = useQueryState(
+    "work-item-status",
+    parseAsString.withDefault("").withOptions({ clearOnDefault: true })
+  );
+
+  const open = (projectId?: string, sprintId?: string, status?: string) => {
+    if (projectId) setProjectId(projectId);
+    if (sprintId) setSprintId(sprintId);
+    if (status) setInitialStatus(status);
     setIsOpen(true);
   };
 
   const close = () => {
     setIsOpen(false);
     setProjectId("");
+    setSprintId("");
+    setInitialStatus("");
   };
 
   return {
     isOpen,
     projectId,
+    sprintId,
+    initialStatus,
     open,
     close,
     setIsOpen,

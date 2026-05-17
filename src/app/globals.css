@@ -384,3 +384,28 @@ body {
 .tippy-content {
   @apply p-0;
 }
+/* ── ReactFlow MiniMap theme overrides ──────────────────────────────────
+   ReactFlow's bundled CSS hard-codes a white background on .react-flow__minimap
+   and the maskColor prop uses SVG fill attribute which doesn't support
+   CSS level-4 hsl() alpha syntax.  We override both here so all three
+   themes (light / dark / pitch-dark) are handled automatically via
+   CSS variables.
+   ──────────────────────────────────────────────────────────────────── */
+.react-flow__minimap {
+  background: hsl(var(--background)) !important;
+}
+
+.react-flow__minimap-mask {
+  fill: hsl(var(--muted)) !important;
+  fill-opacity: 0.65;
+}
+
+.react-flow__minimap .react-flow__minimap-node {
+  fill: hsl(var(--muted-foreground));
+  fill-opacity: 0.25;
+  stroke: hsl(var(--border));
+}
+
+.react-flow__minimap { background: hsl(var(--background)) !important; }
+.react-flow__minimap-mask { fill: hsl(var(--muted)) !important; fill-opacity: 0.65; }
+.react-flow__minimap .react-flow__minimap-node { fill: hsl(var(--muted-foreground)); fill-opacity: 0.25; stroke: hsl(var(--border)); }

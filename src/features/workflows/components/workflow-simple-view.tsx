@@ -401,7 +401,7 @@ export const WorkflowSimpleView = ({
           <div className="flex items-center gap-2">
             <Folder className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">Projects</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+            <Badge variant="secondary" className="text-[10px] rounded-full px-1.5 py-0.5 h-4">
               {connectedProjects.length}
             </Badge>
           </div>
@@ -418,14 +418,14 @@ export const WorkflowSimpleView = ({
                     <LinkIcon className="size-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Connect a project</TooltipContent>
+                <TooltipContent size="xs" side="left" sideOffset={8}>Connect a project</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
         </div>
 
         {connectedProjects.length > 0 ? (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 pl-3">
             {connectedProjects.map((project) => {
               const projectConflict = conflicts.find(c => c.projectId === project.$id);
               
@@ -433,17 +433,17 @@ export const WorkflowSimpleView = ({
                 <Link 
                   key={project.$id}
                   href={`/workspaces/${workspaceId}/projects/${project.$id}`}
-                  className="group flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  className="group flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50 transition-colors"
                 >
                   <div 
-                    className="size-7 rounded-md flex items-center justify-center text-white font-medium text-xs shadow-sm"
+                    className="size-6 rounded-md flex items-center justify-center text-white font-medium text-xs shadow-sm"
                     style={{ backgroundColor: project.color || "#6366f1" }}
                   >
                     {project.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                      <span className="text-sm font-regular truncate   transition-colors">
                         {project.name}
                       </span>
                       {projectConflict && (
@@ -474,7 +474,7 @@ export const WorkflowSimpleView = ({
                             <RefreshCw className={`size-3 ${isSyncing ? 'animate-spin' : ''}`} />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Sync statuses from project</TooltipContent>
+                        <TooltipContent size="xs" side="left" sideOffset={8}>Sync statuses from project</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   )}
@@ -495,7 +495,7 @@ export const WorkflowSimpleView = ({
                             <Unlink className="size-3" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Disconnect</TooltipContent>
+                        <TooltipContent size="xs" side="left" sideOffset={8}>Disconnect</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   )}

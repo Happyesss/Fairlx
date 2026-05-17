@@ -330,24 +330,24 @@ export const Breadcrumb = () => {
 
 function renderBreadcrumbs(breadcrumbs: Array<{ label: string; href?: string; isClickable?: boolean }>) {
   return (
-    <nav className="flex items-center space-x-1 text-sm text-muted-foreground">
+    <nav className="flex items-center space-x-2 text-sm text-muted-foreground">
       {breadcrumbs.map((breadcrumb, index) => (
         <div key={index} className="flex items-center">
           {index > 0 && (
-            <ChevronRight className="h-4 w-4 mx-1 text-muted-foreground/60" />
+            <ChevronRight className="h-3.5 w-3.5 mx-1.5 text-muted-foreground/60" />
           )}
           {breadcrumb.href && breadcrumb.isClickable && index < breadcrumbs.length - 1 ? (
             <Link
               href={breadcrumb.href}
               className={cn(
-                "text-xs transition-colors truncate max-w-32",
+                "text-sm transition-colors truncate max-w-48",
                 "hover:text-foreground cursor-pointer"
               )}
             >
               {breadcrumb.label}
             </Link>
           ) : (
-            <span className="text-foreground text-xs font-medium truncate max-w-32">
+            <span className="text-foreground text-sm font-medium truncate max-w-48">
               {breadcrumb.label}
             </span>
           )}

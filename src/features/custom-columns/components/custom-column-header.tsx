@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useConfirm } from "@/hooks/use-confirm";
 
-import { useCreateWorkItemModal } from "@/features/sprints/hooks/use-create-work-item-modal";
 import { useDeleteCustomColumn } from "../api/use-delete-custom-column";
 
 import { CustomColumn } from "../types";
@@ -28,6 +27,7 @@ interface CustomColumnHeaderProps {
   onSortByPriority?: (columnId: string) => void;
   onSortByDueDate?: (columnId: string) => void;
   sortDirection?: 'asc' | 'desc';
+  onQuickCreate?: (columnId: string) => void;
 }
 
 export const CustomColumnHeader = ({
@@ -36,8 +36,8 @@ export const CustomColumnHeader = ({
   onSortByPriority,
   onSortByDueDate,
   sortDirection = 'asc',
+  onQuickCreate,
 }: CustomColumnHeaderProps) => {
-  const { open } = useCreateWorkItemModal();
   const { mutate: deleteCustomColumn } = useDeleteCustomColumn();
   const [ConfirmDialog, confirm] = useConfirm(
     "Delete Column",
@@ -70,7 +70,7 @@ export const CustomColumnHeader = ({
           <h2 className="text-sm font-semibold text-foreground">{customColumn.name}</h2>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => open()} variant="ghost" size="icon" className="h-6 w-6 hover:bg-accent">
+          <Button onClick={() => onQuickCreate?.(customColumn.$id)} variant="ghost" size="icon" className="h-6 w-6 hover:bg-accent">
             <PlusIcon className="h-4 w-4 text-muted-foreground" />
           </Button>
           <DropdownMenu>

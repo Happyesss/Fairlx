@@ -10,6 +10,7 @@ import {
   Calendar,
   AlertTriangleIcon,
   Settings2Icon,
+  PlusIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ interface KanbanColumnHeaderProps {
   // WIP Limit props
   wipLimit?: number;
   onSetWipLimit?: (status: TaskStatus, limit: number | null) => void;
+  onQuickCreate?: (status: TaskStatus) => void;
 }
 
 export const KanbanColumnHeader = ({
@@ -76,6 +78,8 @@ export const KanbanColumnHeader = ({
   sortDirection = 'asc',
   wipLimit,
   onSetWipLimit,
+  canCreateTasks,
+  onQuickCreate,
 }: KanbanColumnHeaderProps) => {
   const icon = statusIconMap[board];
 
@@ -168,7 +172,16 @@ export const KanbanColumnHeader = ({
       )}
 
       <div className="flex items-center gap-2">
-
+        {canCreateTasks && (
+          <Button
+            onClick={() => onQuickCreate?.(board)}
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-accent"
+          >
+            <PlusIcon className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-accent">

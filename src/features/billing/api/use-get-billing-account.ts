@@ -18,6 +18,8 @@ interface BillingAccountResponse {
     walletLockedBalance?: number;
     availableBalance?: number;
     walletCurrency?: string;
+    trialExpiresAt?: string;
+    initialTrialAmount?: number;
 }
 
 /**

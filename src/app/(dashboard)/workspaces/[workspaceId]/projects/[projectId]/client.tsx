@@ -79,7 +79,7 @@ export const ProjectIdClient = () => {
             <p className="text-2xl tracking-tight font-semibold">{project.name}</p>
             {getDeadlineBadge()}
           </div>
-          <p className="text-sm tracking-normal font-medium text-muted-foreground">
+          <p className="text-sm tracking-normal font-regular line-clamp-2 max-w-md text-muted-foreground">
             {project.description || "Track your project and goals with full AI Assistance"}
           </p>
         </div>

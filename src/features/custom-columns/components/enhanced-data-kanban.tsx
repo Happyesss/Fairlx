@@ -7,10 +7,28 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, PlusIcon, X, CalendarIcon, UserPlus, CornerDownLeft, Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { MemberAvatar } from "@/features/members/components/member-avatar";
+import { PriorityIcon } from "@/features/tasks/components/priority-selector";
+import { WorkItemPriority } from "@/features/sprints/types";
+import { Badge } from "@/components/ui/badge";
 import { useConfirm } from "@/hooks/use-confirm";
 
 import { KanbanCard } from "@/features/tasks/components/kanban-card";
@@ -20,6 +38,7 @@ import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal
 
 import { Task, TaskStatus } from "@/features/tasks/types";
 import { useBulkUpdateTasks } from "@/features/tasks/api/use-bulk-update-tasks";
+import { useCreateWorkItem } from "@/features/sprints/api/use-create-work-item";
 
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useGetProject } from "@/features/projects/api/use-get-project";
@@ -56,6 +75,7 @@ interface EnhancedDataKanbanProps {
   canDeleteTasks?: boolean;
   members?: Array<{ $id: string; name: string }>;
   projectId?: string; // Add optional projectId prop
+  activeSprintId?: string;
 }
 
 export const EnhancedDataKanban = ({
@@ -65,7 +85,8 @@ export const EnhancedDataKanban = ({
   canEditTasks = true,
   canDeleteTasks = true,
   members = [],
-  projectId
+  projectId,
+  activeSprintId,
 }: EnhancedDataKanbanProps) => {
   const workspaceId = useWorkspaceId();
 
@@ -154,6 +175,45 @@ export const EnhancedDataKanban = ({
   const [sortDirections, setSortDirections] = useState<Record<string, 'asc' | 'desc'>>({});
 
   const { mutate: bulkUpdateTasks } = useBulkUpdateTasks();
+  const { mutate: createWorkItem, isPending: isCreatingWorkItem } = useCreateWorkItem();
+  
+  const [quickCreateColumnId, setQuickCreateColumnId] = useState<string | null>(null);
+  const [quickCreateTitle, setQuickCreateTitle] = useState("");
+  const [quickCreateAssigneeIds, setQuickCreateAssigneeIds] = useState<string[]>([]);
+  const [quickCreateDueDate, setQuickCreateDueDate] = useState<Date | undefined>(undefined);
+  const [quickCreatePriority, setQuickCreatePriority] = useState<string>(WorkItemPriority.MEDIUM);
+
+  const resetQuickCreate = () => {
+    setQuickCreateTitle("");
+    setQuickCreateAssigneeIds([]);
+    setQuickCreateDueDate(undefined);
+    setQuickCreatePriority(WorkItemPriority.MEDIUM);
+    setQuickCreateColumnId(null);
+  };
+
+  const handleQuickCreate = (columnId: string) => {
+    if (!quickCreateTitle.trim()) {
+      setQuickCreateColumnId(null);
+      return;
+    }
+
+    if (!projectId) return;
+
+    createWorkItem({
+      title: quickCreateTitle,
+      status: columnId,
+      workspaceId,
+      projectId: projectId,
+      sprintId: activeSprintId,
+      assigneeIds: quickCreateAssigneeIds,
+      dueDate: quickCreateDueDate,
+      priority: quickCreatePriority,
+    }, {
+      onSuccess: () => {
+        resetQuickCreate();
+      }
+    });
+  };
 
   // Update ordered columns when allColumns changes
   useEffect(() => {
@@ -584,6 +644,10 @@ export const EnhancedDataKanban = ({
                                 onSortByPriority={() => handleSortByPriority(column.id)}
                                 onSortByDueDate={() => handleSortByDueDate(column.id)}
                                 sortDirection={sortDirections[column.id] || 'asc'}
+                                onQuickCreate={(_status) => {
+                                  setQuickCreateColumnId(column.id);
+                                  setQuickCreateTitle("");
+                                }}
                               />
                             ) : (
                               <CustomColumnHeader
@@ -595,6 +659,10 @@ export const EnhancedDataKanban = ({
                                 onSortByPriority={() => handleSortByPriority(column.id)}
                                 onSortByDueDate={() => handleSortByDueDate(column.id)}
                                 sortDirection={sortDirections[column.id] || 'asc'}
+                                onQuickCreate={(columnId) => {
+                                  setQuickCreateColumnId(columnId);
+                                  setQuickCreateTitle("");
+                                }}
                               />
                             )}
                           </div>
@@ -632,7 +700,281 @@ export const EnhancedDataKanban = ({
                                   </Draggable>
                                 ))}
                                 {provided.placeholder}
-                                {/* Add Task Button Removed for View-Only Kanban */}
+                                                                {canCreateTasks && (
+                                  <div className="mt-2 px-1">
+                                    {quickCreateColumnId === column.id ? (
+                                      <div className="bg-card rounded-xl border-2 border-primary shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="p-3">
+                                          <Input
+                                            autoFocus
+                                            placeholder="What needs to be done?"
+                                            value={quickCreateTitle}
+                                            onChange={(e) => setQuickCreateTitle(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleQuickCreate(column.id);
+                                              if (e.key === "Escape") {
+                                                setQuickCreateColumnId(null);
+                                                setQuickCreateTitle("");
+                                              }
+                                            }}
+                                            className="h-auto p-0 border-none bg-transparent text-sm font-medium focus-visible:ring-0 placeholder:text-muted-foreground/50 mb-3"
+                                            disabled={isCreatingWorkItem}
+                                          />
+
+                                          {/* Metadata Chips Row */}
+                                          {(quickCreateAssigneeIds.length > 0 || quickCreateDueDate || quickCreatePriority !== WorkItemPriority.MEDIUM) && (
+                                            <div className="flex flex-wrap gap-1.5 mb-3 animate-in fade-in slide-in-from-left-2 duration-300">
+                                              {/* Assignee Chips */}
+                                              {quickCreateAssigneeIds.map((id) => {
+                                                const member = members.find(m => m.$id === id);
+                                                if (!member) return null;
+                                                return (
+                                                  <Badge 
+                                                    key={id} 
+                                                    variant="secondary" 
+                                                    className="pl-1 pr-1.5 h-6 gap-1.5 text-[10px] font-medium bg-primary/5 hover:bg-primary/10 border-primary/10 transition-colors"
+                                                  >
+                                                    <MemberAvatar name={member.name} className="size-4" />
+                                                    <span className="max-w-[80px] truncate">{member.name}</span>
+                                                    <X 
+                                                      className="size-3 cursor-pointer text-muted-foreground hover:text-destructive transition-colors" 
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setQuickCreateAssigneeIds(prev => prev.filter(aid => aid !== id));
+                                                      }} 
+                                                    />
+                                                  </Badge>
+                                                );
+                                              })}
+
+                                              {/* Date Chip */}
+                                              {quickCreateDueDate && (
+                                                <Badge 
+                                                  variant="secondary" 
+                                                  className="h-6 gap-1.5 px-2 text-[10px] font-medium bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/10 text-amber-600 transition-colors"
+                                                >
+                                                  <CalendarIcon className="size-3" />
+                                                  {format(quickCreateDueDate, "MMM d")}
+                                                  <X 
+                                                    className="size-3 cursor-pointer opacity-60 hover:opacity-100 transition-opacity" 
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setQuickCreateDueDate(undefined);
+                                                    }} 
+                                                  />
+                                                </Badge>
+                                              )}
+
+                                              {/* Priority Chip */}
+                                              {quickCreatePriority !== WorkItemPriority.MEDIUM && (
+                                                <Badge 
+                                                  variant="secondary" 
+                                                  className="h-6 gap-1.5 px-2 text-[10px] font-medium bg-muted/50 border-border/50 transition-colors"
+                                                >
+                                                  <PriorityIcon priority={quickCreatePriority} className="size-3" />
+                                                  {quickCreatePriority.charAt(0) + quickCreatePriority.slice(1).toLowerCase()}
+                                                  <X 
+                                                    className="size-3 cursor-pointer opacity-60 hover:opacity-100 transition-opacity" 
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setQuickCreatePriority(WorkItemPriority.MEDIUM);
+                                                    }} 
+                                                  />
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1">
+                                              <TooltipProvider delayDuration={300}>
+                                                {/* Assignee Selector */}
+                                                <Popover>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <PopoverTrigger asChild>
+                                                        <Button 
+                                                          variant="ghost" 
+                                                          size="icon" 
+                                                          className={cn(
+                                                            "size-7 rounded-md hover:bg-accent",
+                                                            quickCreateAssigneeIds.length > 0 ? "text-primary" : "text-muted-foreground"
+                                                          )} 
+                                                          disabled={isCreatingWorkItem}
+                                                        >
+                                                          {quickCreateAssigneeIds.length === 1 ? (
+                                                            <MemberAvatar 
+                                                              name={members.find(m => m.$id === quickCreateAssigneeIds[0])?.name || ""} 
+                                                              imageUrl={undefined}
+                                                              className="size-5"
+                                                            />
+                                                          ) : quickCreateAssigneeIds.length > 1 ? (
+                                                            <div className="size-5 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center font-bold">
+                                                              {quickCreateAssigneeIds.length}
+                                                            </div>
+                                                          ) : (
+                                                            <UserPlus className="size-3.5" />
+                                                          )}
+                                                        </Button>
+                                                      </PopoverTrigger>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-[10px]">
+                                                      {quickCreateAssigneeIds.length > 0 
+                                                        ? `${quickCreateAssigneeIds.length} Assignee${quickCreateAssigneeIds.length > 1 ? 's' : ''}` 
+                                                        : "Add Assignee"}
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                  <PopoverContent className="p-0 w-60" align="start">
+                                                    <div className="p-2 border-b">
+                                                      <p className="text-xs font-semibold px-2 py-1">Assign to...</p>
+                                                    </div>
+                                                    <div className="max-h-60 overflow-y-auto p-1">
+                                                      {members.map((member) => (
+                                                        <div
+                                                          key={member.$id}
+                                                          className="flex items-center justify-between px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer transition-colors"
+                                                          onClick={() => {
+                                                            setQuickCreateAssigneeIds(prev => 
+                                                              prev.includes(member.$id) 
+                                                                ? prev.filter(id => id !== member.$id)
+                                                                : [...prev, member.$id]
+                                                            );
+                                                          }}
+                                                        >
+                                                          <div className="flex items-center gap-2">
+                                                            <MemberAvatar name={member.name} className="size-6" />
+                                                            <span className="text-sm">{member.name}</span>
+                                                          </div>
+                                                          {quickCreateAssigneeIds.includes(member.$id) && (
+                                                            <Check className="size-4 text-primary" />
+                                                          )}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  </PopoverContent>
+                                                </Popover>
+                                                
+                                                {/* Date Selector */}
+                                                <Popover>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <PopoverTrigger asChild>
+                                                        <Button 
+                                                          variant="ghost" 
+                                                          size="icon" 
+                                                          className={cn(
+                                                            "size-7 rounded-md hover:bg-accent",
+                                                            quickCreateDueDate ? "text-primary" : "text-muted-foreground"
+                                                          )} 
+                                                          disabled={isCreatingWorkItem}
+                                                        >
+                                                          <CalendarIcon className="size-3.5" />
+                                                        </Button>
+                                                      </PopoverTrigger>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-[10px]">
+                                                      {quickCreateDueDate ? format(quickCreateDueDate, "PPP") : "Set Due Date"}
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                  <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar
+                                                      mode="single"
+                                                      selected={quickCreateDueDate}
+                                                      onSelect={setQuickCreateDueDate}
+                                                      initialFocus
+                                                    />
+                                                    <div className="p-2 border-t flex justify-end">
+                                                      <Button variant="ghost" size="xs" onClick={() => setQuickCreateDueDate(undefined)}>
+                                                        Clear
+                                                      </Button>
+                                                    </div>
+                                                  </PopoverContent>
+                                                </Popover>
+                                                
+                                                {/* Priority Selector */}
+                                                <DropdownMenu>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <DropdownMenuTrigger asChild>
+                                                        <Button 
+                                                          variant="ghost" 
+                                                          size="icon" 
+                                                          className="size-7 rounded-md hover:bg-accent" 
+                                                          disabled={isCreatingWorkItem}
+                                                        >
+                                                          <PriorityIcon priority={quickCreatePriority} className="size-3.5" />
+                                                        </Button>
+                                                      </DropdownMenuTrigger>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="text-[10px]">
+                                                      Priority: {quickCreatePriority}
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                  <DropdownMenuContent align="start" className="w-40">
+                                                    <DropdownMenuLabel className="text-xs">Set Priority</DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    {Object.values(WorkItemPriority).map((priority) => (
+                                                      <DropdownMenuItem 
+                                                        key={priority}
+                                                        onClick={() => setQuickCreatePriority(priority)}
+                                                        className="flex items-center gap-2 cursor-pointer"
+                                                      >
+                                                        <PriorityIcon priority={priority} className="size-3.5" />
+                                                        <span className="text-sm">{priority}</span>
+                                                        {quickCreatePriority === priority && (
+                                                          <Check className="size-4 ml-auto text-primary" />
+                                                        )}
+                                                      </DropdownMenuItem>
+                                                    ))}
+                                                  </DropdownMenuContent>
+                                                </DropdownMenu>
+                                              </TooltipProvider>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                               <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={resetQuickCreate}
+                                                className="size-7 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                                                disabled={isCreatingWorkItem}
+                                              >
+                                                <X className="size-3.5" />
+                                              </Button>
+                                              <Button 
+                                                size="sm" 
+                                                onClick={() => handleQuickCreate(column.id)} 
+                                                disabled={isCreatingWorkItem || !quickCreateTitle.trim()}
+                                                className="h-7 px-2.5 text-[11px] gap-1.5 rounded-md shadow-sm"
+                                              >
+                                                {isCreatingWorkItem ? (
+                                                  <div className="size-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                                                ) : (
+                                                  <>
+                                                    Save
+                                                    <CornerDownLeft className="size-3 opacity-60" />
+                                                  </>
+                                                )}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50 h-9 text-[12px] px-3 group transition-all duration-200 rounded-lg border border-transparent hover:border-border/50"
+                                        onClick={() => {
+                                          setQuickCreateColumnId(column.id);
+                                          setQuickCreateTitle("");
+                                        }}
+                                      >
+                                        <PlusIcon className="h-4 w-4 mr-2 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                                        <span className="font-medium">Add Work Item</span>
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </Droppable>

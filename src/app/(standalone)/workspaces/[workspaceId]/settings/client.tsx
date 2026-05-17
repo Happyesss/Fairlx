@@ -28,9 +28,5 @@ export const WorkspaceIdSettingsClient = () => {
     return <PageError message="You need admin access to manage this workspace." />;
   }
 
-  return (
-    <div className="w-full flex items-center justify-center">
-      <EditWorkspaceForm initialValues={initialValues} />
-    </div>
-  );
+  return <EditWorkspaceForm initialValues={initialValues} />;
 };

@@ -2,28 +2,13 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  ArrowLeft,
-  Settings,
-  Palette,
-  Lock,
-  Trash2,
-  Save,
-  Eye,
-  EyeOff,
-  Workflow
-} from "lucide-react";
-import Link from "next/link";
+import {  Save, Eye, EyeOff, Workflow } from "lucide-react";
 
 import { PageError } from "@/components/page-error";
 import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -64,6 +49,16 @@ const SPACE_COLORS = [
   { name: "Slate", value: "#64748b" },
 ];
 
+type Section = "general" | "appearance" | "access" | "workflows" | "danger";
+
+const NAV_ITEMS: { id: Section; label: string; danger?: boolean }[] = [
+  { id: "general", label: "General" },
+  { id: "appearance", label: "Appearance" },
+  { id: "access", label: "Access & Visibility" },
+  { id: "workflows", label: "Workflows" },
+  { id: "danger", label: "Delete Space", danger: true },
+];
+
 export const SpaceSettingsClient = () => {
   const router = useRouter();
   const params = useParams();
@@ -85,8 +80,8 @@ export const SpaceSettingsClient = () => {
   const [workflowInheritance, setWorkflowInheritance] = useState<WorkflowInheritanceMode>(WorkflowInheritanceMode.SUGGEST);
   const [hasChanges, setHasChanges] = useState(false);
   const [isWorkflowsModalOpen, setIsWorkflowsModalOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<Section>("general");
 
-  // Initialize form values when space data loads
   useState(() => {
     if (space) {
       setName(space.name || "");
@@ -99,41 +94,19 @@ export const SpaceSettingsClient = () => {
     }
   });
 
-  if (isLoadingSpace) {
-    return <PageLoader />;
-  }
-
-  if (!space) {
-    return <PageError message="Space not found." />;
-  }
-
-  if (!isAdmin) {
-    return <PageError message="You don't have permission to access space settings." />;
-  }
+  if (isLoadingSpace) return <PageLoader />;
+  if (!space) return <PageError message="Space not found." />;
+  if (!isAdmin) return <PageError message="You don\'t have permission to access space settings." />;
 
   const handleFieldChange = (field: string, value: string) => {
     switch (field) {
-      case "name":
-        setName(value);
-        break;
-      case "key":
-        setKey(value.toUpperCase());
-        break;
-      case "description":
-        setDescription(value);
-        break;
-      case "color":
-        setColor(value);
-        break;
-      case "visibility":
-        setVisibility(value as SpaceVisibility);
-        break;
-      case "defaultWorkflowId":
-        setDefaultWorkflowId(value === "NO_WORKFLOW_VALUE" ? "" : value);
-        break;
-      case "workflowInheritance":
-        setWorkflowInheritance(value as WorkflowInheritanceMode);
-        break;
+      case "name": setName(value); break;
+      case "key": setKey(value.toUpperCase()); break;
+      case "description": setDescription(value); break;
+      case "color": setColor(value); break;
+      case "visibility": setVisibility(value as SpaceVisibility); break;
+      case "defaultWorkflowId": setDefaultWorkflowId(value === "NO_WORKFLOW_VALUE" ? "" : value); break;
+      case "workflowInheritance": setWorkflowInheritance(value as WorkflowInheritanceMode); break;
     }
     setHasChanges(true);
   };
@@ -152,30 +125,22 @@ export const SpaceSettingsClient = () => {
           workflowInheritance: workflowInheritance || WorkflowInheritanceMode.SUGGEST,
         },
       },
-      {
-        onSuccess: () => {
-          setHasChanges(false);
-        },
-      }
+      { onSuccess: () => setHasChanges(false) }
     );
   };
 
   const handleDelete = () => {
     deleteSpace(
       { param: { spaceId } },
-      {
-        onSuccess: () => {
-          router.push(`/workspaces/${workspaceId}/spaces`);
-        },
-      }
+      { onSuccess: () => router.push(`/workspaces/${workspaceId}/spaces`) }
     );
   };
 
   const workflows = workflowsData?.documents ?? [];
+  const activeColor = color || space.color || "#6366f1";
 
   return (
-    <div className="flex flex-col gap-y-6 max-w-4xl mx-auto">
-      {/* Space Workflows Modal */}
+    <div className="w-full h-[83vh] px-2">
       <SpaceWorkflowsModal
         isOpen={isWorkflowsModalOpen}
         onClose={() => setIsWorkflowsModalOpen(false)}
@@ -184,316 +149,405 @@ export const SpaceSettingsClient = () => {
         workspaceId={workspaceId}
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={`/workspaces/${workspaceId}/spaces/${spaceId}`}>
-            <Button variant="ghost" size="icon" className="size-9">
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-3">
-            <div
-              className="size-12 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-md"
-              style={{
-                backgroundColor: color || space.color || "#6366f1",
-                boxShadow: `0 4px 12px -2px ${color || space.color || "#6366f1"}40`
-              }}
-            >
-              {(name || space.name).charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                Space Settings
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {key || space.key}
-                </Badge>
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                Configure {name || space.name} settings
-              </p>
-            </div>
+
+      {/* Settings Panel */}
+      <div className="bg-card rounded-2xl border h-full border-border shadow-sm overflow-hidden">
+        <div className="flex h-full">
+
+          {/* Left Navigation */}
+          <aside className="w-44 shrink-0 border-r border-border bg-muted/20 p-3 flex flex-col gap-0.5">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveSection(item.id)}
+                className={[
+                  "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors duration-100",
+                  item.danger
+                    ? activeSection === item.id
+                      ? "bg-destructive/10 text-destructive font-medium"
+                      : "text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+                    : activeSection === item.id
+                    ? "bg-blue-500/10 text-blue-700 font-medium"
+                    : "text-muted-foreground",
+                ].join(" ")}
+              >
+                {item.label}
+              </button>
+            ))}
+          </aside>
+
+          {/* Content Area */}
+          <main className="flex-1 p-7 min-w-0">
+
+            {/* ── General ── */}
+         {activeSection === "general" && (
+  <section className="flex flex-col h-full justify-between">
+    <div>
+      <h2 className="text-[18px] font-semibold mb-2">General</h2>
+
+      <div className="divide-y divide-border">
+        {/* Space Name */}
+        <div className="flex flex-col py-4 gap-4">
+          <div className="shrink-0">
+            <p className="text-sm font-regular">Space Name</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              The display name for this space.
+            </p>
+          </div>
+
+          <Input
+            value={name || space.name}
+            onChange={(e) => handleFieldChange("name", e.target.value)}
+            className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            placeholder="Enter space name"
+          />
+        </div>
+
+        {/* Space Key */}
+        <div className="flex flex-col py-4 gap-4">
+          <div className="shrink-0">
+            <p className="text-sm font-regular">Space Key</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Prefix for work items, e.g. ENG-001.
+            </p>
+          </div>
+
+          <Input
+            value={key || space.key}
+            onChange={(e) => handleFieldChange("key", e.target.value)}
+            className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            placeholder="ENG"
+            maxLength={10}
+          />
+        </div>
+
+        {/* Description */}
+        <div className="flex flex-col py-4 gap-4">
+          <div className="shrink-0">
+            <p className="text-sm font-regular">Description</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              A short description of this space.
+            </p>
+          </div>
+
+          <Textarea
+            value={description || space.description || ""}
+            onChange={(e) => handleFieldChange("description", e.target.value)}
+            className="w-6/12 min-h-[80px] text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            rows={3}
+            placeholder="Describe this space..."
+          />
+        </div>
+      </div>
+    </div>
+
+    <div className="w-full flex justify-end">
+      <Button
+        onClick={handleSave}
+        disabled={!hasChanges || isUpdating}
+        size="xs"
+      >
+        <Save className="size-3" />
+        {isUpdating ? "Saving..." : "Save Changes"}
+      </Button>
+    </div>
+  </section>
+)}
+
+            {/* ── Appearance ── */}
+{activeSection === "appearance" && (
+  <section className="flex flex-col h-full justify-between">
+    <div>
+      <h2 className="text-[18px] font-semibold mb-2">Appearance</h2>
+
+      <div className="divide-y divide-border">
+        {/* Theme Color */}
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Theme Color</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Choose a color that represents this space.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {SPACE_COLORS.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                title={c.name}
+                onClick={() => handleFieldChange("color", c.value)}
+                className={[
+                  "size-7 rounded-full transition-all duration-150 hover:scale-110",
+                  (color || space.color) === c.value
+                    ? "ring-2 ring-offset-2 ring-foreground/30 scale-110"
+                    : "",
+                ].join(" ")}
+                style={{ backgroundColor: c.value }}
+              />
+            ))}
           </div>
         </div>
 
-        <Button
-          onClick={handleSave}
-          disabled={!hasChanges || isUpdating}
-          className="gap-2"
-        >
-          <Save className="size-4" />
-          {isUpdating ? "Saving..." : "Save Changes"}
-        </Button>
+        {/* Preview */}
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Preview</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              How your space icon will appear.
+            </p>
+          </div>
+
+          <div
+            className="size-10 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-sm transition-colors duration-200"
+            style={{ backgroundColor: activeColor }}
+          >
+            {(name || space.name).charAt(0).toUpperCase()}
+          </div>
+        </div>
       </div>
+    </div>
 
-      <Separator />
+    <div className="w-full flex justify-end">
+      <Button
+        onClick={handleSave}
+        disabled={!hasChanges || isUpdating}
+        size="xs"
+      >
+        <Save className="size-3" />
+        {isUpdating ? "Saving..." : "Save Changes"}
+      </Button>
+    </div>
+  </section>
+)}
 
-      {/* General Settings */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Settings className="size-5 text-primary" />
-            <CardTitle>General Settings</CardTitle>
-          </div>
-          <CardDescription>
-            Basic information about your space
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Space Name</Label>
-              <Input
-                id="name"
-                value={name || space.name}
-                onChange={(e) => handleFieldChange("name", e.target.value)}
-                placeholder="Enter space name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="key">Space Key</Label>
-              <Input
-                id="key"
-                value={key || space.key}
-                onChange={(e) => handleFieldChange("key", e.target.value)}
-                placeholder="e.g., ENG, MKT"
-                className="font-mono uppercase"
-                maxLength={10}
-              />
-              <p className="text-xs text-muted-foreground">
-                Used as prefix for work items
-              </p>
-            </div>
+           {/* ── Access & Visibility ── */}
+{activeSection === "access" && (
+  <section className="flex flex-col h-full justify-between">
+    <div>
+      <h2 className="text-[18px] font-semibold mb-2">
+        Access & Visibility
+      </h2>
+
+      <div className="divide-y divide-border">
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Visibility</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {(visibility || space.visibility) === SpaceVisibility.PUBLIC
+                ? "All workspace members can see this space."
+                : "Only invited members can access this space."}
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description || space.description || ""}
-              onChange={(e) => handleFieldChange("description", e.target.value)}
-              placeholder="Describe the purpose of this space..."
-              rows={3}
-            />
-          </div>
-        </CardContent>
-      </Card>
+          <Select
+            value={visibility || space.visibility}
+            onValueChange={(v) => handleFieldChange("visibility", v)}
+          >
+            <SelectTrigger className="w-fit px-3 h-8 text-sm rounded-md border border-border bg-transparent shadow-none focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
 
-      {/* Appearance */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Palette className="size-5 text-primary" />
-            <CardTitle>Appearance</CardTitle>
-          </div>
-          <CardDescription>
-            Customize how your space looks
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3">
-            <Label>Theme Color</Label>
-            <div className="flex flex-wrap gap-3">
-              {SPACE_COLORS.map((colorOption) => (
-                <button
-                  key={colorOption.value}
-                  type="button"
-                  className={`size-10 rounded-lg transition-all hover:scale-110 ${(color || space.color) === colorOption.value
-                    ? "ring-2 ring-offset-2 ring-primary"
-                    : ""
-                    }`}
-                  style={{ backgroundColor: colorOption.value }}
-                  onClick={() => handleFieldChange("color", colorOption.value)}
-                  title={colorOption.name}
-                />
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            <SelectContent>
+              <SelectItem value={SpaceVisibility.PUBLIC}>
+                <div className="flex items-center gap-1.5">
+                  <Eye className="size-3.5" />
+                  Public
+                </div>
+              </SelectItem>
 
-      {/* Access & Visibility */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Lock className="size-5 text-primary" />
-            <CardTitle>Access & Visibility</CardTitle>
-          </div>
-          <CardDescription>
-            Control who can see and access this space
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Visibility</Label>
-            <Select
-              value={visibility || space.visibility}
-              onValueChange={(v) => handleFieldChange("visibility", v)}
-            >
-              <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SpaceVisibility.PUBLIC}>
-                  <div className="flex items-center gap-2">
-                    <Eye className="size-4" />
-                    <div>
-                      <div className="font-medium">Public</div>
-                      <div className="text-xs text-muted-foreground">Visible to all workspace members</div>
-                    </div>
-                  </div>
-                </SelectItem>
-                <SelectItem value={SpaceVisibility.PRIVATE}>
-                  <div className="flex items-center gap-2">
-                    <EyeOff className="size-4" />
-                    <div>
-                      <div className="font-medium">Private</div>
-                      <div className="text-xs text-muted-foreground">Only invited members can access</div>
-                    </div>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+              <SelectItem value={SpaceVisibility.PRIVATE}>
+                <div className="flex items-center gap-1.5">
+                  <EyeOff className="size-3.5" />
+                  Private
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
 
-      {/* Workflow Settings */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Workflow className="size-5 text-primary" />
-            <CardTitle>Workflow Settings</CardTitle>
-          </div>
-          <CardDescription>
-            Configure default workflow for new projects in this space
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Default Workflow</Label>
-            <Select
-              value={defaultWorkflowId || space.defaultWorkflowId || "NO_WORKFLOW_VALUE"}
-              onValueChange={(v) => handleFieldChange("defaultWorkflowId", v)}
-            >
-              <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue placeholder="Select a workflow" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="NO_WORKFLOW_VALUE">
-                  <span className="text-muted-foreground">No default workflow</span>
-                </SelectItem>
-                {workflows.map((workflow) => (
-                  <SelectItem key={workflow.$id} value={workflow.$id}>
-                    {workflow.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
+    <div className="w-full flex justify-end">
+      <Button
+        onClick={handleSave}
+        disabled={!hasChanges || isUpdating}
+        size="xs"
+      >
+        <Save className="size-3" />
+        {isUpdating ? "Saving..." : "Save Changes"}
+      </Button>
+    </div>
+  </section>
+)}
+
+          {/* ── Workflows ── */}
+{activeSection === "workflows" && (
+  <section className="flex flex-col h-full justify-between">
+    <div>
+      <h2 className="text-[18px] font-semibold mb-2">Workflows</h2>
+
+      <div className="divide-y divide-border">
+        {/* Default Workflow */}
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Default Workflow</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
               New projects will use this workflow by default.
             </p>
           </div>
 
-          {/* Workflow Inheritance Mode */}
-          <div className="space-y-2">
-            <Label>Workflow Inheritance</Label>
-            <Select
-              value={workflowInheritance || space.workflowInheritance || WorkflowInheritanceMode.SUGGEST}
-              onValueChange={(v) => handleFieldChange("workflowInheritance", v)}
-            >
-              <SelectTrigger className="w-full md:w-[300px]">
-                <SelectValue placeholder="Select inheritance mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={WorkflowInheritanceMode.REQUIRE}>
-                  <div className="flex flex-col">
-                    <span className="font-medium">Required</span>
-                    <span className="text-xs text-muted-foreground">Projects must use the space workflow (locked)</span>
-                  </div>
+          <Select
+            value={defaultWorkflowId || space.defaultWorkflowId || "NO_WORKFLOW_VALUE"}
+            onValueChange={(v) => handleFieldChange("defaultWorkflowId", v)}
+          >
+            <SelectTrigger className="w-fit px-3 h-8 text-sm rounded-md border border-border bg-transparent shadow-none focus:ring-0">
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+
+            <SelectContent>
+              <SelectItem value="NO_WORKFLOW_VALUE">
+                <span className="text-muted-foreground">No default</span>
+              </SelectItem>
+
+              {workflows.map((wf) => (
+                <SelectItem key={wf.$id} value={wf.$id}>
+                  {wf.name}
                 </SelectItem>
-                <SelectItem value={WorkflowInheritanceMode.SUGGEST}>
-                  <div className="flex flex-col">
-                    <span className="font-medium">Suggested</span>
-                    <span className="text-xs text-muted-foreground">Projects inherit workflow but can override</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value={WorkflowInheritanceMode.NONE}>
-                  <div className="flex flex-col">
-                    <span className="font-medium">None</span>
-                    <span className="text-xs text-muted-foreground">Projects choose their own workflow</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Controls how projects in this space inherit the default workflow.
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Workflow Inheritance */}
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Workflow Inheritance</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              How projects inherit the default workflow.
             </p>
           </div>
 
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => setIsWorkflowsModalOpen(true)}
-            >
-              <Workflow className="size-4" />
-              Manage Workflows
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          <Select
+            value={
+              workflowInheritance ||
+              space.workflowInheritance ||
+              WorkflowInheritanceMode.SUGGEST
+            }
+            onValueChange={(v) =>
+              handleFieldChange("workflowInheritance", v)
+            }
+          >
+            <SelectTrigger className="w-fit px-3 h-8 text-sm rounded-md border border-border bg-transparent shadow-none focus:ring-0">
+              <SelectValue />
+            </SelectTrigger>
 
-      {/* Danger Zone */}
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Trash2 className="size-5 text-destructive" />
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            <SelectContent>
+              <SelectItem value={WorkflowInheritanceMode.REQUIRE}>
+                Required
+              </SelectItem>
+
+              <SelectItem value={WorkflowInheritanceMode.SUGGEST}>
+                Suggested
+              </SelectItem>
+
+              <SelectItem value={WorkflowInheritanceMode.NONE}>
+                None
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Manage Workflows */}
+        <div className="flex flex-col py-4 gap-4">
+          <div>
+            <p className="text-sm font-regular">Manage Workflows</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              View and edit all workflows in this space.
+            </p>
           </div>
-          <CardDescription>
-            Irreversible actions for this space
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 border border-destructive/30 rounded-lg bg-destructive/5">
-            <div>
-              <h4 className="font-medium">Delete this space</h4>
-              <p className="text-sm text-muted-foreground">
-                This will permanently delete the space and remove all projects from it.
-              </p>
-            </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isDeleting}>
-                  <Trash2 className="size-4 mr-2" />
-                  Delete Space
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the space
-                    <strong> {space.name}</strong> and remove all projects from it.
-                    The projects themselves will not be deleted, just unassigned from this space.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDelete}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {isDeleting ? "Deleting..." : "Delete Space"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </CardContent>
-      </Card>
+
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => setIsWorkflowsModalOpen(true)}
+            className="w-fit"
+          >
+            <Workflow className="size-3.5" />
+            Manage
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <div className="w-full flex justify-end">
+      <Button
+        onClick={handleSave}
+        disabled={!hasChanges || isUpdating}
+        size="xs"
+      >
+        <Save className="size-3" />
+        {isUpdating ? "Saving..." : "Save Changes"}
+      </Button>
+    </div>
+  </section>
+)}
+
+            {/* ── Danger Zone ── */}
+            {activeSection === "danger" && (
+              <section>
+                <h2 className="text-sm font-semibold mb-0.5 text-destructive">Delete Space</h2>
+                <p className="text-xs text-muted-foreground mb-5">Irreversible actions for this space.</p>
+                <div className="divide-y divide-border">
+
+                  <div className="flex items-center justify-between py-4 gap-6">
+                    <div className="shrink-0">
+                      <p className="text-sm font-medium">Delete this space</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Permanently deletes the space. Projects will be unassigned, not deleted.
+                      </p>
+                    </div>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isDeleting}
+                          className="h-8 text-sm text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the space
+                            <strong> {space.name}</strong> and remove all projects from it.
+                            The projects themselves will not be deleted, just unassigned.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={handleDelete}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            {isDeleting ? "Deleting..." : "Delete Space"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+
+                </div>
+              </section>
+            )}
+
+          </main>
+        </div>
+      </div>
     </div>
   );
 };

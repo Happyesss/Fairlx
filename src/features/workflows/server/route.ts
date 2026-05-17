@@ -191,7 +191,7 @@ const app = new Hono()
               icon: status.icon,
               color: status.color,
               statusType: status.statusType,
-              category: status.statusType === StatusType.CLOSED ? "done" : (status.statusType === StatusType.OPEN ? "todo" : "in_progress"),
+              category: status.statusType === StatusType.CLOSED ? "DONE" : (status.statusType === StatusType.OPEN ? "TODO" : "IN_PROGRESS"),
               description: status.description,
               position: status.position,
               positionX: status.positionX || 0,
@@ -252,7 +252,7 @@ const app = new Hono()
                 icon: statusDef.icon || "Circle",
                 color: statusDef.color || "#6B7280",
                 statusType: statusDef.statusType || StatusType.OPEN,
-                category: statusDef.statusType === StatusType.CLOSED ? "done" : (statusDef.statusType === StatusType.OPEN ? "todo" : "in_progress"),
+                category: statusDef.statusType === StatusType.CLOSED ? "DONE" : (statusDef.statusType === StatusType.OPEN ? "TODO" : "IN_PROGRESS"),
                 position: statusDef.position ?? i,
                 positionX: i * 280 + 100, // Normalized grid
                 positionY: 200,
@@ -305,15 +305,15 @@ const app = new Hono()
               
               // Map status type based on name
               let statusType = StatusType.IN_PROGRESS;
-              let category = "in_progress";
+              let category = "IN_PROGRESS";
               const lowerName = column.name.toLowerCase();
               
               if (lowerName.includes("todo") || lowerName.includes("backlog") || lowerName.includes("open") || i === 0) {
                 statusType = StatusType.OPEN;
-                category = "todo";
+                category = "TODO";
               } else if (lowerName.includes("done") || lowerName.includes("close") || lowerName.includes("finish") || lowerName.includes("completed")) {
                 statusType = StatusType.CLOSED;
-                category = "done";
+                category = "DONE";
               }
 
               await databases.createDocument<WorkflowStatus>(
@@ -360,7 +360,7 @@ const app = new Hono()
                 icon: statusDef.icon,
                 color: statusDef.color,
                 statusType: statusDef.statusType,
-                category: statusDef.key === "DONE" ? "done" : (statusDef.statusType === StatusType.OPEN ? "todo" : "in_progress"),
+                category: ["TODO","ASSIGNED","IN_PROGRESS","IN_REVIEW","DONE","CUSTOM"].includes(statusDef.key) ? statusDef.key : (statusDef.statusType === StatusType.CLOSED ? "DONE" : (statusDef.statusType === StatusType.OPEN ? "TODO" : "IN_PROGRESS")),
                 position: statusDef.position,
                 positionX: statusDef.positionX || (statusDef.position * 250),
                 positionY: statusDef.positionY || 100,
@@ -801,7 +801,7 @@ const app = new Hono()
             icon: statusData.icon || "Circle",
             color: statusData.color,
             statusType: statusData.statusType || StatusType.OPEN,
-            category: (statusData.statusType || StatusType.OPEN) === StatusType.CLOSED ? "done" : ((statusData.statusType || StatusType.OPEN) === StatusType.OPEN ? "todo" : "in_progress"),
+            category: (statusData.statusType || StatusType.OPEN) === StatusType.CLOSED ? "DONE" : ((statusData.statusType || StatusType.OPEN) === StatusType.OPEN ? "TODO" : "IN_PROGRESS"),
             description: statusData.description || "",
             position,
             positionX: statusData.positionX || 0,
@@ -1653,6 +1653,77 @@ const app = new Hono()
         }
       }
 
+      // =========================================
+      // Create workflow statuses from project statuses that don't exist yet
+      // This bootstraps an empty workflow with the project's status columns
+      // =========================================
+      const existingStatusKeys = new Set(workflowStatuses.documents.map((s: WorkflowStatus) => s.key));
+      const existingStatusNames = new Set(workflowStatuses.documents.map((s: WorkflowStatus) => s.name.toLowerCase()));
+      const alreadyHasInitial = workflowStatuses.documents.some((s: WorkflowStatus) => s.isInitial);
+
+      const visibleProjectStatuses = allProjectStatuses.filter(ps => ps.isVisible);
+      let createdCount = 0;
+
+      for (let i = 0; i < visibleProjectStatuses.length; i++) {
+        const ps = visibleProjectStatuses[i];
+        if (existingStatusKeys.has(ps.key) || existingStatusNames.has(ps.name.toLowerCase())) {
+          continue; // Already exists in workflow
+        }
+
+        const upperKey = ps.key.toUpperCase();
+        let statusType: StatusType = StatusType.IN_PROGRESS;
+        let isFinal = false;
+
+        if (upperKey === "TODO" || upperKey === "BACKLOG" || upperKey === "ASSIGNED") {
+          statusType = StatusType.OPEN;
+        } else if (
+          upperKey === "DONE" ||
+          upperKey === "CLOSED" ||
+          upperKey === "CANCELLED" ||
+          upperKey === "COMPLETED"
+        ) {
+          statusType = StatusType.CLOSED;
+          isFinal = true;
+        }
+
+        // Only mark initial if no existing status is already initial AND this is the first one we're creating
+        const isInitial = !alreadyHasInitial && createdCount === 0;
+        const category =
+          statusType === StatusType.CLOSED
+            ? "DONE"
+            : statusType === StatusType.OPEN
+              ? "TODO"
+              : "IN_PROGRESS";
+
+        await databases.createDocument<WorkflowStatus>(
+          DATABASE_ID,
+          WORKFLOW_STATUSES_ID,
+          ID.unique(),
+          {
+            workspaceId: workflow.workspaceId,
+            workflowId,
+            name: ps.name,
+            key: ps.key,
+            icon: ps.icon || "Circle",
+            color: ps.color || "#6B7280",
+            statusType,
+            category,
+            description: "",
+            position: (workflowStatuses.documents.length - deletedCount) + createdCount,
+            positionX: 100 + (createdCount * 250),
+            positionY: 100,
+            isInitial,
+            isFinal,
+          },
+          [
+            Permission.read(Role.user(user.$id)),
+            Permission.write(Role.user(user.$id)),
+            Permission.delete(Role.user(user.$id)),
+          ]
+        );
+        createdCount++;
+      }
+
       // Clean up stale customWorkItemTypes entries
       // Only keep entries that match defaults or custom columns
       const validStatusNames = new Set(allProjectStatuses.map(s => s.name.toLowerCase()));
@@ -1679,6 +1750,7 @@ const app = new Hono()
           project: updatedProject,
           workflow: workflow,
           deletedStatuses: deletedCount,
+          createdStatuses: createdCount,
         },
       });
     }
@@ -2095,7 +2167,7 @@ const app = new Hono()
                 icon: projectStatus.icon,
                 color: projectStatus.color,
                 statusType: StatusType.OPEN,
-                category: "todo",
+                category: "TODO",
                 description: null,
                 position: newPosition,
                 // If visible, place on canvas; otherwise off canvas

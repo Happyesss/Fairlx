@@ -21,7 +21,7 @@ import {
     Calendar
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useAccountLifecycle } from "./account-lifecycle-provider";
 import { ResponsiveModal } from "@/components/responsive-modal";
@@ -117,6 +117,7 @@ export const AppTour = () => {
 
     const queryClient = useQueryClient();
     const router = useRouter();
+    const pathname = usePathname();
     const workspaceId = useWorkspaceId();
 
     const [isTourActive, setIsTourActive] = useState(false);
@@ -128,19 +129,28 @@ export const AppTour = () => {
 
     // Initial check for tour eligibility
     useEffect(() => {
+        // DO NOT show tour invitation if user must accept legal terms or is blocked
+        if (state.mustAcceptLegal || state.legalBlocked) {
+            if (invitationTimerRef.current) clearTimeout(invitationTimerRef.current);
+            return;
+        }
+
+        // Only show tour on workspace-related paths
+        if (!pathname.startsWith("/workspaces/")) return;
+
         const storageKey = activeOrgId ? `app_tour_completed_${activeOrgId}` : `app_tour_completed_personal`;
         const hasCompleted = localStorage.getItem(storageKey);
 
-        if (!hasCompleted) {
+        if (!hasCompleted && !isTourActive && !showInvitation) {
             // Show invitation for both personal and org users on first dashboard load
-            // (Org users get a slightly longer delay to avoid overlapping with Trial Reward popup)
-            const delay = activeOrgId ? 5000 : 3000;
+            // (Org users get a slightly longer delay to avoid overlapping with other popups)
+            const delay = activeOrgId ? 8000 : 5000;
             invitationTimerRef.current = setTimeout(() => setShowInvitation(true), delay);
             return () => {
                 if (invitationTimerRef.current) clearTimeout(invitationTimerRef.current);
             };
         }
-    }, [activeOrgId, isPersonal]);
+    }, [activeOrgId, isPersonal, state.mustAcceptLegal, state.legalBlocked, pathname, isTourActive, showInvitation]);
 
     // Expose global trigger
     useEffect(() => {

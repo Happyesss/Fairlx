@@ -1,8 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, GitBranch, Settings, Workflow, Info } from "lucide-react";
-import Link from "next/link";
+import { Plus, GitBranch, Settings, Workflow, Info, CheckCircle2, Layers, ArrowRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { PageError } from "@/components/page-error";
@@ -10,7 +9,6 @@ import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -25,11 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
 
 import { useGetProject } from "@/features/projects/api/use-get-project";
 import { useUpdateProject } from "@/features/projects/api/use-update-project";
@@ -39,8 +32,6 @@ import { useGetWorkflow } from "@/features/workflows/api/use-get-workflow";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useCreateWorkflowModal } from "@/features/workflows/hooks/use-create-workflow-modal";
 import { CreateWorkflowModal } from "@/features/workflows/components/create-workflow-modal";
-import { ProjectAvatar } from "@/features/projects/components/project-avatar";
-import { StatusType, STATUS_TYPE_CONFIG } from "@/features/workflows/types";
 
 export const ProjectWorkflowClient = () => {
   const router = useRouter();
@@ -118,46 +109,13 @@ export const ProjectWorkflowClient = () => {
   };
 
   return (
-    <div className="flex flex-col gap-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-y-5 w-full mx-auto">
       <CreateWorkflowModal workspaceId={workspaceId} projectId={projectId} />
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href={`/workspaces/${workspaceId}/projects/${projectId}`}>
-            <Button variant="ghost" size="icon" className="size-9">
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-3">
-            <ProjectAvatar
-              name={project.name}
-              image={project.imageUrl}
-              className="size-12"
-            />
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                Project Workflow
-                {project.key && (
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    {project.key}
-                  </Badge>
-                )}
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                Configure workflow for {project.name}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <Separator />
-
       {/* Current Workflow */}
-      <Card>
+      <Card className="border-none shadow-none">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center w-full justify-between">
             <div className="flex items-center gap-2">
               <GitBranch className="size-5 text-primary" />
               <CardTitle>Current Workflow</CardTitle>
@@ -168,7 +126,7 @@ export const ProjectWorkflowClient = () => {
                   <>
                     <Button 
                       variant="outline" 
-                      size="sm" 
+                      size="xs" 
                       onClick={() => handleEditWorkflow(project.workflowId!)}
                       className="gap-2"
                     >
@@ -177,7 +135,7 @@ export const ProjectWorkflowClient = () => {
                     </Button>
                     <Button 
                       variant="outline" 
-                      size="sm" 
+                      size="xs" 
                       onClick={() => setIsSelectWorkflowOpen(true)}
                       className="gap-2"
                     >
@@ -187,7 +145,7 @@ export const ProjectWorkflowClient = () => {
                   </>
                 ) : (
                   <Button 
-                    size="sm" 
+                    size="xs" 
                     onClick={() => setIsSelectWorkflowOpen(true)}
                     className="gap-2"
                   >
@@ -239,22 +197,20 @@ export const ProjectWorkflowClient = () => {
               {/* Statuses Preview */}
               {projectWorkflow.statuses && projectWorkflow.statuses.length > 0 && (
                 <div className="space-y-3">
-                  <h5 className="text-sm font-medium text-muted-foreground">Statuses</h5>
+                  <h5 className="text-sm font-medium ">Statuses</h5>
                   <div className="flex flex-wrap gap-2">
                     {projectWorkflow.statuses.map((status) => (
                       <div
                         key={status.$id}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-background"
-                        style={{ borderColor: status.color }}
+                        className="flex items-center gap-2 px-3 py-1 rounded-lg border bg-background"
+                        style={{ borderColor: status.color, backgroundColor: `${status.color}20` }}
                       >
                         <div 
                           className="size-2.5 rounded-full"
                           style={{ backgroundColor: status.color }}
                         />
-                        <span className="text-sm font-medium">{status.name}</span>
-                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                          {STATUS_TYPE_CONFIG[status.statusType as StatusType]?.label || status.statusType}
-                        </Badge>
+                        <span className="text-xs font-medium">{status.name}</span>
+                       
                       </div>
                     ))}
                   </div>
@@ -273,11 +229,11 @@ export const ProjectWorkflowClient = () => {
               </p>
               {isAdmin && (
                 <div className="flex items-center gap-2">
-                  <Button onClick={() => setIsSelectWorkflowOpen(true)} className="gap-2">
-                    <Plus className="size-4" />
+                  <Button size={"xs"} onClick={() => setIsSelectWorkflowOpen(true)} className="gap-2">
+                    <Plus className="size-2" />
                     Assign Workflow
                   </Button>
-                  <Button variant="outline" onClick={handleCreateProjectWorkflow} className="gap-2">
+                  <Button variant="outline" size={"xs"} onClick={handleCreateProjectWorkflow} className="gap-2">
                     <Plus className="size-4" />
                     Create New
                   </Button>
@@ -288,41 +244,80 @@ export const ProjectWorkflowClient = () => {
         </CardContent>
       </Card>
 
-      {/* Info Alert */}
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertTitle>How Project Workflows Work</AlertTitle>
-        <AlertDescription className="text-sm">
-          <ul className="list-disc list-inside mt-2 space-y-1">
-            <li>Each project can have its own dedicated workflow</li>
-            <li>When you create a new status in the project, it will be added to this workflow</li>
-            <li>You can also use a shared workflow from the space or workspace</li>
-            <li>Work items will only be able to move between statuses defined in the workflow</li>
-          </ul>
-        </AlertDescription>
-      </Alert>
+      {/* How Project Workflows Work */}
+      <div className="rounded-xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-background p-5">
+        <div className="flex items-center gap-2.5 mb-5">
+          <div className="p-1.5 rounded-lg ">
+            <Info className="h-4 w-4 text-primary" />
+          </div>
+          <h3 className="font-medium text-sm ">How Project Workflows Work</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {[
+            {
+              icon: GitBranch,
+              title: "Dedicated Workflows",
+              text: "Each project can have its own dedicated workflow for full control.",
+              color: "text-violet-500",
+              bg: "bg-violet-500/10",
+            },
+            {
+              icon: Plus,
+              title: "Auto-synced Statuses",
+              text: "New statuses created in the project are added to this workflow automatically.",
+              color: "text-emerald-500",
+              bg: "bg-emerald-500/10",
+            },
+            {
+              icon: Layers,
+              title: "Shared Workflows",
+              text: "You can use a shared workflow from the space or workspace level.",
+              color: "text-blue-500",
+              bg: "bg-blue-500/10",
+            },
+            {
+              icon: ArrowRight,
+              title: "Controlled Transitions",
+              text: "Work items can only transition between statuses defined in the workflow.",
+              color: "text-orange-500",
+              bg: "bg-orange-500/10",
+            },
+          ].map(({ icon: Icon, title, text, color, bg }) => (
+            <div
+              key={title}
+              className="flex items-start gap-3 p-3.5 rounded-lg bg-background/70 border border-border/40 hover:bg-background/90 transition-colors"
+            >
+              <div className={`p-1.5 rounded-md ${bg} shrink-0 mt-0.5`}>
+                <Icon className={`size-3.5 ${color}`} />
+              </div>
+              <div>
+                <p className="text-sm font-medium  mb-0.5">{title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Available Workflows */}
-      <Card>
-        <CardHeader>
+      <Card className="shadow-none">
+        <CardHeader className="pb-6">
           <div className="flex items-center gap-2">
-            <Workflow className="size-5 text-primary" />
-            <CardTitle>Available Workflows</CardTitle>
+            <Workflow className="size-5 text-medium text-primary" />
+            <CardTitle className="font-medium tracking-normal">Available Workflows</CardTitle>
           </div>
           <CardDescription>
             Workflows you can assign to this project
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="px-0 pb-1">
           {spaceWorkflows.length > 0 && (
-            <div className="space-y-3">
-              <h5 className="text-sm font-medium flex items-center gap-2">
-                <Badge variant="outline" className="font-normal">Space</Badge>
-                Workflows from Space
-              </h5>
-              <div className="grid gap-3 md:grid-cols-2">
+            <div className="mb-1 border-t">
+              {/* Section header */}
+           
+              <div className="divide-y divide-border/50">
                 {spaceWorkflows.map((workflow) => (
-                  <WorkflowCard
+                  <WorkflowRow
                     key={workflow.$id}
                     workflow={workflow}
                     isActive={project.workflowId === workflow.$id}
@@ -339,14 +334,15 @@ export const ProjectWorkflowClient = () => {
           )}
 
           {workspaceWorkflows.length > 0 && (
-            <div className="space-y-3">
-              <h5 className="text-sm font-medium flex items-center gap-2">
-                <Badge variant="outline" className="font-normal">Workspace</Badge>
-                Global Workflows
-              </h5>
-              <div className="grid gap-3 md:grid-cols-2">
+            <div className="mb-1">
+              {/* Section header */}
+              <div className="flex items-center gap-2 px-6 py-2 border-y bg-muted/30">
+                <Badge variant="outline" className="font-normal text-xs">Workspace</Badge>
+                <span className="text-xs text-muted-foreground font-medium">Global Workflows</span>
+              </div>
+              <div className="divide-y divide-border/50">
                 {workspaceWorkflows.map((workflow) => (
-                  <WorkflowCard
+                  <WorkflowRow
                     key={workflow.$id}
                     workflow={workflow}
                     isActive={project.workflowId === workflow.$id}
@@ -363,7 +359,7 @@ export const ProjectWorkflowClient = () => {
           )}
 
           {workflows.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-10 text-muted-foreground text-sm px-6">
               No workflows available. Create one to get started.
             </div>
           )}
@@ -447,7 +443,7 @@ export const ProjectWorkflowClient = () => {
   );
 };
 
-// Workflow Card Component
+// Workflow Row Component (list design)
 interface WorkflowCardProps {
   workflow: {
     $id: string;
@@ -463,52 +459,80 @@ interface WorkflowCardProps {
   onEdit: () => void;
 }
 
-const WorkflowCard = ({ workflow, isActive, isAdmin, onSelect, onEdit }: WorkflowCardProps) => {
+const WorkflowRow = ({ workflow, isActive, isAdmin, onSelect, onEdit }: WorkflowCardProps) => {
   return (
-    <Card className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'border-primary ring-1 ring-primary' : ''}`}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <GitBranch className="size-4 text-primary" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="font-medium">{workflow.name}</h4>
-                {isActive && (
-                  <Badge variant="default" className="text-xs">
-                    Active
-                  </Badge>
-                )}
-                {workflow.isDefault && (
-                  <Badge variant="secondary" className="text-xs">
-                    Default
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground line-clamp-1">
-                {workflow.description || "No description"}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex items-center justify-between mt-3 pt-3 border-t">
-          <Badge variant="outline" className="text-xs">
-            {workflow.statusCount || 0} statuses
-          </Badge>
-          {isAdmin && !isActive && (
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onSelect(); }}>
-              Use This
-            </Button>
+    <div
+      className={`group flex items-center gap-4 px-6 py-3.5 transition-colors hover:bg-muted/30 ${
+        isActive ? "bg-primary/5" : ""
+      }`}
+    >
+      {/* Active indicator */}
+      <div
+        className={`size-2 rounded-full shrink-0 transition-colors ${
+          isActive ? "!bg-blue-500" : "bg-muted-foreground/25 group-hover:bg-muted-foreground/40"
+        }`}
+      />
+
+      {/* Icon */}
+      <div className={`p-1.5 rounded-md shrink-0 ${isActive ? "bg-primary/10" : "bg-muted/60"}`}>
+        <GitBranch className={`size-3.5 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+      </div>
+
+      {/* Name & description */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium truncate">{workflow.name}</span>
+          {isActive && (
+            <Badge className="text-[10px] bg-blue-500/20 text-blue-600 px-1.5 py-0 h-4 gap-1">
+              <CheckCircle2 className="size-2.5" />
+              Active
+            </Badge>
           )}
-          {isAdmin && isActive && (
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-              Edit
-            </Button>
+          {workflow.isDefault && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+              Default
+            </Badge>
           )}
         </div>
-      </CardContent>
-    </Card>
+        <p className="text-xs text-muted-foreground truncate mt-0.5">
+          {workflow.description || "No description"}
+        </p>
+      </div>
+
+      {/* Key */}
+      {workflow.key && (
+        <span className="text-xs font-mono text-muted-foreground/60 hidden md:block shrink-0">
+          {workflow.key}
+        </span>
+      )}
+
+      {/* Status count */}
+      <Badge variant="outline" className="text-xs text-medium text-green-500 bg-green-200/40 rounded-md border-none shadow-sm shrink-0 hidden sm:flex h-6">
+        {workflow.statusCount || 0} statuses
+      </Badge>
+
+      {/* Action buttons */}
+      <div className="shrink-0">
+        {isAdmin && !isActive && (
+          <Button
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); onSelect(); }}
+            className="bg-blue-100/60 text-blue-600 hover:bg-blue-200/50 text-xs h-7 px-3 font-medium"
+          >
+            Use This
+          </Button>
+        )}
+        {isAdmin && isActive && (
+          <Button
+            variant="destructive"
+            size="xs"
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="text-[10px] px-6"
+          >
+            Edit
+          </Button>
+        )}
+      </div>
+    </div>
   );
 };

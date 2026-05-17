@@ -122,19 +122,37 @@ export const BILLING_CURRENCY = process.env.BILLING_CURRENCY || "USD";
 
 // ===============================
 // Trial Credit Configuration
-/** Trial credit amount in USD (e.g., 30 = $30.00). Configurable via env. */
-export const TRIAL_CREDIT_USD = (() => {
-    const val = process.env.NEXT_PUBLIC_TRIAL_CREDIT_USD || process.env.TRIAL_CREDIT_USD || "30";
+/** Organization trial credit amount in USD (default: $30.00). */
+export const ORG_TRIAL_CREDIT_USD = (() => {
+    const val = process.env.NEXT_PUBLIC_ORG_TRIAL_CREDIT_USD || process.env.ORG_TRIAL_CREDIT_USD || "30";
     const parsed = parseFloat(val);
     return isNaN(parsed) ? 30 : parsed;
 })();
 
-/** Trial duration in days. Configurable via env. */
-export const TRIAL_CREDIT_DAYS = (() => {
-    const val = process.env.TRIAL_CREDIT_DAYS || "60";
+/** Organization trial duration in days (default: 60). */
+export const ORG_TRIAL_CREDIT_DAYS = (() => {
+    const val = process.env.ORG_TRIAL_CREDIT_DAYS || "60";
     const parsed = parseInt(val, 10);
     return isNaN(parsed) ? 60 : parsed;
 })();
+
+/** Personal trial credit amount in USD (default: $10.00). */
+export const PERSONAL_TRIAL_CREDIT_USD = (() => {
+    const val = process.env.NEXT_PUBLIC_PERSONAL_TRIAL_CREDIT_USD || process.env.PERSONAL_TRIAL_CREDIT_USD || "10";
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? 10 : parsed;
+})();
+
+/** Personal trial duration in days (default: 60). */
+export const PERSONAL_TRIAL_CREDIT_DAYS = (() => {
+    const val = process.env.PERSONAL_TRIAL_CREDIT_DAYS || "60";
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) ? 60 : parsed;
+})();
+
+// Legacy Aliases
+export const TRIAL_CREDIT_USD = ORG_TRIAL_CREDIT_USD;
+export const TRIAL_CREDIT_DAYS = ORG_TRIAL_CREDIT_DAYS;
 
 // ===============================
 // Wallet Security Configuration

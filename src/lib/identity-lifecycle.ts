@@ -382,12 +382,11 @@ async function resolveUserLifecycleStateInternal(
     // ROUND 1: Fetch org membership + workspace membership IN PARALLEL
     // These two are completely independent of each other
     const [orgMembershipResult, workspaceMembershipResult] = await Promise.all([
-        // Query 1: Org membership
-        accountType === "ORG"
-            ? databases.listDocuments(DATABASE_ID, ORGANIZATION_MEMBERS_ID, [Query.equal("userId", user.$id)]).catch(() => ({ documents: [] as Record<string, string>[], total: 0 }))
-            : Promise.resolve({ documents: [] as Record<string, string>[], total: 0 }),
+        // Query 1: Org membership - ALWAYS fetch to detect invitations/memberships
+        // This is critical for users who are invited but haven't set their accountType yet
+        databases.listDocuments(DATABASE_ID, ORGANIZATION_MEMBERS_ID, [Query.equal("userId", user.$id)]).catch(() => ({ documents: [] as Models.Document[], total: 0 })),
         // Query 2: Workspace membership
-        databases.listDocuments(DATABASE_ID, MEMBERS_ID, [Query.equal("userId", user.$id), Query.limit(1)]).catch(() => ({ documents: [], total: 0 })),
+        databases.listDocuments(DATABASE_ID, MEMBERS_ID, [Query.equal("userId", user.$id), Query.limit(1)]).catch(() => ({ documents: [] as Models.Document[], total: 0 })),
     ]);
 
     // Process workspace membership result
@@ -397,7 +396,9 @@ async function resolveUserLifecycleStateInternal(
     }
 
     // Process org membership result
-    if (accountType === "ORG" && orgMembershipResult.total > 0) {
+    // We check memberships even if accountType is PERSONAL or null to detect invitations
+    let effectiveAccountType = accountType;
+    if (orgMembershipResult.total > 0) {
         const primaryMembership = orgMembershipResult.documents.find(m => m.organizationId === orgId)
             || orgMembershipResult.documents[0];
 
@@ -405,18 +406,22 @@ async function resolveUserLifecycleStateInternal(
         orgId = primaryMembership.organizationId;
         orgRole = primaryMembership.role as typeof orgRole;
         orgMemberStatus = primaryMembership.status as OrgMemberStatus;
+
+        // CRITICAL: If user has an org membership, treat as ORG account regardless of preference.
+        // This ensures invited members see the restricted views even if they previously chose PERSONAL.
+        effectiveAccountType = "ORG";
     }
 
     // ROUND 2: Fetch org doc + billing IN PARALLEL
     // Both depend on orgId from Round 1, but are independent of each other
-    const orgDocPromise = (accountType === "ORG" && hasOrg && orgId)
+    const orgDocPromise = (effectiveAccountType === "ORG" && hasOrg && orgId)
         ? databases.getDocument(DATABASE_ID, ORGANIZATIONS_ID, orgId).catch(() => null)
         : Promise.resolve(null);
 
     const billingPromise = (() => {
-        if (accountType === "ORG" && orgId) {
+        if (effectiveAccountType === "ORG" && orgId) {
             return databases.listDocuments(DATABASE_ID, BILLING_ACCOUNTS_ID, [Query.equal("organizationId", orgId), Query.limit(1)]).catch(() => ({ documents: [], total: 0 }));
-        } else if (accountType === "PERSONAL") {
+        } else if (effectiveAccountType === "PERSONAL") {
             return databases.listDocuments(DATABASE_ID, BILLING_ACCOUNTS_ID, [Query.equal("userId", user.$id), Query.limit(1)]).catch(() => ({ documents: [], total: 0 }));
         }
         return Promise.resolve({ documents: [] as { status?: string }[], total: 0 });
@@ -487,13 +492,13 @@ async function resolveUserLifecycleStateInternal(
     }
 
     // DERIVE FINAL STATE
-    if (accountType === "PERSONAL") {
+    if (effectiveAccountType === "PERSONAL") {
         if (!hasWorkspace) {
             const routing = getLifecycleRouting(LifecycleState.PERSONAL_ONBOARDING);
             return {
                 state: LifecycleState.PERSONAL_ONBOARDING,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId: null,
                 orgName: null,
                 orgImageUrl: null,
@@ -506,9 +511,9 @@ async function resolveUserLifecycleStateInternal(
                 billingStatus,
                 mustAcceptLegal,
                 legalBlocked: false,
-                isTrialExpired: false,
-                trialCreditGranted: false,
-                trialCreditExpiresAt: null,
+                isTrialExpired: user.prefs?.isTrialExpired === true,
+                trialCreditGranted: user.prefs?.trialCreditGranted === true,
+                trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
                 ...routing,
             };
         }
@@ -517,7 +522,7 @@ async function resolveUserLifecycleStateInternal(
         return {
             state: LifecycleState.PERSONAL_ACTIVE,
             userId: user.$id,
-            accountType,
+            accountType: effectiveAccountType,
             orgId: null,
             orgName: null,
             orgImageUrl: null,
@@ -530,20 +535,20 @@ async function resolveUserLifecycleStateInternal(
             billingStatus,
             mustAcceptLegal,
             legalBlocked: false,
-            isTrialExpired: false,
-            trialCreditGranted: false,
-            trialCreditExpiresAt: null,
+            isTrialExpired: user.prefs?.isTrialExpired === true,
+            trialCreditGranted: user.prefs?.trialCreditGranted === true,
+            trialCreditExpiresAt: user.prefs?.trialCreditExpiresAt ?? null,
             ...routing,
         };
     }
 
-    if (accountType === "ORG") {
+    if (effectiveAccountType === "ORG") {
         if (!hasOrg) {
             const routing = getLifecycleRouting(LifecycleState.ORG_OWNER_ONBOARDING);
             return {
                 state: LifecycleState.ORG_OWNER_ONBOARDING,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId: null,
                 orgName: null,
                 orgImageUrl: null,
@@ -568,7 +573,7 @@ async function resolveUserLifecycleStateInternal(
             return {
                 state: LifecycleState.ORG_MEMBER_PENDING,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId,
                 orgName,
                 orgImageUrl,
@@ -594,7 +599,7 @@ async function resolveUserLifecycleStateInternal(
                 return {
                     state: LifecycleState.ORG_OWNER_NO_WORKSPACE,
                     userId: user.$id,
-                    accountType,
+                    accountType: effectiveAccountType,
                     orgId,
                     orgName,
                     orgImageUrl,
@@ -618,7 +623,7 @@ async function resolveUserLifecycleStateInternal(
             return {
                 state: LifecycleState.ORG_OWNER_ACTIVE,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId,
                 orgName,
                 orgImageUrl,
@@ -644,7 +649,7 @@ async function resolveUserLifecycleStateInternal(
                 return {
                     state: LifecycleState.ORG_ADMIN_NO_WORKSPACE,
                     userId: user.$id,
-                    accountType,
+                    accountType: effectiveAccountType,
                     orgId,
                     orgName,
                     orgImageUrl,
@@ -668,7 +673,7 @@ async function resolveUserLifecycleStateInternal(
             return {
                 state: LifecycleState.ORG_ADMIN_ACTIVE,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId,
                 orgName,
                 orgImageUrl,
@@ -693,7 +698,7 @@ async function resolveUserLifecycleStateInternal(
             return {
                 state: LifecycleState.ORG_MEMBER_NO_WORKSPACE,
                 userId: user.$id,
-                accountType,
+                accountType: effectiveAccountType,
                 orgId,
                 orgName,
                 orgImageUrl,
@@ -717,7 +722,7 @@ async function resolveUserLifecycleStateInternal(
         return {
             state: LifecycleState.ORG_MEMBER_ACTIVE,
             userId: user.$id,
-            accountType,
+            accountType: effectiveAccountType,
             orgId,
             orgName,
             orgImageUrl,
@@ -741,7 +746,7 @@ async function resolveUserLifecycleStateInternal(
     return {
         state: LifecycleState.UNAUTHENTICATED,
         userId: user.$id,
-        accountType,
+        accountType: effectiveAccountType,
         orgId: null,
         orgName: null,
         orgImageUrl: null,
