@@ -1653,6 +1653,77 @@ const app = new Hono()
         }
       }
 
+      // =========================================
+      // Create workflow statuses from project statuses that don't exist yet
+      // This bootstraps an empty workflow with the project's status columns
+      // =========================================
+      const existingStatusKeys = new Set(workflowStatuses.documents.map((s: WorkflowStatus) => s.key));
+      const existingStatusNames = new Set(workflowStatuses.documents.map((s: WorkflowStatus) => s.name.toLowerCase()));
+      const alreadyHasInitial = workflowStatuses.documents.some((s: WorkflowStatus) => s.isInitial);
+
+      const visibleProjectStatuses = allProjectStatuses.filter(ps => ps.isVisible);
+      let createdCount = 0;
+
+      for (let i = 0; i < visibleProjectStatuses.length; i++) {
+        const ps = visibleProjectStatuses[i];
+        if (existingStatusKeys.has(ps.key) || existingStatusNames.has(ps.name.toLowerCase())) {
+          continue; // Already exists in workflow
+        }
+
+        const upperKey = ps.key.toUpperCase();
+        let statusType: StatusType = StatusType.IN_PROGRESS;
+        let isFinal = false;
+
+        if (upperKey === "TODO" || upperKey === "BACKLOG" || upperKey === "ASSIGNED") {
+          statusType = StatusType.OPEN;
+        } else if (
+          upperKey === "DONE" ||
+          upperKey === "CLOSED" ||
+          upperKey === "CANCELLED" ||
+          upperKey === "COMPLETED"
+        ) {
+          statusType = StatusType.CLOSED;
+          isFinal = true;
+        }
+
+        // Only mark initial if no existing status is already initial AND this is the first one we're creating
+        const isInitial = !alreadyHasInitial && createdCount === 0;
+        const category =
+          statusType === StatusType.CLOSED
+            ? "DONE"
+            : statusType === StatusType.OPEN
+              ? "TODO"
+              : "IN_PROGRESS";
+
+        await databases.createDocument<WorkflowStatus>(
+          DATABASE_ID,
+          WORKFLOW_STATUSES_ID,
+          ID.unique(),
+          {
+            workspaceId: workflow.workspaceId,
+            workflowId,
+            name: ps.name,
+            key: ps.key,
+            icon: ps.icon || "Circle",
+            color: ps.color || "#6B7280",
+            statusType,
+            category,
+            description: "",
+            position: (workflowStatuses.documents.length - deletedCount) + createdCount,
+            positionX: 100 + (createdCount * 250),
+            positionY: 100,
+            isInitial,
+            isFinal,
+          },
+          [
+            Permission.read(Role.user(user.$id)),
+            Permission.write(Role.user(user.$id)),
+            Permission.delete(Role.user(user.$id)),
+          ]
+        );
+        createdCount++;
+      }
+
       // Clean up stale customWorkItemTypes entries
       // Only keep entries that match defaults or custom columns
       const validStatusNames = new Set(allProjectStatuses.map(s => s.name.toLowerCase()));
@@ -1679,6 +1750,7 @@ const app = new Hono()
           project: updatedProject,
           workflow: workflow,
           deletedStatuses: deletedCount,
+          createdStatuses: createdCount,
         },
       });
     }
