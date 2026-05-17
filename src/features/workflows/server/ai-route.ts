@@ -236,26 +236,42 @@ const app = new Hono()
         // Get AI answer
         const answer = await workflowAI.answerWorkflowQuestion(question, context);
 
-        // Extract potential JSON action from the answer
+        // Extract potential JSON action from the trailing JSON block in the answer.
+        // Walk backward from the last '}' so we never greedily strip explanation text.
         let action: WorkflowAIAction | undefined = undefined;
+        let cleanAnswer = answer;
         try {
-          const jsonMatch = answer.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.actionType === "suggest_workflow") {
-              action = {
-                type: "suggest_workflow",
-                data: parsed.data,
-              };
+          const lastBraceEnd = answer.lastIndexOf("}");
+          if (lastBraceEnd !== -1) {
+            let depth = 0;
+            let braceStart = -1;
+            for (let i = lastBraceEnd; i >= 0; i--) {
+              if (answer[i] === "}") depth++;
+              else if (answer[i] === "{") {
+                depth--;
+                if (depth === 0) { braceStart = i; break; }
+              }
+            }
+            if (braceStart !== -1) {
+              const jsonStr = answer.slice(braceStart, lastBraceEnd + 1);
+              const parsed = JSON.parse(jsonStr);
+              if (parsed.actionType === "suggest_workflow") {
+                action = {
+                  type: "suggest_workflow",
+                  data: parsed.data,
+                };
+                // Strip only this trailing JSON block from the visible answer
+                cleanAnswer = answer.slice(0, braceStart).trim();
+              }
             }
           }
         } catch {
-          // Ignore parse errors, just return text answer
+          // Ignore parse errors, keep full answer text
         }
 
         const response: WorkflowAIAnswer = {
           question,
-          answer: answer.replace(/\{[\s\S]*\}/, "").trim(), // Strip JSON from text answer
+          answer: cleanAnswer,
           timestamp: new Date().toISOString(),
           contextUsed: {
             statusesCount: context.summary.totalStatuses,
