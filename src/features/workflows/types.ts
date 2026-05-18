@@ -528,15 +528,18 @@ export function convertStatusesToNodes(
   onRemove?: (id: string) => void,
   isPreview?: boolean
 ): StatusNode[] {
-  // Only render statuses that have valid canvas positions
-  const canvasStatuses = statuses.filter(hasCanvasPosition);
+  // For preview (AI suggestions), show all; otherwise require canvas positions
+  const canvasStatuses = isPreview ? statuses : statuses.filter(hasCanvasPosition);
   
-  return canvasStatuses.map((status: WorkflowStatusLike) => {
+  return canvasStatuses.map((status: WorkflowStatusLike, index: number) => {
     const nodeId = status.$id || status.key; // Use key as stable ID for suggestions
+    // Auto-assign staggered positions for AI suggestion nodes that lack coordinates
+    const x = status.positionX || (isPreview ? 100 + index * 260 : (status.position ? status.position * 280 : 100));
+    const y = status.positionY || (isPreview ? 400 : 150);
     return {
       id: nodeId,
       type: "statusNode",
-      position: { x: status.positionX || (status.position ? status.position * 280 : 100), y: status.positionY || 150 },
+      position: { x, y },
       data: {
         id: nodeId,
         name: status.name,

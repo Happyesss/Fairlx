@@ -58,16 +58,31 @@ export const ManageColumnsForm = ({ onCancel }: ManageColumnsFormProps) => {
     workflowId: project?.workflowId || ""
   });
 
-  // Create a list of workflow-based columns
+  // Must be declared before workflowColumns useMemo since the memo filters against it
+  const { data: customColumns, isLoading: isLoadingColumns } = useGetCustomColumns({
+    workspaceId,
+    projectId: projectId || ""
+  });
+
+  // Create a list of workflow-based columns, excluding any that are already
+  // represented as project-level custom columns (auto-synced from workflow statuses).
   const workflowColumns = useMemo(() => {
     if (!workflowStatusesData?.documents) return [];
-    return workflowStatusesData.documents.map(status => ({
-      id: status.key as TaskStatus,
-      name: status.name,
-      color: status.color,
-      statusType: status.statusType,
-    }));
-  }, [workflowStatusesData]);
+
+    // Build a set of custom column names for this project (lower-cased for comparison)
+    const customColumnNames = new Set(
+      (customColumns?.documents || []).map(col => col.name.toLowerCase())
+    );
+
+    return workflowStatusesData.documents
+      .filter(status => !customColumnNames.has(status.name.toLowerCase()))
+      .map(status => ({
+        id: status.key as TaskStatus,
+        name: status.name,
+        color: status.color,
+        statusType: status.statusType,
+      }));
+  }, [workflowStatusesData, customColumns]);
 
   // Track pending changes
   const [pendingColumnToggles, setPendingColumnToggles] = useState<Set<TaskStatus>>(new Set());
@@ -77,10 +92,6 @@ export const ManageColumnsForm = ({ onCancel }: ManageColumnsFormProps) => {
 
   const { mutate: createColumn, isPending: isCreating } = useCreateCustomColumn();
   const { mutate: deleteColumn, isPending: isDeleting } = useDeleteCustomColumn();
-  const { data: customColumns, isLoading: isLoadingColumns } = useGetCustomColumns({
-    workspaceId,
-    projectId: projectId || ""
-  });
   const { mutate: moveTasksFromDisabledColumn } = useMoveTasksFromDisabledColumn();
 
   const {

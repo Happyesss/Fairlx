@@ -189,7 +189,15 @@ export class AIService {
       }
 
       const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      // gemini-2.5-flash (and other thinking models) returns multiple parts:
+      // thought parts (thought: true) contain internal reasoning and must be excluded;
+      // only non-thought parts carry the actual output text.
+      const parts: Array<{ text?: string; thought?: boolean }> =
+        data.candidates?.[0]?.content?.parts || [];
+      const text = parts
+        .filter((p) => !p.thought)
+        .map((p) => p.text || "")
+        .join("") || "";
 
       // Extract token usage from Gemini usageMetadata
       const usageMetadata = data.usageMetadata;
