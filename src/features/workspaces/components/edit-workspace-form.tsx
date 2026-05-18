@@ -95,16 +95,16 @@ export const EditWorkspaceForm = ({
 
 
   return (
-    <div className="w-full max-w-3xl space-y-8">
+    <div className="w-full  space-y-8">
       <DeleteDialog />
 
       {/* Page Header */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center size-10 rounded-lg bg-primary/10">
-          <Settings className="size-5 text-primary" />
+        <div className="flex items-center justify-center size-10 rounded-lg bg-blue-500/10">
+          <Settings className="size-5 text-blue-500 " />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Workspace Settings</h1>
+          <h1 className="text-2xl font-semibold">Workspace Settings</h1>
           <p className="text-sm text-muted-foreground">
             Manage your workspace identity and configuration
           </p>
@@ -241,7 +241,7 @@ export const EditWorkspaceForm = ({
                       variant="outline"
                       onClick={onCancel}
                       disabled={isPending}
-                      size="sm"
+                      size="xs"
                     >
                       Cancel
                     </Button>
@@ -249,7 +249,7 @@ export const EditWorkspaceForm = ({
                   <Button
                     type="submit"
                     disabled={isPending}
-                    size="sm"
+                    size="xs"
                   >
                     Save Changes
                   </Button>
@@ -280,7 +280,7 @@ export const EditWorkspaceForm = ({
               </p>
             </div>
             <Button
-              size="sm"
+              size="xs"
               variant="destructive"
               type="button"
               disabled={isPending || isDeletingWorkspace}
