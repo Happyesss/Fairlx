@@ -198,8 +198,8 @@ export const ActivityLogList = ({ activities, isLoading }: ActivityLogListProps)
   return (
     <ScrollArea className="h-[600px]">
       <div className="space-y-1">
-        {activities.map((activity) => (
-          <ActivityLogItem key={activity.id} {...activity} />
+        {activities.map((activity, index) => (
+          <ActivityLogItem key={`${activity.id}-${index}`} {...activity} />
         ))}
       </div>
     </ScrollArea>

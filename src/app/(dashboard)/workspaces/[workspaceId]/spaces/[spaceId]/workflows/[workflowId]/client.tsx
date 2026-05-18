@@ -119,7 +119,7 @@ const WorkflowEditor = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const hasSyncedOnMount = useRef(false);
-  const hasAutoSyncedProjects = useRef(false);
+  const _hasAutoSyncedProjects = useRef(false);
   useEffect(() => {
     if (!hasSyncedOnMount.current && workflowId) {
       hasSyncedOnMount.current = true;
@@ -135,8 +135,11 @@ const WorkflowEditor = () => {
   const { mutateAsync: updateTransition } = useUpdateTransition();
   const { mutateAsync: deleteTransitionMutation } = useDeleteTransition();
   const { mutate: updateProject, isPending: isUpdatingProject } = useUpdateProject();
-  const { mutate: syncFromProject, isPending: isSyncing } = useSyncFromProject();
+  const { mutate: syncFromProject } = useSyncFromProject();
   const { mutate: syncWithResolution } = useSyncWithResolution();
+
+  // Track which project is currently syncing (instead of a single global boolean)
+  const [syncingProjectId, setSyncingProjectId] = useState<string | null>(null);
 
   const projects = useMemo(() => {
     if (!projectsData?.documents) return [];
@@ -148,15 +151,6 @@ const WorkflowEditor = () => {
     [projects, workflowId]
   );
 
-  useEffect(() => {
-    if (!hasAutoSyncedProjects.current && connectedProjects.length > 0 && !workflowLoading) {
-      hasAutoSyncedProjects.current = true;
-      const projectToSync = connectedProjects[0];
-      if (projectToSync) {
-        syncFromProject({ param: { workflowId, projectId: projectToSync.$id } });
-      }
-    }
-  }, [connectedProjects, workflowLoading, workflowId, syncFromProject]);
 
   const connectedProjectIds = useMemo(
     () => connectedProjects.map((p) => p.$id),
@@ -424,6 +418,28 @@ const WorkflowEditor = () => {
     handleEdgeEdit, handleEdgeDelete,
   ]);
 
+  // ── auto-fit to preview nodes when preview mode activates ────────────────
+  const hasAutoFittedPreview = useRef(false);
+  useEffect(() => {
+    if (!previewSuggestion) {
+      hasAutoFittedPreview.current = false;
+      return;
+    }
+    if (hasAutoFittedPreview.current) return;
+    const previewNodes = nodes.filter((n) => (n.data as StatusNodeData)?.isPreview);
+    if (previewNodes.length === 0) return;
+    hasAutoFittedPreview.current = true;
+    const timer = setTimeout(() => {
+      reactFlowInstance.fitView({
+        nodes: previewNodes.map((n) => ({ id: n.id })),
+        duration: 700,
+        padding: 0.35,
+      });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [nodes, previewSuggestion, reactFlowInstance]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const handleDelete = async () => {
     const ok = await confirmDelete();
     if (!ok) return;
@@ -445,12 +461,11 @@ const WorkflowEditor = () => {
         {
           onSuccess: () => {
             setConnectProjectOpen(false);
-            syncFromProject({ param: { workflowId, projectId } });
           },
         }
       );
     },
-    [workflowId, updateProject, syncFromProject, syncWithResolution]
+    [workflowId, updateProject, syncWithResolution]
   );
 
   const handleDisconnectProject = useCallback(
@@ -463,7 +478,13 @@ const WorkflowEditor = () => {
   );
 
   const handleSyncFromProject = useCallback(
-    (projectId: string) => syncFromProject({ param: { workflowId, projectId } }),
+    (projectId: string) => {
+      setSyncingProjectId(projectId);
+      syncFromProject(
+        { param: { workflowId, projectId } },
+        { onSettled: () => setSyncingProjectId(null) }
+      );
+    },
     [workflowId, syncFromProject]
   );
 
@@ -739,15 +760,15 @@ const WorkflowEditor = () => {
                   <Button
                     size="sm"
                     className="h-7 px-3 text-xs bg-purple-600 hover:bg-purple-700"
-                    onClick={() => { handleApplyFullWorkflow(previewSuggestion); setPreviewSuggestion(null); }}
+                    onClick={() => { handleApplyFullWorkflow(previewSuggestion); setPreviewSuggestion(null); setPanelOpen(true); }}
                   >
-                    Apply All
+                    Apply
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-7 px-3 text-xs"
-                    onClick={() => setPreviewSuggestion(null)}
+                    onClick={() => { setPreviewSuggestion(null); setPanelOpen(true); }}
                   >
                     Exit
                   </Button>
@@ -845,16 +866,7 @@ const WorkflowEditor = () => {
             </>
           )}
 
-          {/* Toggle side panel */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setPanelOpen((o) => !o)}
-            title={panelOpen ? "Hide panel" : "Show panel"}
-          >
-            {panelOpen ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-          </Button>
+
         </div>
       </div>
 
@@ -864,6 +876,18 @@ const WorkflowEditor = () => {
           Slides in/out with a CSS transition.
           Does NOT affect canvas width — canvas always stays full-bleed.
       */}
+
+      {/* Floating tab to reopen panel when it is closed */}
+      {!panelOpen && (
+        <button
+          onClick={() => setPanelOpen(true)}
+          title="Open panel"
+          className="absolute top-[100px] right-0 z-30 flex items-center justify-center w-6 h-12 bg-background/90 backdrop-blur border border-r-0 rounded-l-lg shadow-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <ChevronLeft className="size-3.5" />
+        </button>
+      )}
+
      <div
 className="
   absolute top-[88px] right-5 bottom-5 z-20
@@ -884,9 +908,9 @@ className="
         {/* Inner wrapper keeps content at full width so it doesn't squish during animation */}
         <div className="flex flex-col h-full" style={{ width: `${PANEL_WIDTH}px` }}>
           <Tabs defaultValue="builder" className="flex flex-col h-full">
-            {/* Tab headers */}
-<div className="px-4 pt-4 pb-2 shrink-0">
-<TabsList className="grid w-full grid-cols-2 h-11 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] p-1">                <TabsTrigger value="builder" className="
+            {/* Tab headers + close button */}
+<div className="flex items-center gap-1 px-4 pt-4 pb-2 shrink-0">
+<TabsList className="grid flex-1 grid-cols-2 h-11 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] p-1">                <TabsTrigger value="builder" className="
   text-xs gap-1.5 rounded-lg py-1
   data-[state=active]:bg-blue-600/10
   data-[state=active]:text-blue-600
@@ -911,6 +935,15 @@ className="
                   AI Assistant
                 </TabsTrigger>
               </TabsList>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setPanelOpen(false)}
+                title="Close panel"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
             </div>
 
             {/* Builder tab */}
@@ -963,7 +996,7 @@ className="
                   onConnectProject={() => setConnectProjectOpen(true)}
                   onDisconnectProject={handleDisconnectProject}
                   onSyncFromProject={handleSyncFromProject}
-                  isSyncing={isSyncing}
+                  syncingProjectId={syncingProjectId ?? undefined}
                   onRemoveStatus={handleRemoveStatus}
                 />
               </div>
@@ -987,6 +1020,8 @@ className="
                   } else {
                     setPreviewSuggestion({ statuses: [], transitions: [suggestion as TransitionSuggestion] });
                   }
+                  // Hide the panel so the full canvas is visible in preview mode
+                  setPanelOpen(false);
                 }}
                 onApplyFullWorkflow={handleApplyFullWorkflow}
               />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, MoreVertical, Pencil, Trash2, FolderKanban, Calendar, ArrowRight, Target, TrendingUp, Clock, Search, Filter, Grid3x3, List } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, FolderKanban, Calendar, ArrowRight, Target, TrendingUp, Clock, Search, Filter, Grid3x3, List, Info, CheckCircle2, Users, Layers, BarChart3, GitMerge, Milestone } from "lucide-react";
 import Link from "next/link";
 import { useState, useMemo } from "react";
 
@@ -10,6 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -92,6 +98,7 @@ export const ProgramsClient = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const [DeleteDialog, confirmDelete] = useConfirm(
     "Delete Program",
@@ -141,13 +148,120 @@ export const ProgramsClient = () => {
       <CreateProgramModal />
       <EditProgramModal />
 
+      {/* Programs Info Modal */}
+      <Dialog open={showInfoModal} onOpenChange={setShowInfoModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-xl">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                <FolderKanban className="size-5 text-purple-600" />
+              </div>
+              What is a Program?
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-2">
+            {/* Hero description */}
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              A <strong className="text-foreground">Program</strong> is a strategic umbrella that groups related projects together under a shared objective. It gives your organization a bird&apos;s-eye view of work that spans multiple teams, timelines, and deliverables.
+            </p>
+
+            {/* Key concepts */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { icon: Layers, color: "purple", title: "Multi-Project Oversight", desc: "Bundle related projects so stakeholders see progress in one place instead of switching between boards." },
+                { icon: Milestone, color: "blue", title: "Milestones", desc: "Define key delivery checkpoints — e.g. Beta Launch, Go-Live — shared across every project in the program." },
+                { icon: Users, color: "emerald", title: "Cross-team Members", desc: "Add contributors from any project team so everyone working on the initiative is visible." },
+                { icon: BarChart3, color: "amber", title: "Analytics", desc: "Rolled-up completion rates, task counts, and timeline health for the entire program at a glance." },
+              ].map(({ icon: Icon, color, title, desc }) => (
+                <div key={title} className={`p-4 rounded-xl border bg-${color}-500/5 border-${color}-500/20`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon className={`size-4 text-${color}-600 dark:text-${color}-400`} />
+                    <p className="text-sm font-semibold">{title}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Industry examples */}
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <GitMerge className="size-4 text-muted-foreground" />
+                How it works in industry
+              </h4>
+              <div className="space-y-3">
+                {[
+                  {
+                    company: "Product Company",
+                    program: "Q3 Platform Revamp",
+                    projects: ["API v2 Migration", "New Design System", "Mobile App Rewrite"],
+                    color: "purple",
+                  },
+                  {
+                    company: "E-commerce",
+                    program: "Holiday Season Launch",
+                    projects: ["Checkout Optimisation", "Inventory Sync", "Marketing Campaigns"],
+                    color: "pink",
+                  },
+                  {
+                    company: "Enterprise",
+                    program: "Cloud Migration",
+                    projects: ["Infra Lift & Shift", "Data Pipeline Rebuild", "Security Hardening"],
+                    color: "blue",
+                  },
+                ].map((ex) => (
+                  <div key={ex.program} className={`p-3 rounded-lg border bg-${ex.color}-500/5 border-${ex.color}-500/15`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="outline" className="text-[10px]">{ex.company}</Badge>
+                      <p className="text-sm font-medium">{ex.program}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ex.projects.map((proj) => (
+                        <div key={proj} className="flex items-center gap-1 text-[11px] text-muted-foreground bg-background border rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="size-3 text-emerald-500" />
+                          {proj}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
+              <p className="text-sm font-medium mb-1">Ready to get started?</p>
+              <p className="text-xs text-muted-foreground mb-3">Create your first program, link your projects, and start tracking progress at the strategic level.</p>
+              <Button
+                size="sm"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                onClick={() => { setShowInfoModal(false); openCreate(); }}
+              >
+                <Plus className="size-3.5 mr-1.5" />
+                Create a Program
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header with Stats */}
       <div className="space-y-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              Programs
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                Programs
+              </h1>
+              <button
+                onClick={() => setShowInfoModal(true)}
+                className="mt-1 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="What is a Program?"
+              >
+                <Info className="size-4" />
+              </button>
+            </div>
             <p className="text-muted-foreground mt-1.5 text-sm">
               Strategic initiatives that drive your organization forward
             </p>
