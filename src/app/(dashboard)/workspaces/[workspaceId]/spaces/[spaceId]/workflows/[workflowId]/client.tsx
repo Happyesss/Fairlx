@@ -119,7 +119,7 @@ const WorkflowEditor = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const hasSyncedOnMount = useRef(false);
-  const hasAutoSyncedProjects = useRef(false);
+  const _hasAutoSyncedProjects = useRef(false);
   useEffect(() => {
     if (!hasSyncedOnMount.current && workflowId) {
       hasSyncedOnMount.current = true;
@@ -418,6 +418,28 @@ const WorkflowEditor = () => {
     handleEdgeEdit, handleEdgeDelete,
   ]);
 
+  // ── auto-fit to preview nodes when preview mode activates ────────────────
+  const hasAutoFittedPreview = useRef(false);
+  useEffect(() => {
+    if (!previewSuggestion) {
+      hasAutoFittedPreview.current = false;
+      return;
+    }
+    if (hasAutoFittedPreview.current) return;
+    const previewNodes = nodes.filter((n) => (n.data as StatusNodeData)?.isPreview);
+    if (previewNodes.length === 0) return;
+    hasAutoFittedPreview.current = true;
+    const timer = setTimeout(() => {
+      reactFlowInstance.fitView({
+        nodes: previewNodes.map((n) => ({ id: n.id })),
+        duration: 700,
+        padding: 0.35,
+      });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [nodes, previewSuggestion, reactFlowInstance]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const handleDelete = async () => {
     const ok = await confirmDelete();
     if (!ok) return;
@@ -443,7 +465,7 @@ const WorkflowEditor = () => {
         }
       );
     },
-    [workflowId, updateProject, syncFromProject, syncWithResolution]
+    [workflowId, updateProject, syncWithResolution]
   );
 
   const handleDisconnectProject = useCallback(
@@ -738,15 +760,15 @@ const WorkflowEditor = () => {
                   <Button
                     size="sm"
                     className="h-7 px-3 text-xs bg-purple-600 hover:bg-purple-700"
-                    onClick={() => { handleApplyFullWorkflow(previewSuggestion); setPreviewSuggestion(null); }}
+                    onClick={() => { handleApplyFullWorkflow(previewSuggestion); setPreviewSuggestion(null); setPanelOpen(true); }}
                   >
-                    Apply All
+                    Apply
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-7 px-3 text-xs"
-                    onClick={() => setPreviewSuggestion(null)}
+                    onClick={() => { setPreviewSuggestion(null); setPanelOpen(true); }}
                   >
                     Exit
                   </Button>
@@ -998,6 +1020,8 @@ className="
                   } else {
                     setPreviewSuggestion({ statuses: [], transitions: [suggestion as TransitionSuggestion] });
                   }
+                  // Hide the panel so the full canvas is visible in preview mode
+                  setPanelOpen(false);
                 }}
                 onApplyFullWorkflow={handleApplyFullWorkflow}
               />

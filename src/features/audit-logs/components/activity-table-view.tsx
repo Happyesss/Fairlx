@@ -106,7 +106,7 @@ export const ActivityTableView = ({ activities }: ActivityTableViewProps) => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {activities.map((activity) => {
+          {activities.map((activity, index) => {
             const Icon = getActivityIcon(activity.type);
             const colorClass = getActivityColor(activity.action);
 
@@ -124,7 +124,7 @@ export const ActivityTableView = ({ activities }: ActivityTableViewProps) => {
               : "??";
 
             return (
-              <TableRow key={activity.id} className="hover:bg-muted/50">
+              <TableRow key={`${activity.id}-${index}`} className="hover:bg-muted/50">
                 <TableCell className="font-medium text-sm">
                   <div className="flex flex-col">
                     <span>{format(new Date(activity.timestamp), "MMM d, yyyy")}</span>
