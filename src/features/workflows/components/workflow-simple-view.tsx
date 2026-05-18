@@ -118,7 +118,7 @@ interface WorkflowSimpleViewProps {
   onConnectProject?: () => void;
   onDisconnectProject?: (projectId: string) => void;
   onSyncFromProject?: (projectId: string) => void;
-  isSyncing?: boolean;
+  syncingProjectId?: string;
   onDragStatusStart?: (status: WorkflowStatus) => void;
   onRemoveStatus?: (statusId: string) => void;
 }
@@ -171,7 +171,7 @@ export const WorkflowSimpleView = ({
   onConnectProject,
   onDisconnectProject,
   onSyncFromProject,
-  isSyncing = false,
+  syncingProjectId,
   onDragStatusStart,
   onRemoveStatus: _onRemoveStatus,
 }: WorkflowSimpleViewProps) => {
@@ -464,14 +464,14 @@ export const WorkflowSimpleView = ({
                             variant="ghost"
                             size="icon"
                             className="size-6 text-muted-foreground hover:text-primary transition-colors"
-                            disabled={isSyncing}
+                            disabled={syncingProjectId === project.$id}
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               onSyncFromProject(project.$id);
                             }}
                           >
-                            <RefreshCw className={`size-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                            <RefreshCw className={`size-3 ${syncingProjectId === project.$id ? 'animate-spin' : ''}`} />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent size="xs" side="left" sideOffset={8}>Sync statuses from project</TooltipContent>
