@@ -3,11 +3,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wallet, DollarSign, FileText, ExternalLink, Calendar, Loader2, CheckCircle2, AlertTriangle, Info, Plus } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format } from "date-fns";
@@ -21,7 +19,6 @@ import { useGetOrgMembers } from "../api/use-get-org-members";
 import { useUpdateOrganization } from "../api/use-update-organization";
 import { useGetInvoices } from "@/features/usage/api";
 
-// Billing API hooks
 import {
     useGetBillingAccount,
     useGetBillingStatus,
@@ -53,11 +50,9 @@ export function OrganizationBillingSettings({
     });
     const { mutate: updateOrganization } = useUpdateOrganization();
 
-    // Permission check - BILLING_MANAGE required to edit
     const { hasPermission: hasOrgPermission } = useCurrentUserOrgPermissions({ orgId: organizationId });
     const canManageBilling = hasOrgPermission(OrgPermissionKey.BILLING_MANAGE);
 
-    // Billing hooks
     const { data: billingAccountData, isLoading: isBillingLoading } = useGetBillingAccount({
         organizationId,
         enabled: !!organizationId
@@ -75,7 +70,6 @@ export function OrganizationBillingSettings({
     const [isScriptLoaded, setIsScriptLoaded] = useState(false);
     const [topupAmount, setTopupAmount] = useState("");
 
-    // Sync state with organization data
     useEffect(() => {
         if (organization) {
             try {
@@ -83,164 +77,82 @@ export function OrganizationBillingSettings({
                 setBillingEmailValue(settings.primaryEmail || "");
                 setAlternativeEmailValue(settings.alternativeEmail || "");
             } catch {
-                // Failed to parse billing settings
+                // ignore
             }
         }
     }, [organization]);
 
-    // Find organization owner email
     const ownerEmail = membersDoc?.documents.find(m => m.role === "OWNER")?.email;
-
-    // Billing account data
     const billingAccount = billingAccountData?.data;
-
     const invoices = invoicesDoc?.documents || [];
     const isLoading = isOrgLoading || isBillingLoading;
-
-    // Wallet balance from billing account data
     const walletBalance = billingAccountData?.walletBalance ?? 0;
     const walletCurrency = billingAccountData?.walletCurrency ?? "USD";
 
-    // Handler for save billing settings - must be defined before any conditional returns
     const handleSaveBillingSettings = useCallback(async () => {
-        if (!organizationId) {
-            toast.error("Organization ID is required");
-            return;
-        }
+        if (!organizationId) { toast.error("Organization ID is required"); return; }
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
         if (billingEmailValue && !emailRegex.test(billingEmailValue)) {
-            toast.error("Please enter a valid primary email address");
-            return;
+            toast.error("Please enter a valid primary email address"); return;
         }
-
         if (alternativeEmailValue && !emailRegex.test(alternativeEmailValue)) {
-            toast.error("Please enter a valid alternative email address");
-            return;
+            toast.error("Please enter a valid alternative email address"); return;
         }
 
         setIsSaving(true);
-
-        const settings = {
-            primaryEmail: billingEmailValue || ownerEmail,
-            alternativeEmail: alternativeEmailValue
-        };
-
-        updateOrganization({
-            organizationId,
-            billingSettings: JSON.stringify(settings)
-        }, {
-            onSuccess: () => {
-                toast.success("Billing settings updated successfully!");
-                setIsSaving(false);
-            },
-            onError: () => {
-                toast.error("Failed to save billing settings");
-                setIsSaving(false);
-            }
+        const settings = { primaryEmail: billingEmailValue || ownerEmail, alternativeEmail: alternativeEmailValue };
+        updateOrganization({ organizationId, billingSettings: JSON.stringify(settings) }, {
+            onSuccess: () => { toast.success("Billing settings updated successfully!"); setIsSaving(false); },
+            onError: () => { toast.error("Failed to save billing settings"); setIsSaving(false); }
         });
     }, [organizationId, billingEmailValue, alternativeEmailValue, ownerEmail, updateOrganization]);
 
-    // Handler for adding credits to wallet
     const handleAddCredits = useCallback(async () => {
-        if (!organizationId) {
-            toast.error("Organization ID is required");
-            return;
-        }
-
+        if (!organizationId) { toast.error("Organization ID is required"); return; }
         const amount = Number(topupAmount);
-        if (!amount || amount < 1) {
-            toast.error("Minimum top-up amount is $1");
-            return;
-        }
-
-        if (!isScriptLoaded) {
-            toast.error("Payment system not ready. Please refresh the page.");
-            return;
-        }
+        if (!amount || amount < 1) { toast.error("Minimum top-up amount is $1"); return; }
+        if (!isScriptLoaded) { toast.error("Payment system not ready. Please refresh the page."); return; }
 
         setIsAddingCredits(true);
-
         try {
-            // First ensure billing account exists
             if (!billingAccountData?.data) {
                 try {
-                    await setupBilling({
-                        json: {
-                            type: BillingAccountType.ORG,
-                            organizationId,
-                            billingEmail: billingEmailValue || organization?.email || ownerEmail || undefined,
-                            contactName: organization?.name || "Organization Admin",
-                        }
-                    });
+                    await setupBilling({ json: {
+                        type: BillingAccountType.ORG,
+                        organizationId,
+                        billingEmail: billingEmailValue || organization?.email || ownerEmail || undefined,
+                        contactName: organization?.name || "Organization Admin",
+                    }});
                 } catch {
                     toast.error("Failed to initialize billing account. Please contact support.");
-                    setIsAddingCredits(false);
-                    return;
+                    setIsAddingCredits(false); return;
                 }
             }
 
-            // Create a Cashfree order for wallet top-up
-            const orderResponse = await client.api.wallet["create-order"].$post({
-                json: {
-                    amount, // Amount in full dollar units (float) with 6-decimal support
-                    organizationId,
-                },
-            });
-
+            const orderResponse = await client.api.wallet["create-order"].$post({ json: { amount, organizationId } });
             if (!orderResponse.ok) {
                 const errorData = await orderResponse.json().catch(() => ({}));
                 throw new Error((errorData as { error?: string }).error || "Failed to create order");
             }
 
             const orderResult = await orderResponse.json() as {
-                data: {
-                    orderId: string;
-                    paymentSessionId: string;
-                    key: string;
-                    amount: number;
-                    currency: string;
-                    environment: "sandbox" | "production";
-                    walletId: string;
-                    originalUsdCents: number;
-                    exchangeRate: number;
-                }
+                data: { orderId: string; paymentSessionId: string; key: string; amount: number; currency: string; environment: "sandbox" | "production"; walletId: string; originalUsdCents: number; exchangeRate: number; }
             };
             const orderData = orderResult.data;
+            const cashfree = window.Cashfree({ mode: (orderData.environment || "sandbox") as "sandbox" | "production" });
+            const checkoutResult = await cashfree.checkout({ paymentSessionId: orderData.paymentSessionId, redirectTarget: "_modal" });
 
-            // Open Cashfree Checkout for one-time payment
-            const cashfree = window.Cashfree({ 
-                mode: (orderData.environment || "sandbox") as "sandbox" | "production" 
-            });
-
-            const checkoutResult = await cashfree.checkout({
-                paymentSessionId: orderData.paymentSessionId,
-                redirectTarget: "_modal",
-            });
-
-            // Cashfree SDK v3 modal returns { error, paymentDetails } — NOT orderStatus/transaction
             if (checkoutResult.error) {
-                // User closed modal or payment error
-                if (checkoutResult.error.message?.includes("user")) {
-                    // User dismissed — don't show error
-                } else {
+                if (!checkoutResult.error.message?.includes("user")) {
                     toast.error(`Payment error: ${checkoutResult.error.message || "Unknown error"}`);
                 }
             } else {
-                // Modal closed without error — verify payment server-side
-                // The backend fetches order status and payment details from Cashfree API directly
                 try {
-                    const verifyResponse = await client.api.wallet["verify-topup"].$post({
-                        json: {
-                            cashfreeOrderId: orderData.orderId,
-                        },
-                    });
-
+                    const verifyResponse = await client.api.wallet["verify-topup"].$post({ json: { cashfreeOrderId: orderData.orderId } });
                     if (!verifyResponse.ok) {
                         const errorData = await verifyResponse.json().catch(() => ({}));
                         const errorMsg = (errorData as { error?: string }).error || "Verification failed";
-                        // If order is still ACTIVE, payment might not be complete yet
                         if (errorMsg.includes("ACTIVE")) {
                             toast.info("Payment is being processed. Your wallet will be credited shortly via webhook.");
                         } else {
@@ -248,7 +160,6 @@ export function OrganizationBillingSettings({
                         }
                     } else {
                         toast.success(`$${amount} added to your wallet successfully!`);
-                        // Refresh billing data to get updated balance
                         queryClient.invalidateQueries({ queryKey: ["billing-account"] });
                         queryClient.invalidateQueries({ queryKey: ["billing-status"] });
                         setTopupAmount("");
@@ -267,7 +178,7 @@ export function OrganizationBillingSettings({
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+            <div className="flex flex-col items-center justify-center p-12 gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Loading billing settings...</p>
             </div>
@@ -276,17 +187,13 @@ export function OrganizationBillingSettings({
 
     return (
         <>
-            {/* Load Cashfree SDK Script */}
             <Script
                 src="https://sdk.cashfree.com/js/v3/cashfree.js"
                 onLoad={() => setIsScriptLoaded(true)}
-                onError={() => {
-                    // Failed to load Cashfree script
-                }}
+                onError={() => { /* ignore */ }}
             />
 
-            <div className="space-y-6">
-                {/* Billing Warning Banner - shows during grace period */}
+            <div className="flex flex-col gap-10">
                 {billingStatus?.status === BillingStatus.DUE && (
                     <BillingWarningBanner
                         billingStatus={BillingStatus.DUE}
@@ -295,219 +202,171 @@ export function OrganizationBillingSettings({
                     />
                 )}
 
-                {/* Billing Overview */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <DollarSign className="h-5 w-5" />
-                            Billing Overview
-                        </CardTitle>
-                        <CardDescription>
-                            Organization-level billing information and settings
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {/* Billing Status Alert */}
-                        {billingStatus?.status === BillingStatus.SUSPENDED && (
-                            <Alert variant="destructive">
-                                <AlertTriangle className="h-4 w-4" />
-                                <AlertDescription>
-                                    <strong>Account Suspended</strong> - Your organization has been suspended due to an unpaid invoice.
-                                    Please update your payment method below to restore access.
-                                </AlertDescription>
-                            </Alert>
-                        )}
+                {/* ── Billing Overview ── */}
+                <section>
+                    <h2 className="text-[18px] font-semibold mb-1">Billing</h2>
+                    <p className="text-xs text-muted-foreground mb-6">Organization-level billing information and settings</p>
 
-                        {/* Billing Timeline - Item 4.6 */}
-                        <div className="rounded-lg border border-border p-5 bg-muted/50 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-3 opacity-10">
-                                <Calendar className="h-16 w-16" />
+                    {billingStatus?.status === BillingStatus.SUSPENDED && (
+                        <Alert variant="destructive" className="mb-4">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription>
+                                <strong>Account Suspended</strong> — Your organization has been suspended due to an unpaid invoice.
+                                Please update your payment method below to restore access.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    <div className="divide-y divide-border">
+                        {/* Billing Lifecycle */}
+                        <div className="flex flex-col pt-4 pb-8 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Billing Lifecycle</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Timeline of your billing activity</p>
                             </div>
-
-                            <h4 className="text-sm font-semibold flex items-center gap-2 mb-4 text-blue-700 dark:text-blue-400">
-                                <Calendar className="h-4 w-4" />
-                                Billing Lifecycle
-                            </h4>
-
-                            <div className="relative pl-6 space-y-6">
-                                {/* Vertical Line Connector */}
-                                <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-primary/30" />
-
-                                {/* Personal Phase */}
-                                <div className="relative">
-                                    <div className="absolute -left-[23px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-background bg-muted-foreground/50 z-10" />
-                                    <div className="space-y-1">
+                            <div className="rounded-lg border border-border p-5 bg-muted/30 relative overflow-hidden w-full max-w-xl">
+                                <div className="relative pl-6 gap-5 flex flex-col">
+                                    <div className="absolute left-[7px]  top-2 bottom-2 w-[2px] bg-primary/20" />
+                                    <div className="relative">
+                                        <div className="absolute -left-[23px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-background bg-muted-foreground/40 z-10" />
                                         <div className="flex items-center justify-between">
-                                            <span className="font-medium text-foreground">Personal Account Usage</span>
-                                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 uppercase tracking-wider font-bold bg-white/50 dark:bg-black/20">Historic</Badge>
+                                            <span className="text-sm font-medium text-muted-foreground">Personal Account Usage</span>
+                                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 uppercase tracking-wider font-bold">Historic</Badge>
                                         </div>
-                                        <p className="text-xs text-muted-foreground leading-relaxed">
-                                            All activity prior to organization creation. Billed directly to your personal payment method.
+                                        <p className="text-xs text-muted-foreground mt-0.5">All activity prior to organization creation.</p>
+                                    </div>
+                                    <div className="relative">
+                                        <div className="absolute -left-[23px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-background bg-blue-600 z-10 shadow-[0_0_8px_rgba(37,99,235,0.4)]" />
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Organization Managed Billing</span>
+                                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 uppercase tracking-wider font-bold bg-blue-100 text-blue-700">Active</Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            Started {organization?.billingStartAt ? format(new Date(organization.billingStartAt), "PPP") : "on creation"}
                                         </p>
                                     </div>
                                 </div>
-
-                                {/* Organization Phase */}
-                                <div className="relative">
-                                    <div className="absolute -left-[23px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-background bg-blue-600 z-10 shadow-[0_0_8px_rgba(37,99,235,0.4)]" />
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="font-medium text-blue-700 dark:text-blue-400">Organization Managed Billing</span>
-                                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 uppercase tracking-wider font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">Active</Badge>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-xs text-blue-600/80 dark:text-blue-400/80 font-medium">
-                                            <span>Started on {organization?.billingStartAt ? format(new Date(organization.billingStartAt), "PPP") : "Creation"}</span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground leading-relaxed">
-                                            All shared workspaces and team activity are consolidated into this organization&apos;s billing cycle.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-                                <p className="text-[11px] text-blue-600/70 dark:text-blue-400/70 italic">
-                                    * The transition occurred when your account was converted to an organization.
-                                </p>
-                                <Button variant="ghost" size="sm" asChild className="text-blue-600 dark:text-blue-400 font-semibold h-7 px-2 hover:bg-blue-100 dark:hover:bg-blue-900/40">
-                                    <Link href="/organization/usage">
-                                        View Detailed Usage
-                                        <ExternalLink className="ml-1.5 h-3 w-3" />
-                                    </Link>
-                                </Button>
                             </div>
                         </div>
 
-                        <Separator />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Billing Entity</Label>
-                                <div className="flex items-center gap-2">
-                                    <Input value={organization?.name || organizationName} disabled className="flex-1" />
-                                    <Badge variant="default">Organization</Badge>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    All workspaces in this organization share billing
-                                </p>
+                        {/* Billing Entity */}
+                        <div className="flex flex-col py-8 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Billing Entity</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">All workspaces in this organization share billing</p>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Billing Status</Label>
-                                <div className="flex items-center gap-2">
-                                    <Badge
-                                        variant={
-                                            billingStatus?.status === BillingStatus.ACTIVE ? "default" :
-                                                billingStatus?.status === BillingStatus.DUE ? "secondary" :
-                                                    "destructive"
-                                        }
-                                        className={cn(
-                                            billingStatus?.status === BillingStatus.ACTIVE && "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400",
-                                            billingStatus?.status === BillingStatus.DUE && "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400"
-                                        )}
-                                    >
-                                        {billingStatus?.status || "ACTIVE"}
-                                    </Badge>
-                                    {billingStatus?.status === BillingStatus.DUE && billingStatus.daysUntilSuspension !== undefined && (
-                                        <span className="text-xs text-orange-600">
-                                            ({billingStatus.daysUntilSuspension} days until suspension)
-                                        </span>
-                                    )}
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <Input value={organization?.name || organizationName} disabled className="w-fit h-8 text-sm" />
+                                <Badge  variant="secondary">Organization</Badge>
+                            </div>
+                        </div>
+
+                        {/* Status */}
+                        <div className="flex flex-col py-8 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Billing Status</p>
                                 {billingAccount?.billingCycleEnd && (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground mt-0.5">
                                         Next billing: {format(new Date(billingAccount.billingCycleEnd), "PPP")}
                                     </p>
                                 )}
                             </div>
+                            <div className="flex items-center gap-2">
+                                <Badge
+                                    variant={billingStatus?.status === BillingStatus.ACTIVE ? "default" : billingStatus?.status === BillingStatus.DUE ? "secondary" : "destructive"}
+                                    className={cn(
+                                        billingStatus?.status === BillingStatus.ACTIVE && "bg-green-100 text-green-700",
+                                        billingStatus?.status === BillingStatus.DUE && "bg-orange-100 text-orange-700"
+                                    )}
+                                >
+                                    {billingStatus?.status || "ACTIVE"}
+                                </Badge>
+                                {billingStatus?.status === BillingStatus.DUE && billingStatus.daysUntilSuspension !== undefined && (
+                                    <span className="text-xs text-orange-600">
+                                        ({billingStatus.daysUntilSuspension} days until suspension)
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
-                        <Separator />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <Label htmlFor="billingEmail">Primary Billing Email</Label>
-                                <Input
-                                    id="billingEmail"
-                                    type="email"
-
-                                    value={billingEmailValue}
-                                    onChange={(e) => setBillingEmailValue(e.target.value)}
-                                    placeholder={ownerEmail || "owner@example.com"}
-                                    disabled={isSaving || !canManageBilling}
-                                />
-                                <div className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                    {billingEmailValue ? (
-                                        <span>Custom billing email active</span>
-                                    ) : (
-                                        <>
-                                            <Badge variant="outline" className="text-[9px] h-3.5 px-1 uppercase font-bold">Default</Badge>
-                                            <span>Using owner: {ownerEmail || "loading..."}</span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="alternativeEmail">Alternative Billing Email (Optional)</Label>
-                                <Input
-                                    id="alternativeEmail"
-                                    type="email"
-                                    value={alternativeEmailValue}
-                                    onChange={(e) => setAlternativeEmailValue(e.target.value)}
-                                    placeholder="finance@company.com"
-                                    disabled={isSaving || !canManageBilling}
-                                />
-                                <p className="text-[11px] text-muted-foreground">
-                                    Secondary contact for billing notifications
+                        {/* Primary Billing Email */}
+                        <div className="flex flex-col py-8 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Primary Billing Email</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {billingEmailValue ? "Custom billing email active" : `Default: ${ownerEmail || "owner email"}`}
                                 </p>
                             </div>
+                            <Input
+                                id="billingEmail"
+                                type="email"
+                                value={billingEmailValue}
+                                onChange={(e) => setBillingEmailValue(e.target.value)}
+                                placeholder={ownerEmail || "owner@example.com"}
+                                disabled={isSaving || !canManageBilling}
+                                className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+                            />
                         </div>
 
-                        <Button onClick={handleSaveBillingSettings} disabled={isSaving || !canManageBilling}>
-                            {isSaving ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Saving...
-                                </>
-                            ) : (
-                                "Save Billing Settings"
-                            )}
-                        </Button>
-                    </CardContent>
-                </Card>
+                        {/* Alternative Email */}
+                        <div className="flex flex-col py-8 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Alternative Billing Email</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Optional secondary contact for billing notifications</p>
+                            </div>
+                            <Input
+                                id="alternativeEmail"
+                                type="email"
+                                value={alternativeEmailValue}
+                                onChange={(e) => setAlternativeEmailValue(e.target.value)}
+                                placeholder="finance@company.com"
+                                disabled={isSaving || !canManageBilling}
+                                className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+                            />
+                        </div>
+                    </div>
 
-                {/* Wallet Balance & Add Credits */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Wallet className="h-5 w-5" />
-                            Wallet Balance
-                        </CardTitle>
-                        <CardDescription>
-                            Manage your organization&apos;s Fairlx wallet for usage billing
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {/* Wallet explanation */}
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertDescription>
-                                <strong>How wallet billing works:</strong> Usage costs are deducted from your wallet balance.
-                                Add credits anytime via UPI, Card, or Net Banking. No recurring mandates needed.
-                            </AlertDescription>
-                        </Alert>
+                    {canManageBilling && (
+                        <div className="w-full flex justify-end pt-4">
+                            <Button onClick={handleSaveBillingSettings} disabled={isSaving} size="xs">
+                                {isSaving && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                                Save Billing Settings
+                            </Button>
+                        </div>
+                    )}
+                </section>
 
-                        {/* Current Balance - PREMIUM ENHANCED SECTION */}
-                        <div className="relative overflow-hidden group border-none shadow-xl rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 p-8 text-white mb-6">
-                            {/* Animated shapes */}
-                            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
-                            <div className="absolute bottom-0 left-0 -ml-10 -mb-10 w-40 h-40 bg-blue-400/10 rounded-full blur-2xl" />
+                {/* ── Wallet ── */}
+                <section>
+                    <h2 className="text-[18px] font-semibold mb-1 flex items-center gap-2">
+                        <Wallet className="h-5 w-5" />
+                        Wallet
+                    </h2>
+                    <p className="text-xs text-muted-foreground mb-6">
+                        Manage your organization&apos;s Fairlx wallet for usage billing
+                    </p>
 
-                            <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-                                <div className="space-y-1">
-                                    <span className="text-blue-200 text-xs uppercase tracking-widest font-bold">Total Available Balance</span>
-                                    <div className="flex items-baseline gap-2 mt-2">
-                                        <span className="text-6xl font-extrabold tracking-tighter">
+                    <Alert className="mb-4">
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                            <strong>How wallet billing works:</strong> Usage costs are deducted from your wallet balance.
+                            Add credits anytime via UPI, Card, or Net Banking. No recurring mandates needed.
+                        </AlertDescription>
+                    </Alert>
+
+                    <div className="divide-y divide-border">
+                        {/* Balance display */}
+                        <div className="flex flex-col py-4 gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Available Balance</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Current wallet credit balance</p>
+                            </div>
+                            <div className="relative overflow-hidden rounded-xl border-none shadow-xl bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 p-6 text-white w-full max-w-sm">
+                                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+                                <div className="relative">
+                                    <span className="text-blue-200 text-xs uppercase tracking-widest font-bold">Total Balance</span>
+                                    <div className="flex items-baseline gap-2 mt-1">
+                                        <span className="text-4xl font-extrabold tracking-tighter">
                                             {new Intl.NumberFormat("en-US", {
                                                 style: "currency",
                                                 currency: walletCurrency,
@@ -515,62 +374,51 @@ export function OrganizationBillingSettings({
                                                 maximumFractionDigits: 6,
                                             }).format(walletBalance)}
                                         </span>
-                                        <span className="text-blue-200 font-medium text-lg uppercase">{walletCurrency}</span>
+                                        <span className="text-blue-200 font-medium uppercase">{walletCurrency}</span>
                                     </div>
-                                    <div className="flex items-center gap-2 mt-4 text-sm text-blue-100/80 bg-white/10 backdrop-blur-md w-fit px-3 py-1 rounded-full border border-white/10">
+                                    <div className="flex items-center gap-1.5 mt-3 text-xs text-blue-100/80 bg-white/10 w-fit px-2.5 py-1 rounded-full">
                                         {walletBalance > 0 ? (
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                                         ) : (
-                                            <AlertTriangle className="h-4 w-4 text-orange-400" />
+                                            <AlertTriangle className="h-3.5 w-3.5 text-orange-400" />
                                         )}
-                                        {walletBalance > 0 ? "Account in Good Standing" : "Top-up Required"}
-                                    </div>
-                                </div>
-
-                                <div className="hidden md:block">
-                                    <div className="flex flex-col items-end gap-2 text-[11px] text-blue-200/60 italic">
-                                        <span>* Balance used for AI, storage, and traffic</span>
-                                        <span>* Minimum top-up amount $1</span>
+                                        {walletBalance > 0 ? "Good Standing" : "Top-up Required"}
                                     </div>
                                 </div>
                             </div>
+                            {walletBalance < 100 && (
+                                <Alert className="border-orange-200 bg-orange-50 max-w-sm">
+                                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                                    <AlertDescription className="text-orange-700 text-xs">
+                                        Wallet balance is low. Add credits to avoid service interruptions.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                         </div>
 
-                        {/* Low balance warning */}
-                        {walletBalance < 100 && (
-                            <Alert className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/30">
-                                <AlertTriangle className="h-4 w-4 text-orange-600" />
-                                <AlertDescription className="text-orange-700 dark:text-orange-400">
-                                    Your wallet balance is low. Add credits to avoid service interruptions.
-                                </AlertDescription>
-                            </Alert>
-                        )}
-
-                        {/* Add Credits Section */}
-                        <div className="border rounded-2xl bg-muted/30 p-6">
-                            <div className="flex flex-col md:flex-row items-center gap-6">
-                                <div className="flex-1 w-full space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="topup-amount" className="text-sm font-semibold">
-                                            Top-up Amount ($)
-                                        </Label>
-                                        <div className="relative">
-                                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                            <Input
-                                                id="topup-amount"
-                                                type="number"
-                                                min="1"
-                                                className="pl-9 h-12 text-lg font-bold"
-                                                placeholder="100"
-                                                value={topupAmount}
-                                                onChange={(e) => setTopupAmount(e.target.value)}
-                                                disabled={isAddingCredits || !canManageBilling}
-                                            />
-                                        </div>
+                        {/* Add Credits */}
+                        <div className="flex flex-col py-8   gap-4">
+                            <div className="shrink-0">
+                                <p className="text-sm font-medium">Add Credits</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Top up your wallet via UPI, Card, or Net Banking</p>
+                            </div>
+                            <div className="flex items-end gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="topup-amount" className="text-xs font-medium">Amount (USD)</Label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                        <Input
+                                            id="topup-amount"
+                                            type="number"
+                                            min="1"
+                                            className="pl-7 h-8 w-32 text-sm"
+                                            placeholder="100"
+                                            value={topupAmount}
+                                            onChange={(e) => setTopupAmount(e.target.value)}
+                                            disabled={isAddingCredits || !canManageBilling}
+                                        />
                                     </div>
-
-                                    {/* Quick top-up amounts */}
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap gap-1.5">
                                         {[5, 10, 25, 50, 100].map((amt) => (
                                             <Button
                                                 key={amt}
@@ -579,8 +427,8 @@ export function OrganizationBillingSettings({
                                                 onClick={() => setTopupAmount(String(amt))}
                                                 disabled={isAddingCredits || !canManageBilling}
                                                 className={cn(
-                                                    "h-8 px-4 text-xs font-bold transition-all",
-                                                    topupAmount === String(amt) && "border-primary bg-primary/10 text-primary scale-105"
+                                                    "h-7 px-2.5 text-xs",
+                                                    topupAmount === String(amt) && "border-primary bg-primary/10 text-primary"
                                                 )}
                                             >
                                                 ${amt}
@@ -588,138 +436,124 @@ export function OrganizationBillingSettings({
                                         ))}
                                     </div>
                                 </div>
-
-                                <div className="w-full md:w-64 pt-4 md:pt-0">
-                                    <Button
-                                        onClick={handleAddCredits}
-                                        disabled={isAddingCredits || !topupAmount || Number(topupAmount) < 1 || !canManageBilling}
-                                        className="w-full h-24 flex-col gap-2 rounded-2xl shadow-lg hover:shadow-primary/20 transition-all"
-                                        size="lg"
-                                    >
-                                        {isAddingCredits ? (
-                                            <Loader2 className="h-6 w-6 animate-spin" />
-                                        ) : (
-                                            <Plus className="h-6 w-6" />
-                                        )}
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-base font-bold">
-                                                {isAddingCredits ? "Processing..." : `Add $${topupAmount || '0'}`}
-                                            </span>
-                                            {!isAddingCredits && <span className="text-[10px] font-medium opacity-70">Credit Wallet Now</span>}
-                                        </div>
-                                    </Button>
-                                </div>
+                                <Button
+                                    onClick={handleAddCredits}
+                                    disabled={isAddingCredits || !topupAmount || Number(topupAmount) < 1 || !canManageBilling}
+                                    size="xs"
+                                    className="gap-1.5"
+                                >
+                                    {isAddingCredits ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <Plus className="h-3.5 w-3.5" />
+                                    )}
+                                    {isAddingCredits ? "Processing..." : `Add $${topupAmount || "0"}`}
+                                </Button>
                             </div>
-                            
-                            <p className="mt-4 text-[11px] text-muted-foreground text-center flex items-center justify-center gap-2">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                                 <Info className="h-3 w-3" />
-                                Payments processed securely by Cashfree. Minimum $1. Credits are valid for AI & resource costs.
+                                Payments processed securely by Cashfree. Minimum $1.
                             </p>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </section>
 
-                {/* Invoice History */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle className="flex items-center gap-2">
-                                    <FileText className="h-5 w-5" />
-                                    Invoice History
-                                </CardTitle>
-                                <CardDescription>
-                                    View and download past invoices
-                                </CardDescription>
-                            </div>
-                            <Button variant="outline" size="sm" asChild>
-                                <Link href={`/organization/settings/billing?tab=invoices`}>
-                                    View All Invoices
-                                    <ExternalLink className="ml-2 h-3 w-3" />
-                                </Link>
-                            </Button>
+                {/* ── Invoice History ── */}
+                <section>
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 className="text-[18px] font-semibold">Invoices</h2>
+                            <p className="text-xs text-muted-foreground mt-0.5">View and download past invoices</p>
                         </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-2">
-                            {isInvoicesLoading ? (
-                                <div className="flex flex-col items-center justify-center py-10 space-y-2">
-                                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                                    <p className="text-xs text-muted-foreground">Loading invoices...</p>
+                        <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                            <Link href="/organization/settings/billing?tab=invoices">
+                                View All
+                                <ExternalLink className="h-3 w-3" />
+                            </Link>
+                        </Button>
+                    </div>
+
+                    {isInvoicesLoading ? (
+                        <div className="border rounded-lg overflow-hidden">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="flex items-center gap-4 px-4 py-3 border-b">
+                                    <div className="flex-1 space-y-1">
+                                        <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                                        <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+                                    </div>
+                                    <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+                                    <div className="h-6 w-12 bg-muted animate-pulse rounded" />
                                 </div>
-                            ) : invoices.length === 0 ? (
-                                <div className="text-center py-10 border rounded-lg border-dashed">
-                                    <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
-                                    <p className="text-sm text-muted-foreground">No invoices found for this organization yet.</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Invoices are generated at the end of each billing cycle.</p>
-                                </div>
-                            ) : (
-                                invoices.map((invoice) => (
-                                    <div
-                                        key={invoice.$id}
-                                        className="flex items-center justify-between p-3 rounded-lg border"
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <FileText className="h-4 w-4 text-muted-foreground" />
-                                            <div>
-                                                <div className="font-medium">{invoice.invoiceId}</div>
-                                                <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                                    <Calendar className="h-3 w-3" />
-                                                    {format(new Date(invoice.createdAt), "PPP")}
-                                                </div>
-                                            </div>
+                            ))}
+                        </div>
+                    ) : invoices.length === 0 ? (
+                        <div className="text-center py-10 border rounded-lg border-dashed">
+                            <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                            <p className="text-sm text-muted-foreground">No invoices yet</p>
+                            <p className="text-xs text-muted-foreground mt-1">Invoices are generated at the end of each billing cycle.</p>
+                        </div>
+                    ) : (
+                        <div className="border rounded-lg overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center gap-4 px-4 py-2.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
+                                <div className="flex-1">Invoice ID</div>
+                                <div className="w-32">Date</div>
+                                <div className="w-24 text-right">Amount</div>
+                                <div className="w-20">Status</div>
+                                <div className="w-20 text-right">Actions</div>
+                            </div>
+                            <div className="divide-y divide-border">
+                                {invoices.map((invoice) => (
+                                    <div key={invoice.$id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors">
+                                        <div className="flex-1 flex items-center gap-2.5 min-w-0">
+                                            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="text-sm font-medium truncate">{invoice.invoiceId}</span>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="text-right">
-                                                <div className="font-semibold">
-                                                    {new Intl.NumberFormat("en-US", {
-                                                        style: "currency",
-                                                        currency: "USD",
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 6,
-                                                    }).format(invoice.totalCost)}
-                                                </div>
-                                                <Badge
-                                                    variant={invoice.status === 'paid' ? 'default' : 'outline'}
-                                                    className={cn(
-                                                        "text-[10px] h-4 px-1.5 uppercase",
-                                                        invoice.status === 'paid' && "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800",
-                                                        invoice.status === 'draft' && "bg-muted text-muted-foreground border-border"
-                                                    )}
-                                                >
-                                                    {invoice.status}
-                                                </Badge>
-                                            </div>
-                                            <Button variant="ghost" size="sm">
+                                        <div className="w-32 shrink-0 text-xs text-muted-foreground flex items-center gap-1">
+                                            <Calendar className="h-3 w-3" />
+                                            {format(new Date(invoice.createdAt), "MMM d, yyyy")}
+                                        </div>
+                                        <div className="w-24 shrink-0 text-sm font-semibold text-right">
+                                            {new Intl.NumberFormat("en-US", {
+                                                style: "currency",
+                                                currency: "USD",
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 6,
+                                            }).format(invoice.totalCost)}
+                                        </div>
+                                        <div className="w-20 shrink-0">
+                                            <Badge
+                                                variant="outline"
+                                                className={cn(
+                                                    "text-[10px] h-5 px-1.5 uppercase",
+                                                    invoice.status === "paid" && "bg-emerald-100 text-emerald-700 border-emerald-200",
+                                                    invoice.status === "draft" && "bg-muted text-muted-foreground"
+                                                )}
+                                            >
+                                                {invoice.status}
+                                            </Badge>
+                                        </div>
+                                        <div className="w-20 shrink-0 flex justify-end">
+                                            <Button variant="ghost" size="sm" className="h-7 text-xs">
                                                 Download
                                             </Button>
                                         </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Usage Dashboard Link */}
-                <Card className="bg-card border-blue-600/20">
-                    <CardContent className="py-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="font-semibold text-foreground">View Detailed Usage</h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Monitor your organization&apos;s usage metrics and costs
-                                </p>
+                                ))}
                             </div>
-                            <Button asChild>
-                                <Link href="/organization/usage">
-                                    <DollarSign className="mr-2 h-4 w-4" />
-                                    Usage Dashboard
-                                </Link>
-                            </Button>
                         </div>
-                    </CardContent>
-                </Card>
+                    )}
+
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                        <p className="text-sm font-medium">View Detailed Usage</p>
+                        <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                            <Link href="/organization/usage">
+                                <DollarSign className="h-3.5 w-3.5" />
+                                Usage Dashboard
+                            </Link>
+                        </Button>
+                    </div>
+                </section>
             </div>
         </>
     );
