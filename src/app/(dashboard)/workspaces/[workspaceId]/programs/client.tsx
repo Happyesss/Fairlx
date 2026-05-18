@@ -20,6 +20,11 @@ import {
   Shield,
   ChevronRight,
   Layers,
+  Info,
+  CheckCircle2,
+  BarChart3,
+  GitMerge,
+  Milestone,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useMemo } from "react";
@@ -51,6 +56,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useGetPrograms } from "@/features/programs/api/use-get-programs";
 import { useDeleteProgram } from "@/features/programs/api/use-delete-program";
@@ -121,6 +132,7 @@ export const ProgramsClient = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const [DeleteDialog, confirmDelete] = useConfirm(
     "Delete Program",
@@ -160,6 +172,79 @@ export const ProgramsClient = () => {
       <CreateProgramModal />
       <EditProgramModal />
 
+      {/* Programs Info Modal */}
+      <Dialog open={showInfoModal} onOpenChange={setShowInfoModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-xl">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10">
+                <FolderKanban className="size-5 text-primary" />
+              </div>
+              What is a Program?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 mt-2">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              A <strong className="text-foreground">Program</strong> is a strategic umbrella that groups related projects under a shared objective. It gives your organization a bird&apos;s-eye view of work spanning multiple teams, timelines, and deliverables.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { icon: Layers, title: "Multi-Project Oversight", desc: "Bundle related projects so stakeholders see progress in one place instead of switching between boards.", colorClass: "bg-purple-500/10 border-purple-500/20", iconColor: "text-purple-600 dark:text-purple-400" },
+                { icon: Milestone, title: "Milestones", desc: "Define key delivery checkpoints — e.g. Beta Launch, Go-Live — shared across every project in the program.", colorClass: "bg-blue-500/10 border-blue-500/20", iconColor: "text-blue-600 dark:text-blue-400" },
+                { icon: Users, title: "Cross-team Members", desc: "Add contributors from any project team so everyone on the initiative is visible in one place.", colorClass: "bg-emerald-500/10 border-emerald-500/20", iconColor: "text-emerald-600 dark:text-emerald-400" },
+                { icon: BarChart3, title: "Analytics", desc: "Rolled-up completion rates, task counts, and timeline health for the entire program at a glance.", colorClass: "bg-amber-500/10 border-amber-500/20", iconColor: "text-amber-600 dark:text-amber-400" },
+              ].map(({ icon: Icon, title, desc, colorClass, iconColor }) => (
+                <div key={title} className={`p-4 rounded-xl border ${colorClass}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Icon className={`size-4 ${iconColor}`} />
+                    <p className="text-sm font-semibold">{title}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <GitMerge className="size-4 text-muted-foreground" />
+                How it works in industry
+              </h4>
+              <div className="space-y-3">
+                {[
+                  { company: "Product Company", program: "Q3 Platform Revamp", projects: ["API v2 Migration", "New Design System", "Mobile App Rewrite"] },
+                  { company: "E-commerce", program: "Holiday Season Launch", projects: ["Checkout Optimisation", "Inventory Sync", "Marketing Campaigns"] },
+                  { company: "Enterprise", program: "Cloud Migration", projects: ["Infra Lift & Shift", "Data Pipeline Rebuild", "Security Hardening"] },
+                ].map((ex) => (
+                  <div key={ex.program} className="p-3 rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="outline" className="text-[10px]">{ex.company}</Badge>
+                      <p className="text-sm font-medium">{ex.program}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ex.projects.map((proj) => (
+                        <div key={proj} className="flex items-center gap-1 text-[11px] text-muted-foreground bg-background border rounded-full px-2 py-0.5">
+                          <CheckCircle2 className="size-3 text-emerald-500" />
+                          {proj}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+              <p className="text-sm font-medium mb-1">Ready to get started?</p>
+              <p className="text-xs text-muted-foreground mb-3">Create your first program, link your projects, and start tracking progress at the strategic level.</p>
+              {isAdmin && (
+                <Button size="sm" onClick={() => { setShowInfoModal(false); openCreate(); }}>
+                  <Plus className="size-3.5 mr-1.5" />
+                  Create a Program
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="border-b bg-background">
         <div className="px-6 py-5 flex items-center justify-between">
@@ -168,7 +253,16 @@ export const ProgramsClient = () => {
               <Layers className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Programs</h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-2xl font-semibold tracking-tight">Programs</h1>
+                <button
+                  onClick={() => setShowInfoModal(true)}
+                  className="p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="What is a Program?"
+                >
+                  <Info className="size-4" />
+                </button>
+              </div>
               <p className="text-sm text-muted-foreground">
                 Manage strategic initiatives and portfolio health
               </p>

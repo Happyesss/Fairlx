@@ -298,7 +298,7 @@ export const WorkflowAIChat = ({
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs justify-start font-normal"
-                    onClick={() => handleAsk(prompt.text, prompt.type)}
+                    onClick={() => handleAsk(prompt.text)}
                     disabled={isProcessing || isLoadingContext}
                   >
                     <prompt.icon className="h-3 w-3 mr-2 text-muted-foreground" />
@@ -456,7 +456,7 @@ export const WorkflowAIChat = ({
                                   onClick={() => item.action?.data && handleApplyFullWorkflow(item.action.data as WorkflowSuggestion)}
                                 >
                                   <Check className="h-3 w-3 mr-1" />
-                                  Apply All
+                                  Apply
                                 </Button>
                               </div>
                             </div>
