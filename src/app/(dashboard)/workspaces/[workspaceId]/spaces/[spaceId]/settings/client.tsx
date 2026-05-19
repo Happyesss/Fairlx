@@ -9,6 +9,7 @@ import { PageLoader } from "@/components/page-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+
 import {
   Select,
   SelectContent,
@@ -140,7 +141,7 @@ export const SpaceSettingsClient = () => {
   const activeColor = color || space.color || "#6366f1";
 
   return (
-    <div className="w-full h-[83vh] px-2">
+    <div className="w-full h-full">
       <SpaceWorkflowsModal
         isOpen={isWorkflowsModalOpen}
         onClose={() => setIsWorkflowsModalOpen(false)}
@@ -151,18 +152,18 @@ export const SpaceSettingsClient = () => {
 
 
       {/* Settings Panel */}
-      <div className="bg-card rounded-2xl border h-full border-border shadow-sm overflow-hidden">
-        <div className="flex h-full">
+      <div className=" overflow-hidden">
+        <div className="flex flex-col h-full">
 
           {/* Left Navigation */}
-          <aside className="w-44 shrink-0 border-r border-border bg-muted/20 p-3 flex flex-col gap-0.5">
+          <aside className=" shrink-0 border w-fit border-border gap-2  bg-muted/20 p-1 rounded-lg flex">
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setActiveSection(item.id)}
                 className={[
-                  "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors duration-100",
+                  " text-center py-1 px-3 rounded-lg text-sm transition-colors duration-100",
                   item.danger
                     ? activeSection === item.id
                       ? "bg-destructive/10 text-destructive font-medium"
@@ -177,8 +178,10 @@ export const SpaceSettingsClient = () => {
             ))}
           </aside>
 
+
+
           {/* Content Area */}
-          <main className="flex-1 p-7 min-w-0">
+          <main className="flex-1 mt-10 px-3 min-w-0">
 
             {/* ── General ── */}
          {activeSection === "general" && (
@@ -190,7 +193,7 @@ export const SpaceSettingsClient = () => {
         {/* Space Name */}
         <div className="flex flex-col py-4 gap-4">
           <div className="shrink-0">
-            <p className="text-sm font-regular">Space Name</p>
+            <p className="text-sm font-medium">Space Name</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               The display name for this space.
             </p>
@@ -207,7 +210,7 @@ export const SpaceSettingsClient = () => {
         {/* Space Key */}
         <div className="flex flex-col py-4 gap-4">
           <div className="shrink-0">
-            <p className="text-sm font-regular">Space Key</p>
+            <p className="text-sm font-medium">Space Key</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Prefix for work items, e.g. ENG-001.
             </p>
@@ -225,7 +228,7 @@ export const SpaceSettingsClient = () => {
         {/* Description */}
         <div className="flex flex-col py-4 gap-4">
           <div className="shrink-0">
-            <p className="text-sm font-regular">Description</p>
+            <p className="text-sm font-medium">Description</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               A short description of this space.
             </p>
@@ -265,7 +268,7 @@ export const SpaceSettingsClient = () => {
         {/* Theme Color */}
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Theme Color</p>
+            <p className="text-sm font-medium">Theme Color</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Choose a color that represents this space.
             </p>
@@ -293,7 +296,7 @@ export const SpaceSettingsClient = () => {
         {/* Preview */}
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Preview</p>
+            <p className="text-sm font-medium">Preview</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               How your space icon will appear.
             </p>
@@ -333,7 +336,7 @@ export const SpaceSettingsClient = () => {
       <div className="divide-y divide-border">
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Visibility</p>
+            <p className="text-sm font-medium">Visibility</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {(visibility || space.visibility) === SpaceVisibility.PUBLIC
                 ? "All workspace members can see this space."
@@ -392,7 +395,7 @@ export const SpaceSettingsClient = () => {
         {/* Default Workflow */}
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Default Workflow</p>
+            <p className="text-sm font-medium">Default Workflow</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               New projects will use this workflow by default.
             </p>
@@ -423,7 +426,7 @@ export const SpaceSettingsClient = () => {
         {/* Workflow Inheritance */}
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Workflow Inheritance</p>
+            <p className="text-sm font-medium">Workflow Inheritance</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               How projects inherit the default workflow.
             </p>
@@ -462,7 +465,7 @@ export const SpaceSettingsClient = () => {
         {/* Manage Workflows */}
         <div className="flex flex-col py-4 gap-4">
           <div>
-            <p className="text-sm font-regular">Manage Workflows</p>
+            <p className="text-sm font-medium">Manage Workflows</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               View and edit all workflows in this space.
             </p>
@@ -497,7 +500,7 @@ export const SpaceSettingsClient = () => {
             {/* ── Danger Zone ── */}
             {activeSection === "danger" && (
               <section>
-                <h2 className="text-sm font-semibold mb-0.5 text-destructive">Delete Space</h2>
+                <h2 className="text-sm font-medium mb-0.5 text-destructive">Delete Space</h2>
                 <p className="text-xs text-muted-foreground mb-5">Irreversible actions for this space.</p>
                 <div className="divide-y divide-border">
 
