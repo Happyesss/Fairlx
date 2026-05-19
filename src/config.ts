@@ -186,6 +186,12 @@ export const TWO_FACTOR_ENCRYPTION_SECRET = process.env.TWO_FACTOR_ENCRYPTION_SE
 export const BYOB_TENANTS_ID = process.env.NEXT_PUBLIC_APPWRITE_BYOB_TENANTS_ID || "byob_tenants";
 
 // ===============================
+// Bug Reports Collection
+// ===============================
+export const BUG_REPORTS_ID = process.env.NEXT_PUBLIC_APPWRITE_BUG_REPORTS_ID || "bug_reports";
+export const BUG_REPORTS_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_BUG_REPORTS_BUCKET_ID || "bug_reports_bucket";
+
+// ===============================
 // Landing Page Supabase (GitHub Star Rewards)
 // MOVED TO config.server.ts for security
 // ===============================
