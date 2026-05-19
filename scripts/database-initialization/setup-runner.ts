@@ -71,11 +71,13 @@ import { setupProjectWebhookDeliveries } from './collections/project-webhook-del
 import { setupUserRecoveryCodes } from './collections/user-recovery-codes';
 import { setupEmailOtpCodes } from './collections/email-otp-codes';
 import { setupAIModelPricing } from './collections/ai-model-pricing';
+import { setupBugReports } from './collections/bug-reports';
 
 // ─── Storage Bucket Imports ──────────────────────────────────
 import { setupImagesBucket } from './storage/images-bucket';
 import { setupAttachmentsBucket } from './storage/attachments-bucket';
 import { setupProjectDocsBucket } from './storage/project-docs-bucket';
+import { setupBugReportsBucket } from './storage/bug-reports-bucket';
 
 // ─── Collection Setup List ───────────────────────────────────
 const collectionSetups: Array<{
@@ -143,6 +145,7 @@ const collectionSetups: Array<{
         { name: 'Project Webhook Deliveries', setup: setupProjectWebhookDeliveries },
         { name: 'User Recovery Codes', setup: setupUserRecoveryCodes },
         { name: 'Email OTP Codes', setup: setupEmailOtpCodes },
+        { name: 'Bug Reports', setup: setupBugReports },
     ];
 
 // ─── Exported Functions ──────────────────────────────────────
@@ -179,6 +182,7 @@ export async function runBucketSetups(
         { name: 'Images', setup: setupImagesBucket },
         { name: 'Attachments', setup: setupAttachmentsBucket },
         { name: 'Project Documents', setup: setupProjectDocsBucket },
+        { name: 'Bug Reports', setup: setupBugReportsBucket },
     ];
 
     const succeeded: string[] = [];

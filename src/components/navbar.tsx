@@ -2,6 +2,7 @@
 
 import { UserButton } from "@/features/auth/components/user-button";
 import { NotificationBell } from "@/features/notifications";
+import { BugReportPopover } from "@/features/bug-reports/components/bug-report-popover";
 
 import { usePathname } from "next/navigation";
 
@@ -49,6 +50,7 @@ export const Navbar = () => {
       <div id="navbar-actions" className="flex items-center gap-2">
         <MobileSidebar />
         <ModeToggle />
+        <BugReportPopover />
         <NotificationBell />
         <UserButton />
       </div>
