@@ -8,10 +8,9 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import {
     Building2, Users, Settings2, Shield, Trash2, Crown,
-    CreditCard, AlertTriangle, FileText, Loader2, Clock, Hash, UserPlus, Mail, BarChart3, ImageIcon,
+    CreditCard, AlertTriangle, FileText, Loader2, UserPlus, Mail, BarChart3, ImageIcon,
     Gift, Eye
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -386,7 +385,7 @@ export const OrganizationSettingsClient = () => {
     return (
         <div className="flex flex-col gap-6 w-full">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex flex-col  sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div>
                         {isLoadingOrg ? (
@@ -423,540 +422,695 @@ export const OrganizationSettingsClient = () => {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
-                    <TabsTrigger
-                        value="general"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                    >
-                        <Settings2 className="size-4 mr-2" />
-                        General
-                    </TabsTrigger>
-                    {hasPermission(OrgPermissionKey.MEMBERS_VIEW) && (
+  <TabsList className="relative flex w-fit gap-1 rounded-xl border border-border bg-muted/20 p-1 h-auto">
                         <TabsTrigger
-                            value="members"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                        >
-                            <Users className="size-4 mr-2" />
-                            Members
-                            <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                                {members.length}
-                            </Badge>
-                        </TabsTrigger>
-                    )}
-                    {hasPermission(OrgPermissionKey.SECURITY_VIEW) && (
-                        <TabsTrigger
-                            value="security"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                        >
-                            <Shield className="size-4 mr-2" />
-                            Security
-                        </TabsTrigger>
-                    )}
-                    {hasPermission(OrgPermissionKey.DEPARTMENTS_MANAGE) && (
-                        <TabsTrigger
-                            value="departments"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                        >
-                            <Building2 className="size-4 mr-2" />
-                            Departments
-                        </TabsTrigger>
-                    )}
-                    {hasPermission(OrgPermissionKey.BILLING_VIEW) && (
-                        <TabsTrigger
-                            value="billing"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                        >
-                            <CreditCard className="size-4 mr-2" />
-                            Billing
-                        </TabsTrigger>
-                    )}
-                    {hasPermission(OrgPermissionKey.AUDIT_VIEW) && (
-                        <TabsTrigger
-                            value="audit"
-                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                        >
-                            <FileText className="size-4 mr-2" />
-                            Audit
-                        </TabsTrigger>
-                    )}
-                    <TabsTrigger
-                        value="rewards"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none px-4 py-2.5"
-                    >
-                        <Gift className="size-4 mr-2" />
-                        Rewards
-                    </TabsTrigger>
+      value="general"
+      className="
+        relative rounded-lg px-4 py-1 text-sm
+        transition-all duration-200
+        data-[state=active]:bg-blue-500/10
+        data-[state=active]:text-blue-700
+        data-[state=active]:shadow-none
+        hover:bg-blue-500/10
+        hover:text-blue-700
+      "
+    >
+      <Settings2 className="size-4 mr-2" />
+      General
+    </TabsTrigger>
+                        {hasPermission(OrgPermissionKey.MEMBERS_VIEW) && (
+      <TabsTrigger
+        value="members"
+        className="
+          relative rounded-lg px-4 py-1 text-sm
+          transition-all duration-200
+          data-[state=active]:bg-blue-500/10
+          data-[state=active]:text-blue-700
+          data-[state=active]:shadow-none
+        hover:bg-blue-500/10
+          hover:text-blue-700
+        "
+      >
+        <Users className="size-4 mr-2" />
+        Members
+
+        <Badge
+          variant="secondary"
+          className="ml-2 h-5 px-1.5 text-xs"
+        >
+          {members.length}
+        </Badge>
+      </TabsTrigger>
+    )}
+ {hasPermission(OrgPermissionKey.SECURITY_VIEW) && (
+      <TabsTrigger
+        value="security"
+        className="
+          relative rounded-lg px-4 py-1 text-sm
+          transition-all duration-200
+          data-[state=active]:bg-red-500/10
+          data-[state=active]:text-red-600
+          data-[state=active]:shadow-none
+          hover:bg-red-500/5
+          hover:text-red-500
+        "
+      >
+        <Shield className="size-4 mr-2" />
+        Security
+      </TabsTrigger>
+    )}
+    {hasPermission(OrgPermissionKey.DEPARTMENTS_MANAGE) && (
+      <TabsTrigger
+        value="departments"
+        className="
+          relative rounded-lg px-4 py-1 text-sm
+          transition-all duration-200
+          data-[state=active]:bg-blue-500/10
+          data-[state=active]:text-blue-700
+          data-[state=active]:shadow-none
+        hover:bg-blue-500/10
+          hover:text-blue-700
+        "
+      >
+        <Building2 className="size-4 mr-2" />
+        Departments
+      </TabsTrigger>
+    )}
+    {hasPermission(OrgPermissionKey.BILLING_VIEW) && (
+      <TabsTrigger
+        value="billing"
+        className="
+          relative rounded-lg px-4 py-1 text-sm
+          transition-all duration-200
+          data-[state=active]:bg-emerald-500/10
+          data-[state=active]:text-emerald-700
+          data-[state=active]:shadow-none
+          hover:bg-emerald-500/5
+          hover:text-emerald-600
+        "
+      >
+        <CreditCard className="size-4 mr-2" />
+        Billing
+      </TabsTrigger>
+    )}
+
+    {hasPermission(OrgPermissionKey.AUDIT_VIEW) && (
+      <TabsTrigger
+        value="audit"
+        className="
+          relative rounded-lg px-4 py-1 text-sm
+          transition-all duration-200
+          data-[state=active]:bg-orange-500/10
+          data-[state=active]:text-orange-700
+          data-[state=active]:shadow-none
+          hover:bg-orange-500/5
+          hover:text-orange-600
+        "
+      >
+        <FileText className="size-4 mr-2" />
+        Audit
+      </TabsTrigger>
+    )}
+                   <TabsTrigger
+      value="rewards"
+      className="
+        relative rounded-lg px-4 py-1 text-sm
+        transition-all duration-200
+        data-[state=active]:bg-pink-500/10
+        data-[state=active]:text-pink-700
+        data-[state=active]:shadow-none
+        hover:bg-pink-500/5
+        hover:text-pink-600
+      "
+    >
+      <Gift className="size-4 mr-2" />
+      Rewards
+    </TabsTrigger>
                 </TabsList>
 
                 {/* ==================== GENERAL TAB ==================== */}
-                <TabsContent value="general" className="space-y-4 mt-6">
-                    <Card className="border shadow-sm">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-semibold flex items-center gap-2">
-                                <Settings2 className="size-4" />
-                                Organization Details
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                                {canEditSettings
-                                    ? "Update your organization information"
-                                    : "View your organization information"}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-5">
-                            {isLoading ? (
-                                <div className="space-y-4">
-                                    <Skeleton className="h-10 w-full" />
-                                    <Skeleton className="h-10 w-full" />
-                                </div>
-                            ) : (
-                                <>
-                                    {/* Organization Logo */}
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-medium">Organization Logo</Label>
-                                        <div className="flex items-center gap-4">
-                                            <div className="relative group">
-                                                <Avatar className="h-20 w-20 border-2 border-muted">
-                                                    {currentLogoUrl ? (
-                                                        <AvatarImage src={currentLogoUrl} alt={organization?.name} />
-                                                    ) : null}
-                                                    <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
-                                                        {orgInitial}
-                                                    </AvatarFallback>
-                                                </Avatar>
-                                                {canEditSettings && (
-                                                    <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                                        <ImageIcon className="size-6 text-white" />
+                <TabsContent value="general" className="mt-6">
+                    <section className="flex flex-col px-4">
+                        <h2 className="text-[18px] font-semibold mb-1">General</h2>
+                        <p className="text-xs text-muted-foreground mb-6">
+                            {canEditSettings ? "Update your organization information" : "View your organization information"}
+                        </p>
+                        {isLoading ? (
+                            <div className="space-y-4">
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-full" />
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-border">
+                                <div className="flex py-4 gap-4 items-center">
+                                    
+                                    <div className="flex items-center gap-4">
+                                        <div className="relative group">
+                                            <Avatar className="h-20 w-20 border-2 border-muted">
+                                                {currentLogoUrl ? (
+                                                    <AvatarImage src={currentLogoUrl} alt={organization?.name} />
+                                                ) : null}
+                                                <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
+                                                    {orgInitial}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            {canEditSettings && (
+                                                <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                                                    <ImageIcon className="size-6 text-white" />
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleLogoChange}
+                                                        className="sr-only"
+                                                    />
+                                                </label>
+                                            )}
+                                        </div>
+                                        {/* {canEditSettings && (
+                                            <label>
+                                                <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                                                    <span>
+                                                        <ImageIcon className="size-3.5" />
+                                                        {currentLogoUrl ? "Change Logo" : "Upload Logo"}
                                                         <input
                                                             type="file"
                                                             accept="image/*"
                                                             onChange={handleLogoChange}
                                                             className="sr-only"
                                                         />
-                                                    </label>
-                                                )}
-                                            </div>
-                                            <div className="space-y-1">
-                                                {canEditSettings && (
-                                                    <>
-                                                        <label>
-                                                            <Button variant="outline" size="sm" className="gap-1.5" asChild>
-                                                                <span>
-                                                                    <ImageIcon className="size-3.5" />
-                                                                    {currentLogoUrl ? "Change Logo" : "Upload Logo"}
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        onChange={handleLogoChange}
-                                                                        className="sr-only"
-                                                                    />
-                                                                </span>
-                                                            </Button>
-                                                        </label>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            PNG, JPG or GIF. Max 5MB.
-                                                        </p>
-                                                    </>
-                                                )}
-                                                {!canEditSettings && !currentLogoUrl && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        No logo set
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
+                                                    </span>
+                                                </Button>
+                                            </label>
+                                        )} */}
+                                        {!canEditSettings && !currentLogoUrl && (
+                                            <p className="text-xs text-muted-foreground">No logo set</p>
+                                        )}
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="orgName" className="text-xs font-medium">Organization Name</Label>
-                                            <Input
-                                                id="orgName"
-                                                value={orgName}
-                                                onChange={(e) => setOrgName(e.target.value)}
-                                                placeholder="Organization name"
-                                                disabled={!canEditSettings}
-                                                className="h-9"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="orgId" className="text-xs font-medium flex items-center gap-1.5">
-                                                <Hash className="size-3" />
-                                                Organization ID
-                                            </Label>
-                                            <Input
-                                                id="orgId"
-                                                value={primaryOrganizationId || ""}
-                                                disabled
-                                                className="font-mono text-xs h-9 bg-muted/50"
-                                            />
-                                        </div>
+                                    <div className="shrink-0 py-8">
+                                        <p className="text-sm font-medium">Organization Logo</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG or GIF. Max 5MB.</p>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-medium flex items-center gap-1.5">
-                                                <Clock className="size-3" />
-                                                Created
-                                            </Label>
-                                            <Input
-                                                value={organization?.$createdAt
-                                                    ? format(new Date(organization.$createdAt), "MMMM d, yyyy")
-                                                    : "-"
-                                                }
-                                                disabled
-                                                className="h-9 bg-muted/50"
-                                            />
-                                        </div>
+                                </div>
+
+                                <div className="flex flex-col py-8 gap-4">
+                                    <div className="shrink-0">
+                                        <p className="text-sm font-medium">Organization Name</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">The display name for your organization.</p>
                                     </div>
-                                    {canEditSettings && (
-                                        <div className="pt-2">
-                                            <Button
-                                                onClick={handleSaveOrg}
-                                                disabled={!hasChanges || isUpdating}
-                                                size="sm"
-                                            >
-                                                {isUpdating && <Loader2 className="size-3.5 mr-2 animate-spin" />}
-                                                Save Changes
-                                            </Button>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </CardContent>
-                    </Card>
+                                    <Input
+                                        id="orgName"
+                                        value={orgName}
+                                        onChange={(e) => setOrgName(e.target.value)}
+                                        placeholder="Organization name"
+                                        disabled={!canEditSettings}
+                                        className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col py-8  gap-4">
+                                    <div className="shrink-0">
+                                        <p className="text-sm font-medium">Organization ID</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">Your unique organization identifier.</p>
+                                    </div>
+                                    <Input
+                                        id="orgId"
+                                        value={primaryOrganizationId || ""}
+                                        disabled
+                                        className="w-6/12 font-mono text-xs h-8 bg-muted/50"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col py-8 gap-4">
+                                    <div className="shrink-0">
+                                        <p className="text-sm font-medium">Created</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">When this organization was created.</p>
+                                    </div>
+                                    <Input
+                                        value={organization?.$createdAt
+                                            ? format(new Date(organization.$createdAt), "MMMM d, yyyy")
+                                            : "-"
+                                        }
+                                        disabled
+                                        className="w-6/12 h-8 bg-muted/50"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                        {canEditSettings && !isLoading && (
+                            <div className="w-full flex justify-end pt-4">
+                                <Button
+                                    onClick={handleSaveOrg}
+                                    disabled={!hasChanges || isUpdating}
+                                    size="xs"
+                                >
+                                    {isUpdating && <Loader2 className="size-3.5 mr-2 animate-spin" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        )}
+                    </section>
                 </TabsContent>
 
                 {/* ==================== MEMBERS TAB ==================== */}
-                <TabsContent value="members" className="space-y-4 mt-6">
-                    <Card className="border shadow-sm">
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="text-base font-semibold flex items-center gap-2">
-                                        <Users className="size-4" />
-                                        Organization Members
-                                    </CardTitle>
-                                    <CardDescription className="text-xs mt-0.5">
-                                        {members.length} member{members.length !== 1 ? "s" : ""} in your organization
-                                    </CardDescription>
-                                </div>
-                                {canManageMembers && primaryOrganizationId && (
-                                    <div className="flex items-center gap-2">
-                                        <Suspense fallback={<Skeleton className="h-9 w-24" />}>
-                                            <BulkMemberUpload organizationId={primaryOrganizationId} />
-                                        </Suspense>
-                                        <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
-                                            <DialogTrigger asChild>
-                                                <Button size="sm" className="gap-1.5">
-                                                    <UserPlus className="size-4" />
-                                                    Add Member
-                                                </Button>
-                                            </DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader>
-                                                    <DialogTitle className="flex items-center gap-2">
-                                                        <UserPlus className="size-5" />
-                                                        Add Organization Member
-                                                    </DialogTitle>
-                                                    <DialogDescription>
-                                                        Create a new user account and add them to your organization.
-                                                        They will receive login credentials via email.
-                                                    </DialogDescription>
-                                                </DialogHeader>
-                                                <div className="space-y-4 py-4">
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="memberName">Full Name</Label>
-                                                        <Input
-                                                            id="memberName"
-                                                            placeholder="John Doe"
-                                                            value={newMemberName}
-                                                            onChange={(e) => setNewMemberName(e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="memberEmail">Email</Label>
-                                                        <Input
-                                                            id="memberEmail"
-                                                            type="email"
-                                                            placeholder="john@example.com"
-                                                            value={newMemberEmail}
-                                                            onChange={(e) => setNewMemberEmail(e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor="memberRole">Role</Label>
-                                                        <Select
-                                                            value={newMemberRole}
-                                                            onValueChange={(v) => setNewMemberRole(v as OrganizationRole)}
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value={OrganizationRole.MEMBER}>Member</SelectItem>
-                                                                <SelectItem value={OrganizationRole.MODERATOR}>Moderator</SelectItem>
-                                                                <SelectItem value={OrganizationRole.ADMIN}>Admin</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                </div>
-                                                <DialogFooter>
-                                                    <DialogClose asChild>
-                                                        <Button variant="outline">Cancel</Button>
-                                                    </DialogClose>
-                                                    <Button
-                                                        onClick={handleCreateMember}
-                                                        disabled={isCreatingMember || !newMemberName.trim() || !newMemberEmail.trim()}
-                                                    >
-                                                        {isCreatingMember ? (
-                                                            <>
-                                                                <Loader2 className="size-4 animate-spin mr-2" />
-                                                                Creating...
-                                                            </>
-                                                        ) : (
-                                                            "Create Member"
-                                                        )}
-                                                    </Button>
-                                                </DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </div>
-                                )}
+                <TabsContent value="members" className="mt-6">
+                    <section className="px-4">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-[18px] font-semibold">Members</h2>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {members.length} member{members.length !== 1 ? "s" : ""} in your organization
+                                </p>
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            {isLoadingMembers ? (
-                                <div className="space-y-2">
-                                    {[1, 2, 3].map((i) => (
-                                        <div key={i} className="flex items-center gap-3 p-3 border rounded-lg">
-                                            <Skeleton className="size-9 rounded-full" />
-                                            <div className="flex-1 space-y-1.5">
-                                                <Skeleton className="h-4 w-32" />
-                                                <Skeleton className="h-3 w-48" />
+                            {canManageMembers && primaryOrganizationId && (
+                                <div className="flex items-center gap-2">
+                                    <Suspense fallback={<Skeleton className="h-9 w-24" />}>
+<div className="scale-90 origin-right">
+    <BulkMemberUpload organizationId={primaryOrganizationId} />
+</div>                               </Suspense>
+                                    <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button size="xs" className="gap-1.5">
+                                                <UserPlus className="size-4" />
+                                                Add Member
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle className="flex items-center gap-2">
+                                                    <UserPlus className="size-5" />
+                                                    Add Organization Member
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Create a new user account and add them to your organization.
+                                                    They will receive login credentials via email.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-4 py-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="memberName">Full Name</Label>
+                                                    <Input
+                                                        id="memberName"
+                                                        placeholder="John Doe"
+                                                        value={newMemberName}
+                                                        onChange={(e) => setNewMemberName(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="memberEmail">Email</Label>
+                                                    <Input
+                                                        id="memberEmail"
+                                                        type="email"
+                                                        placeholder="john@example.com"
+                                                        value={newMemberEmail}
+                                                        onChange={(e) => setNewMemberEmail(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="memberRole">Role</Label>
+                                                    <Select
+                                                        value={newMemberRole}
+                                                        onValueChange={(v) => setNewMemberRole(v as OrganizationRole)}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value={OrganizationRole.MEMBER}>Member</SelectItem>
+                                                            <SelectItem value={OrganizationRole.MODERATOR}>Moderator</SelectItem>
+                                                            <SelectItem value={OrganizationRole.ADMIN}>Admin</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             </div>
-                                            <Skeleton className="h-6 w-16" />
-                                        </div>
-                                    ))}
+                                            <DialogFooter>
+                                                <DialogClose asChild>
+                                                    <Button variant="outline">Cancel</Button>
+                                                </DialogClose>
+                                                <Button
+                                                    onClick={handleCreateMember}
+                                                    disabled={isCreatingMember || !newMemberName.trim() || !newMemberEmail.trim()}
+                                                >
+                                                    {isCreatingMember ? (
+                                                        <>
+                                                            <Loader2 className="size-4 animate-spin mr-2" />
+                                                            Creating...
+                                                        </>
+                                                    ) : (
+                                                        "Create Member"
+                                                    )}
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
                                 </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {/* Select All Header (only for admins) */}
-                                    {canManageMembers && members.length > 0 && (
-                                        <div className="flex items-center gap-3 px-3 py-2 border-b mb-2">
+                            )}
+                        </div>
+
+                        {isLoadingMembers ? (
+                            <div className="border rounded-lg overflow-hidden">
+                                <div className="flex items-center gap-4 px-4 py-2.5 bg-muted/30 border-b">
+                                    <Skeleton className="h-4 w-4" />
+                                    <Skeleton className="h-4 flex-1" />
+                                    <Skeleton className="h-4 w-24" />
+                                    <Skeleton className="h-4 w-20" />
+                                    <Skeleton className="h-4 w-20" />
+                                </div>
+                                {[1, 2, 3].map((i) => (
+                                    <div key={i} className="flex items-center gap-4 px-4 py-3 border-b">
+                                        <Skeleton className="size-4" />
+                                        <Skeleton className="size-8 rounded-full" />
+                                        <div className="flex-1 space-y-1">
+                                            <Skeleton className="h-4 w-32" />
+                                            <Skeleton className="h-3 w-48" />
+                                        </div>
+                                        <Skeleton className="h-6 w-24" />
+                                        <Skeleton className="h-6 w-16" />
+                                        <Skeleton className="h-6 w-20" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <>
+                            
+                             {canManageMembers && selectedMemberIds.size > 0 && (
+                                <div className="justify-end flex items-end">
+                                        <div className="flex py-1 px-2 items-center gap-1 text-primary text-xs">
+                                            {selectedMemberIds.size} Selected
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                className="ml-4 px-4 py-1 text-xs"
+                                                onClick={handleClearSelection}
+                                            >
+                                                Clear
+                                            </Button>
+                                        </div>
+                                </div>
+
+      
+                                    )}
+                                    
+                                    
+                            <div className="border rounded-lg overflow-hidden">
+                                {/* Table Header */}
+                                <div className="flex items-center gap-4 px-4 py-2.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
+                                    {canManageMembers && (
+                                        <div className="w-4 shrink-0">
                                             <Checkbox
                                                 checked={allSelected ? true : someSelected ? "indeterminate" : false}
                                                 onCheckedChange={handleSelectAll}
                                                 aria-label="Select all members"
                                             />
-                                            <span className="text-xs text-muted-foreground">
-                                                {selectedMemberIds.size > 0 
-                                                    ? `${selectedMemberIds.size} selected`
-                                                    : "Select all"
-                                                }
-                                            </span>
-                                            {selectedMemberIds.size > 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 px-2 text-xs"
-                                                    onClick={handleClearSelection}
-                                                >
-                                                    Clear
-                                                </Button>
-                                            )}
                                         </div>
                                     )}
-                                    {members.map((member: OrgMember) => (
-                                        <div
-                                            key={member.$id}
-                                            className={`flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 hover:bg-accent/30 transition-all ${
-                                                selectedMemberIds.has(member.userId) ? "border-primary/50 bg-primary/5" : ""
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                {/* Selection Checkbox (only for admins) */}
-                                                {canManageMembers && (
-                                                    <Checkbox
-                                                        checked={selectedMemberIds.has(member.userId)}
-                                                        onCheckedChange={() => handleToggleMember(member.userId)}
-                                                        aria-label={`Select ${member.name || member.email}`}
-                                                    />
-                                                )}
-                                                <div className="relative">
-                                                    <Avatar className="size-9">
-                                                        <AvatarImage src={member.profileImageUrl || undefined} />
-                                                        <AvatarFallback className="text-xs font-medium">
-                                                            {(member.name || member.email || "?")
-                                                                .split(" ")
-                                                                .map(n => n[0])
-                                                                .join("")
-                                                                .toUpperCase()
-                                                                .slice(0, 2)}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    {member.role === "OWNER" && (
-                                                        <div className="absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full bg-amber-500 border-2 border-background">
-                                                            <Crown className="size-2.5 text-white" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-medium">
-                                                            {member.name || member.email || "Unknown"}
-                                                        </span>
-                                                    </div>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {member.email || member.userId}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {/* View Profile Button */}
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="size-8 text-muted-foreground hover:text-foreground"
-                                                    onClick={() => {
-                                                        const idx = members.findIndex((m: OrgMember) => m.userId === member.userId);
-                                                        setProfileViewIndex(idx >= 0 ? idx : 0);
-                                                        setSelectedMemberIds(new Set([member.userId]));
-                                                        setProfileDialogOpen(true);
-                                                    }}
-                                                >
-                                                    <Eye className="size-3.5" />
-                                                </Button>
-                                                {/* Pending activation badge + Resend button */}
-                                                {member.mustResetPassword && canManageMembers && primaryOrganizationId && (
-                                                    <>
-                                                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                                                            Pending
-                                                        </Badge>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 gap-1 text-xs"
-                                                            disabled={resendingUserId === member.userId}
-                                                            onClick={() => {
-                                                                setResendingUserId(member.userId);
-                                                                resendWelcome(
-                                                                    {
-                                                                        orgId: primaryOrganizationId,
-                                                                        userId: member.userId
-                                                                    },
-                                                                    {
-                                                                        onSettled: () => setResendingUserId(null)
-                                                                    }
-                                                                );
-                                                            }}
-                                                        >
-                                                            {resendingUserId === member.userId ? (
-                                                                <Loader2 className="size-3 animate-spin" />
-                                                            ) : (
-                                                                <Mail className="size-3" />
-                                                            )}
-                                                            Resend
-                                                        </Button>
-                                                    </>
-                                                )}
-                                                {/* Role selector (ADMIN+ can change roles) */}
-                                                {canManageMembers ? (
-                                                    <Select
-                                                        value={member.role}
-                                                        onValueChange={(value) =>
-                                                            handleUpdateRole(member.userId, value as OrganizationRole)
-                                                        }
-                                                        disabled={isUpdatingRole || (member.role === "OWNER" && ownerCount === 1)}
-                                                    >
-                                                        <SelectTrigger className="w-24 h-8 text-xs">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="OWNER">Owner</SelectItem>
-                                                            <SelectItem value="ADMIN">Admin</SelectItem>
-                                                            <SelectItem value="MODERATOR">Moderator</SelectItem>
-                                                            <SelectItem value="MEMBER">Member</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                ) : (
-                                                    <Badge
-                                                        variant="outline"
-                                                        className={`text-xs ${member.role === "OWNER"
-                                                            ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
-                                                            : member.role === "ADMIN"
-                                                                ? "bg-purple-500/10 text-purple-700 border-purple-500/20"
-                                                                : ""
-                                                            }`}
-                                                    >
-                                                        {member.role === "OWNER" && <Crown className="size-3 mr-1" />}
-                                                        {member.role === "ADMIN" && <Shield className="size-3 mr-1" />}
-                                                        {member.role}
-                                                    </Badge>
-                                                )}
-
-                                                {/* Remove member (ADMIN+ can remove, but not last OWNER) */}
-                                                {canManageMembers && member.role !== "OWNER" && (
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="size-8 text-muted-foreground hover:text-destructive"
-                                                                disabled={isRemoving}
-                                                            >
-                                                                <Trash2 className="size-3.5" />
-                                                            </Button>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>Remove member?</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    This will remove {member.name || member.email} from the organization.
-                                                                    They will lose access to all organization resources.
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction
-                                                                    onClick={() => handleRemoveMember(member.userId)}
-                                                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                                                >
-                                                                    Remove
-                                                                </AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                    <div className="flex-1">Member</div>
+                                    <div className="w-28">Role</div>
+                                    <div className="w-20">Status</div>
+                                   
+                                    <div className="w-20 text-right">Actions</div>
                                 </div>
+
+                                {/* Table Body */}
+                              {/* Table Body */}
+<div className="divide-y divide-border">
+    {members.map((member: OrgMember) => (
+        <div
+            key={member.$id}
+            onClick={() => {
+                if (canManageMembers) {
+                    handleToggleMember(member.userId);
+                }
+            }}
+            className={`flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer ${
+                selectedMemberIds.has(member.userId)
+                    ? "bg-primary/5"
+                    : ""
+            }`}
+        >
+            {/* Checkbox */}
+            {canManageMembers && (
+                <div
+                    className="w-4 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <Checkbox
+                        checked={selectedMemberIds.has(member.userId)}
+                        onCheckedChange={() =>
+                            handleToggleMember(member.userId)
+                        }
+                        aria-label={`Select ${member.name || member.email}`}
+                    />
+                </div>
+            )}
+
+            {/* Member info */}
+            <div className="flex-1 flex items-center gap-3 min-w-0">
+                <div className="relative shrink-0">
+                    <Avatar className="size-8">
+                        <AvatarImage
+                            src={member.profileImageUrl || undefined}
+                        />
+                        <AvatarFallback className="text-xs font-medium">
+                            {(member.name || member.email || "?")
+                                .split(" ")
+                                .map((n: string) => n[0])
+                                .join("")
+                                .toUpperCase()
+                                .slice(0, 2)}
+                        </AvatarFallback>
+                    </Avatar>
+
+                    {member.role === "OWNER" && (
+                        <div className="absolute -bottom-0.5 -right-0.5 p-0.5 rounded-full bg-amber-500 border-2 border-background">
+                            <Crown className="size-2.5 text-white" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">
+                        {member.name || member.email || "Unknown"}
+                    </p>
+
+                    <p className="text-xs text-muted-foreground truncate">
+                        {member.email || member.userId}
+                    </p>
+                </div>
+            </div>
+
+            {/* Role */}
+            <div
+                className="w-28 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {canManageMembers ? (
+                    <Select
+                        value={member.role}
+                        onValueChange={(value) =>
+                            handleUpdateRole(
+                                member.userId,
+                                value as OrganizationRole
+                            )
+                        }
+                        disabled={
+                            isUpdatingRole ||
+                            (member.role === "OWNER" && ownerCount === 1)
+                        }
+                    >
+                        <SelectTrigger className="w-full h-7 text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+
+                        <SelectContent>
+                            <SelectItem value="OWNER">Owner</SelectItem>
+                            <SelectItem value="ADMIN">Admin</SelectItem>
+                            <SelectItem value="MODERATOR">
+                                Moderator
+                            </SelectItem>
+                            <SelectItem value="MEMBER">
+                                Member
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                ) : (
+                    <Badge
+                        variant="outline"
+                        className={`text-xs ${
+                            member.role === "OWNER"
+                                ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                                : member.role === "ADMIN"
+                                ? "bg-purple-500/10 text-purple-700 border-purple-500/20"
+                                : ""
+                        }`}
+                    >
+                        {member.role === "OWNER" && (
+                            <Crown className="size-3 mr-1" />
+                        )}
+
+                        {member.role === "ADMIN" && (
+                            <Shield className="size-3 mr-1" />
+                        )}
+
+                        {member.role}
+                    </Badge>
+                )}
+            </div>
+
+            {/* Status */}
+            <div className="w-20 shrink-0">
+                {member.mustResetPassword ? (
+                    <Badge
+                        variant="secondary"
+                        className="text-xs bg-amber-100 text-amber-700 border-amber-200"
+                    >
+                        Pending
+                    </Badge>
+                ) : (
+                    <Badge
+                        variant="secondary"
+                        className="text-xs bg-emerald-100 text-emerald-700 border-emerald-200"
+                    >
+                        Active
+                    </Badge>
+                )}
+            </div>
+
+            {/* Actions */}
+            <div
+                className="w-20 shrink-0 flex items-center justify-end gap-1"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                        const idx = members.findIndex(
+                            (m: OrgMember) =>
+                                m.userId === member.userId
+                        );
+
+                        setProfileViewIndex(idx >= 0 ? idx : 0);
+                        setSelectedMemberIds(
+                            new Set([member.userId])
+                        );
+                        setProfileDialogOpen(true);
+                    }}
+                >
+                    <Eye className="size-3.5" />
+                </Button>
+
+                {member.mustResetPassword &&
+                    canManageMembers &&
+                    primaryOrganizationId && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-foreground"
+                            title="Resend welcome email"
+                            disabled={
+                                resendingUserId === member.userId
+                            }
+                            onClick={() => {
+                                setResendingUserId(member.userId);
+
+                                resendWelcome(
+                                    {
+                                        orgId: primaryOrganizationId,
+                                        userId: member.userId,
+                                    },
+                                    {
+                                        onSettled: () =>
+                                            setResendingUserId(null),
+                                    }
+                                );
+                            }}
+                        >
+                            {resendingUserId === member.userId ? (
+                                <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                                <Mail className="size-3" />
                             )}
-                        </CardContent>
-                    </Card>
+                        </Button>
+                    )}
+
+                {canManageMembers &&
+                    member.role !== "OWNER" && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 text-muted-foreground hover:text-destructive"
+                                    disabled={isRemoving}
+                                >
+                                    <Trash2 className="size-3.5" />
+                                </Button>
+                            </AlertDialogTrigger>
+
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>
+                                        Remove member?
+                                    </AlertDialogTitle>
+
+                                    <AlertDialogDescription>
+                                        This will remove{" "}
+                                        {member.name ||
+                                            member.email}{" "}
+                                        from the organization.
+                                        They will lose access to
+                                        all organization resources.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>
+                                        Cancel
+                                    </AlertDialogCancel>
+
+                                    <AlertDialogAction
+                                        onClick={() =>
+                                            handleRemoveMember(
+                                                member.userId
+                                            )
+                                        }
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                        Remove
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
+            </div>
+        </div>
+    ))}
+</div>
+                            </div>
+
+                            </>
+                        )}
+                    </section>
                 </TabsContent>
 
                 {/* ==================== SECURITY TAB (with Danger Zone) ==================== */}
-                <TabsContent value="security" className="space-y-4 mt-6">
-                    <Card className="border shadow-sm">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-semibold flex items-center gap-2">
-                                <Shield className="size-4" />
-                                Security Settings
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                                Organization security and access settings
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 transition-all">
-                                <div>
-                                    <div className="text-sm font-medium">Workspace Creation</div>
-                                    <div className="text-xs text-muted-foreground">
+                <TabsContent value="security" className="mt-6">
+                    <section className="px-4">
+                        <h2 className="text-[18px] font-semibold mb-1">Security</h2>
+                        <p className="text-xs text-muted-foreground mb-6">Organization security and access settings</p>
+
+                        <div className="divide-y divide-border">
+                            <div className="flex items-center justify-between py-8 gap-6">
+                                <div className="shrink-0">
+                                    <p className="text-sm font-medium">Workspace Creation</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
                                         Who can create new workspaces in this organization
-                                    </div>
+                                    </p>
                                 </div>
                                 <Select defaultValue="admins" disabled={!canViewSecurity}>
-                                    <SelectTrigger className="w-36 h-8 text-xs">
+                                    <SelectTrigger className="w-40 h-8 text-xs">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -966,15 +1120,15 @@ export const OrganizationSettingsClient = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 transition-all">
-                                <div>
-                                    <div className="text-sm font-medium">Member Invitations</div>
-                                    <div className="text-xs text-muted-foreground">
+                            <div className="flex items-center justify-between py-8 gap-6">
+                                <div className="shrink-0">
+                                    <p className="text-sm font-medium">Member Invitations</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
                                         Who can invite new members to the organization
-                                    </div>
+                                    </p>
                                 </div>
                                 <Select defaultValue="admins" disabled={!canViewSecurity}>
-                                    <SelectTrigger className="w-36 h-8 text-xs">
+                                    <SelectTrigger className="w-40 h-8 text-xs">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -983,85 +1137,81 @@ export const OrganizationSettingsClient = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
 
-                    {/* Danger Zone - OWNER ONLY */}
-                    {isOwner && (
-                        <Card className="border border-red-600 shadow-sm bg-red-500/5">
-                            <CardHeader className="pb-4">
-                                <CardTitle className="text-base font-semibold text-red-500 flex items-center gap-2">
-                                    <AlertTriangle className="size-4" />
-                                    Danger Zone
-                                </CardTitle>
-                                <CardDescription className="text-xs">
-                                    Irreversible and destructive actions
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between p-4 rounded-lg border border-red-600 bg-red-500/10">
-                                    <div className="flex-1">
-                                        <div className="text-sm font-medium text-red-500">Delete Organization</div>
-                                        <div className="text-xs text-muted-foreground mt-0.5">
-                                            Data will be retained for 30 days before permanent deletion.
-                                            Billing will be frozen immediately.
+                        {/* Danger Zone - OWNER ONLY */}
+                        {isOwner && (
+                            <div className="mt-10">
+                                <h2 className="text-sm font-semibold mb-0.5 text-destructive">Danger Zone</h2>
+                                <p className="text-xs text-muted-foreground mb-4">Irreversible and destructive actions</p>
+                                <div className="divide-y divide-border border rounded-lg">
+                                    <div className="flex items-center justify-between py-4 px-4 gap-6">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium">Delete Organization</p>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                Data will be retained for 30 days before permanent deletion. Billing will be frozen immediately.
+                                            </p>
                                         </div>
-                                    </div>
-                                    <Dialog>
-                                        <DialogTrigger asChild>
-                                            <Button size="sm" className="shrink-0 ml-4 bg-red-600 hover:bg-red-700 text-white border-0">
-                                                <Trash2 className="size-3.5 mr-1.5" />
-                                                Delete
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle className="text-destructive flex items-center gap-2">
-                                                    <AlertTriangle className="size-5" />
-                                                    Delete Organization
-                                                </DialogTitle>
-                                                <DialogDescription>
-                                                    This action cannot be undone. This will permanently delete the
-                                                    organization and all associated data after 30 days.
-                                                </DialogDescription>
-                                            </DialogHeader>
-                                            <div className="space-y-4 py-4">
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm">
-                                                        Type <span className="font-semibold">{organization?.name}</span> to confirm:
-                                                    </Label>
-                                                    <Input
-                                                        value={deleteConfirmName}
-                                                        onChange={(e) => setDeleteConfirmName(e.target.value)}
-                                                        placeholder="Organization name"
-                                                        className="h-9"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <DialogFooter>
-                                                <DialogClose asChild>
-                                                    <Button variant="outline" size="sm">Cancel</Button>
-                                                </DialogClose>
+                                        <Dialog>
+                                            <DialogTrigger asChild>
                                                 <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    onClick={handleDeleteOrg}
-                                                    disabled={!canDeleteOrg || isDeleting}
+                                                    variant="ghost"
+                                                    size="xs"
+                                                    className="shrink-0  text-destructive hover:text-destructive hover:bg-destructive/10 bg-destructive/10"
                                                 >
-                                                    {isDeleting && <Loader2 className="size-3.5 mr-2 animate-spin" />}
-                                                    Delete Organization
+                                                    <Trash2 className="size-3.5 mr-1.5" />
+                                                    Delete
                                                 </Button>
-                                            </DialogFooter>
-                                        </DialogContent>
-                                    </Dialog>
+                                            </DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader>
+                                                    <DialogTitle className="text-destructive flex items-center gap-2">
+                                                        <AlertTriangle className="size-5" />
+                                                        Delete Organization
+                                                    </DialogTitle>
+                                                    <DialogDescription>
+                                                        This action cannot be undone. This will permanently delete the
+                                                        organization and all associated data after 30 days.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+                                                <div className="space-y-4 py-8 border-b ">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm">
+                                                            Type <span className="font-semibold">{organization?.name}</span> to confirm:
+                                                        </Label>
+                                                        <Input
+                                                            value={deleteConfirmName}
+                                                            onChange={(e) => setDeleteConfirmName(e.target.value)}
+                                                            placeholder="Organization name"
+                                                            className="h-9"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <DialogFooter>
+                                                    <DialogClose asChild>
+                                                        <Button variant="outline" size="sm">Cancel</Button>
+                                                    </DialogClose>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={handleDeleteOrg}
+                                                        disabled={!canDeleteOrg || isDeleting}
+                                                    >
+                                                        {isDeleting && <Loader2 className="size-3.5 mr-2 animate-spin" />}
+                                                        Delete Organization
+                                                    </Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                            </div>
+                        )}
+                    </section>
                 </TabsContent>
 
                 {/* ==================== BILLING TAB ==================== */}
-                <TabsContent value="billing" className="space-y-4 mt-6">
+                <TabsContent value="billing" className="space-y-4 mt-6 px-4">
                     <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
                         <OrganizationBillingSettings
                             organizationId={primaryOrganizationId || ""}
@@ -1071,14 +1221,14 @@ export const OrganizationSettingsClient = () => {
                 </TabsContent>
 
                 {/* ==================== AUDIT TAB (OWNER ONLY) ==================== */}
-                <TabsContent value="audit" className="space-y-4 mt-6">
+                <TabsContent value="audit" className="space-y-4 mt-6 px-4">
                     <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
                         <OrganizationAuditLogs organizationId={primaryOrganizationId || ""} />
                     </Suspense>
                 </TabsContent>
 
                 {/* ==================== DEPARTMENTS TAB ==================== */}
-                <TabsContent value="departments" className="space-y-4 mt-6">
+                <TabsContent value="departments" className="space-y-4 mt-6 px-4">
                     <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
                         <DepartmentsList
                             orgId={primaryOrganizationId || ""}
@@ -1088,7 +1238,7 @@ export const OrganizationSettingsClient = () => {
                 </TabsContent>
 
                 {/* ==================== REWARDS TAB ==================== */}
-                <TabsContent value="rewards" className="space-y-4 mt-6">
+                <TabsContent value="rewards" className="space-y-4 mt-6 px-4">
                     <Suspense fallback={<Skeleton className="h-[400px] w-full" />}>
                         <OrganizationRewards organizationId={primaryOrganizationId || ""} />
                     </Suspense>
