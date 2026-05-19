@@ -113,6 +113,13 @@ export const Breadcrumb = () => {
     programId: shouldFetchProgram ? (itemId ?? "") : "",
   });
 
+  // Handle bug-report route (top-level, not workspace-scoped)
+  if (pathSegments[0] === "bug-report") {
+    return renderBreadcrumbs([
+      { label: "Bug Report", href: "/bug-report", isClickable: false },
+    ]);
+  }
+
   // Handle profile routes
   if (isProfileRoute) {
     const profileSection = pathSegments[1];
