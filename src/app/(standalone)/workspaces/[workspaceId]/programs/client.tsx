@@ -427,8 +427,8 @@ export const ProgramsClient = () => {
                 key={program.$id}
                 className="group hover:shadow-md transition-all duration-200 overflow-hidden"
               >
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-4">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="relative flex-shrink-0">
                       <Avatar className="size-16 rounded-xl border-2 border-background shadow-md">
                         {program.imageUrl ? (
@@ -474,10 +474,10 @@ export const ProgramsClient = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 sm:self-end">
                       <Link href={`/workspaces/${workspaceId}/programs/${program.$id}`}>
                         <Button variant="outline" size="sm" className="gap-2">
-                          View Details
+                          <span className="hidden sm:inline">View Details</span>
                           <ArrowRight className="size-4" />
                         </Button>
                       </Link>

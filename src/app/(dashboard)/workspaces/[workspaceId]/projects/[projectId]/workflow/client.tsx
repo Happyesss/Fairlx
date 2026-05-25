@@ -115,7 +115,7 @@ export const ProjectWorkflowClient = () => {
       {/* Current Workflow */}
       <Card className="border-none shadow-none">
         <CardHeader>
-          <div className="flex items-center w-full justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center w-full sm:justify-between gap-3">
             <div className="flex items-center gap-2">
               <GitBranch className="size-5 text-primary" />
               <CardTitle>Current Workflow</CardTitle>
@@ -164,7 +164,7 @@ export const ProjectWorkflowClient = () => {
           {project.workflowId && projectWorkflow ? (
             <div className="space-y-4">
               {/* Workflow Info */}
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg bg-muted/30 gap-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-primary/10">
                     <GitBranch className="size-5 text-primary" />

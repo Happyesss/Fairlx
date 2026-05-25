@@ -72,10 +72,10 @@ export const ProjectIdClient = () => {
   return (
     <div id="project-dashboard" className="flex flex-col gap-y-4">
 
-      <div className="flex items-center mb-4 justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center mb-4 sm:justify-between gap-3">
 
         <div className="flex gap-x-2 flex-col items-start gap-y-1.5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <p className="text-2xl tracking-tight font-semibold">{project.name}</p>
             {getDeadlineBadge()}
           </div>
@@ -84,7 +84,7 @@ export const ProjectIdClient = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Sprint Board - only visible with VIEW_SPRINTS permission */}
           <ProjectPermissionGuard
             permission={ProjectPermissionKey.VIEW_SPRINTS}
@@ -94,10 +94,10 @@ export const ProjectIdClient = () => {
             <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/sprints`} className="!text-sm">
               <button
                 type="button"
-                className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+                className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
               >
-                <Layers className="size-4 mr-3" />
-                Sprint Board
+                <Layers className="size-4 sm:mr-2" />
+                <span className="hidden sm:inline">Sprint Board</span>
               </button>
             </Link>
           </ProjectPermissionGuard>
@@ -105,30 +105,30 @@ export const ProjectIdClient = () => {
           <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/docs`} className="!text-sm">
             <button
               type="button"
-              className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+              className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
             >
-              <FileText className="size-4 mr-3" />
-              Docs
+              <FileText className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Docs</span>
             </button>
           </Link>
 
           <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/github`} className="!text-sm">
             <button
               type="button"
-              className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+              className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
             >
-              <Github className="size-4 mr-3" />
-              AI Github
+              <Github className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">AI Github</span>
             </button>
           </Link>
 
           <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/members`} className="!text-sm">
             <button
               type="button"
-              className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+              className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
             >
-              <UserPlus className="size-4 mr-3" />
-              Teams & Members
+              <UserPlus className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Teams & Members</span>
             </button>
           </Link>
 
@@ -141,10 +141,10 @@ export const ProjectIdClient = () => {
             <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/settings`} className="!text-sm">
               <button
                 type="button"
-                className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+                className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
               >
-                <Settings className="size-4 mr-3" />
-                Settings
+                <Settings className="size-4 sm:mr-2" />
+                <span className="hidden sm:inline">Settings</span>
               </button>
             </Link>
           </ProjectPermissionGuard>

@@ -187,8 +187,8 @@ export const ProjectIdSettingsClient = () => {
 
   return (
     <div className="min-h-screen flex">
-      {/* Settings Sidebar */}
-      <aside className="h-screen bg-background w-[264px] overflow-hidden border-r border-border flex flex-col fixed left-0 top-0">
+      {/* Settings Sidebar — desktop only */}
+      <aside className="h-screen bg-background w-[264px] overflow-hidden border-r border-border hidden lg:flex flex-col fixed left-0 top-0">
         <div className="flex items-center w-full py-5 px-4 border-b border-border flex-shrink-0">
           <Link href="/">
             <Image src="/Logo.png" className="object-contain" alt="logo" width={80} height={90} />
@@ -251,16 +251,42 @@ export const ProjectIdSettingsClient = () => {
       </aside>
 
       {/* Main Content */}
-      <div className="pl-[264px] w-full min-h-screen bg-background flex flex-col">
+      <div className="lg:pl-[264px] w-full min-h-screen bg-background flex flex-col">
         {/* Navbar */}
         <Navbar />
 
+        {/* Mobile Settings Nav */}
+        <div className="lg:hidden overflow-x-auto border-b bg-background sticky top-0 z-10">
+          <div className="flex items-center gap-1 p-2 min-w-max">
+            {settingsNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition",
+                    isActive
+                      ? "bg-accent text-primary"
+                      : "text-muted-foreground hover:bg-muted/50",
+                    item.danger && "text-destructive"
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Content Area */}
-        <div className="p-6">
+        <div className="p-3 sm:p-6">
           <div className="max-w-4xl mx-auto space-y-6">
             {/* Project Header Card */}
-            <div className="w-full p-5 rounded-xl border border-border flex items-center justify-between">
-              <div className="flex items-start gap-5">
+            <div className="w-full p-4 sm:p-5 rounded-xl border border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-start gap-4 sm:gap-5">
                 <Avatar className="size-24 border-2 border-border">
                   {project.imageUrl ? (
                     <AvatarImage src={project.imageUrl} alt={project.name} />
@@ -693,7 +719,7 @@ export const ProjectIdSettingsClient = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-destructive/10 border border-destructive/20 rounded-lg gap-3">
                     <div>
                       <p className="font-medium text-destructive text-sm">Delete this project</p>
                       <p className="text-xs text-muted-foreground">

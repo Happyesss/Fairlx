@@ -142,12 +142,12 @@ export const WorkflowGuideClient = () => {
   return (
     <div className="w-full h-[83vh] px-2">
       <div className="bg-card overflow-hidden h-full">
-        <div className="flex h-full">
+        <div className="flex flex-col lg:flex-row h-full">
 
           {/* Left Navigation */}
-          <aside className="w-60 shrink-0 h-3/5 rounded-2xl border border-border shadow-sm border-r bg-muted/20 p-3 flex flex-col gap-0.5">
+          <aside className="w-full lg:w-60 lg:shrink-0 lg:h-3/5 rounded-2xl border border-border shadow-sm border-b lg:border-b-0 lg:border-r bg-muted/20 p-2 lg:p-3 flex flex-row flex-wrap lg:flex-col items-center lg:items-stretch gap-0.5 overflow-x-auto">
             {/* Back + title */}
-            <div className="flex items-center gap-2 px-3 py-2 mb-4">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-2 mb-4">
               <button
                 type="button"
                 onClick={() => router.back()}
@@ -164,7 +164,7 @@ export const WorkflowGuideClient = () => {
                 type="button"
                 onClick={() => setActiveSection(section.id)}
                 className={[
-                  "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors duration-100",
+                  "w-auto lg:w-full text-left px-3 py-2 rounded-lg text-sm transition-colors duration-100 whitespace-nowrap",
                   activeSection === section.id
                     ? "bg-blue-500/10 text-blue-700 font-medium"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -174,9 +174,9 @@ export const WorkflowGuideClient = () => {
               </button>
             ))}
 
-            <Separator className="my-3" />
+            <Separator className="hidden lg:block my-3" />
 
-            <div className="px-3 pb-1">
+            <div className="hidden lg:block px-3 pb-1">
               <p className="text-xs text-muted-foreground mb-2">Ready to start?</p>
               <Button size="xs" className="w-full" asChild>
                 <Link href={`/workspaces/${workspaceId}/spaces`}>

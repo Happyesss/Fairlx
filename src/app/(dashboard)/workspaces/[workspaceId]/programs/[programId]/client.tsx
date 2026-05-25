@@ -136,7 +136,7 @@ export const ProgramIdClient = () => {
 
       {/* ─── Sticky Header ──────────────────────────────────────── */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10">
-        <div className="px-6 py-4">
+        <div className="px-3 py-3 sm:px-6 sm:py-4">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
             <Link href={`/workspaces/${workspaceId}/programs`} className="hover:text-foreground transition-colors flex items-center gap-1">
@@ -147,7 +147,7 @@ export const ProgramIdClient = () => {
             <span className="text-foreground font-medium truncate">{program.name}</span>
           </div>
 
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             {/* Left: Identity */}
             <div className="flex items-start gap-4 min-w-0 flex-1">
               <div
@@ -266,7 +266,7 @@ export const ProgramIdClient = () => {
           </div>
 
           {/* KPI Strip */}
-          <div className="flex items-center gap-6 mt-4 pt-4 border-t">
+          <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t">
             <KpiItem label="Progress" value={`${progress}%`} extra={<Progress value={progress} className="h-1.5 w-20 mt-1" />} />
             <Separator orientation="vertical" className="h-8" />
             <KpiItem label="Projects" value={projCount} icon={FolderKanban} />
@@ -280,7 +280,7 @@ export const ProgramIdClient = () => {
 
       {/* ─── Tabs ───────────────────────────────────────────────── */}
       <div className="flex-1 overflow-auto">
-        <div className="px-6 pt-4 pb-8">
+        <div className="px-3 pt-4 pb-8 sm:px-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="bg-transparent border-b rounded-none w-full justify-start gap-1 px-0 h-auto pb-0">
               {[
@@ -313,7 +313,7 @@ export const ProgramIdClient = () => {
                       <CardTitle className="text-base font-semibold">Program Details</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 gap-y-5 gap-x-8">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-8">
                         <InfoField label="Status">
                           <Badge variant="outline" className={cn("text-xs", st.color)}>
                             <div className={cn("h-1.5 w-1.5 rounded-full mr-1.5", st.dot)} />
