@@ -156,7 +156,7 @@ export const SpaceSettingsClient = () => {
         <div className="flex flex-col h-full">
 
           {/* Left Navigation */}
-          <aside className=" shrink-0 border w-fit border-border gap-2  bg-muted/20 p-1 rounded-lg flex">
+          <aside className=" shrink-0 border w-fit border-border gap-2  bg-muted/20 p-1 rounded-lg flex flex-wrap">
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.id}
@@ -202,7 +202,7 @@ export const SpaceSettingsClient = () => {
           <Input
             value={name || space.name}
             onChange={(e) => handleFieldChange("name", e.target.value)}
-            className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            className="w-full sm:w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
             placeholder="Enter space name"
           />
         </div>
@@ -219,7 +219,7 @@ export const SpaceSettingsClient = () => {
           <Input
             value={key || space.key}
             onChange={(e) => handleFieldChange("key", e.target.value)}
-            className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            className="w-full sm:w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
             placeholder="ENG"
             maxLength={10}
           />
@@ -237,7 +237,7 @@ export const SpaceSettingsClient = () => {
           <Textarea
             value={description || space.description || ""}
             onChange={(e) => handleFieldChange("description", e.target.value)}
-            className="w-6/12 min-h-[80px] text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+            className="w-full sm:w-6/12 min-h-[80px] text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
             rows={3}
             placeholder="Describe this space..."
           />
@@ -504,7 +504,7 @@ export const SpaceSettingsClient = () => {
                 <p className="text-xs text-muted-foreground mb-5">Irreversible actions for this space.</p>
                 <div className="divide-y divide-border">
 
-                  <div className="flex items-center justify-between py-4 gap-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 gap-4">
                     <div className="shrink-0">
                       <p className="text-sm font-medium">Delete this space</p>
                       <p className="text-xs text-muted-foreground mt-0.5">

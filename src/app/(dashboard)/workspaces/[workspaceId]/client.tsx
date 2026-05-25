@@ -505,51 +505,55 @@ export const WorkspaceIdClient = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Header */}
-            <div className="grid grid-cols-12 gap-3 pb-2 border-b border-border/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-              <div className="col-span-4 flex items-center">Project</div>
-              <div className="col-span-2 flex items-center justify-center">Tasks</div>
-              <div className="col-span-2 flex items-center justify-center">Completed</div>
-              <div className="col-span-4 flex items-center">Progress</div>
-            </div>
-            <div className="divide-y divide-border/30">
-              {projectStats.slice(0, 8).map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/workspaces/${workspaceId}/projects/${project.id}`}
-                  className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors w-full text-left cursor-pointer px-4 -mx-4"
-                >
-                  <div className="col-span-4 flex items-center gap-3 min-w-0">
-                    <ProjectAvatar
-                      name={project.name}
-                      image={project.imageUrl}
-                      className="h-8 w-8 shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{project.name}</p>
-                      {project.deadline && (
-                        <p className="text-[11px] text-muted-foreground">
-                          Due {format(new Date(project.deadline), "MMM d, yyyy")}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="col-span-2 text-center">
-                    <span className="text-sm font-medium tabular-nums">{project.total}</span>
-                  </div>
-                  <div className="col-span-2 text-center">
-                    <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
-                      {project.completed}
-                    </span>
-                  </div>
-                  <div className="col-span-4 flex items-center gap-3">
-                    <Progress value={project.pct} className="h-2 flex-1" />
-                    <span className="text-xs font-medium text-muted-foreground tabular-nums w-9 text-right">
-                      {project.pct}%
-                    </span>
-                  </div>
-                </Link>
-              ))}
+            <div className="overflow-x-auto -mx-6 px-6">
+              <div className="min-w-[460px]">
+                {/* Header */}
+                <div className="grid grid-cols-12 gap-3 pb-2 border-b border-border/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <div className="col-span-4 flex items-center">Project</div>
+                  <div className="col-span-2 flex items-center justify-center">Tasks</div>
+                  <div className="col-span-2 flex items-center justify-center">Completed</div>
+                  <div className="col-span-4 flex items-center">Progress</div>
+                </div>
+                <div className="divide-y divide-border/30">
+                  {projectStats.slice(0, 8).map((project) => (
+                    <Link
+                      key={project.id}
+                      href={`/workspaces/${workspaceId}/projects/${project.id}`}
+                      className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors w-full text-left cursor-pointer px-4 -mx-4"
+                    >
+                      <div className="col-span-4 flex items-center gap-3 min-w-0">
+                        <ProjectAvatar
+                          name={project.name}
+                          image={project.imageUrl}
+                          className="h-8 w-8 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{project.name}</p>
+                          {project.deadline && (
+                            <p className="text-[11px] text-muted-foreground">
+                              Due {format(new Date(project.deadline), "MMM d, yyyy")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="col-span-2 text-center">
+                        <span className="text-sm font-medium tabular-nums">{project.total}</span>
+                      </div>
+                      <div className="col-span-2 text-center">
+                        <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                          {project.completed}
+                        </span>
+                      </div>
+                      <div className="col-span-4 flex items-center gap-3">
+                        <Progress value={project.pct} className="h-2 flex-1" />
+                        <span className="text-xs font-medium text-muted-foreground tabular-nums w-9 text-right">
+                          {project.pct}%
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -583,92 +587,96 @@ export const WorkspaceIdClient = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-12 gap-3 pb-2 border-b border-border/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                <div className="col-span-5">Task</div>
-                <div className="col-span-2">Project</div>
-                <div className="col-span-2">Due</div>
-                <div className="col-span-2">Status</div>
-                <div className="col-span-1">Priority</div>
-              </div>
-
-              <div className="divide-y divide-border/30">
-                {dynamicData.recentWorkItems.length > 0 ? (
-                  dynamicData.recentWorkItems.map((task) => (
-                    <Link
-                      key={task.id}
-                      href={`/workspaces/${workspaceId}/tasks/${task.id}`}
-                      className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors px-4 -mx-4"
-                    >
-                      <div className="col-span-5 flex items-center gap-3 min-w-0">
-                        <MemberAvatar
-                          name={task.assignee}
-                          imageUrl={task.assigneeImage}
-                          className="h-7 w-7 shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate text-foreground">
-                            {task.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {task.assignee}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-xs text-muted-foreground truncate block">
-                          {task.project}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-xs text-muted-foreground">
-                          {task.dueDate ? format(task.dueDate, "MMM d") : "—"}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "text-[11px] font-medium",
-                            task.status === "Completed" &&
-                              "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15",
-                            task.status === "In Progress" &&
-                              "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15",
-                            task.status === "To Do" &&
-                              "bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/15"
-                          )}
-                        >
-                          {task.status}
-                        </Badge>
-                      </div>
-                      <div className="col-span-1">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px] font-medium border-0",
-                            task.priority === "URGENT" &&
-                              "bg-red-500/10 text-red-600 dark:text-red-400",
-                            task.priority === "HIGH" &&
-                              "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-                            task.priority === "MEDIUM" &&
-                              "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
-                            task.priority === "LOW" &&
-                              "bg-slate-500/10 text-slate-600 dark:text-slate-400"
-                          )}
-                        >
-                          {task.priority}
-                        </Badge>
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <div className="py-12 text-center">
-                    <Layers className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No work items yet</p>
-                    <p className="text-xs text-muted-foreground/70 mt-0.5">
-                      Create your first task to get started
-                    </p>
+              <div className="overflow-x-auto -mx-6 px-6">
+                <div className="min-w-[520px]">
+                  <div className="grid grid-cols-12 gap-3 pb-2 border-b border-border/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    <div className="col-span-5">Task</div>
+                    <div className="col-span-2">Project</div>
+                    <div className="col-span-2">Due</div>
+                    <div className="col-span-2">Status</div>
+                    <div className="col-span-1">Priority</div>
                   </div>
-                )}
+
+                  <div className="divide-y divide-border/30">
+                    {dynamicData.recentWorkItems.length > 0 ? (
+                      dynamicData.recentWorkItems.map((task) => (
+                        <Link
+                          key={task.id}
+                          href={`/workspaces/${workspaceId}/tasks/${task.id}`}
+                          className="grid grid-cols-12 gap-3 py-3 items-center hover:bg-muted/50 transition-colors px-4 -mx-4"
+                        >
+                          <div className="col-span-5 flex items-center gap-3 min-w-0">
+                            <MemberAvatar
+                              name={task.assignee}
+                              imageUrl={task.assigneeImage}
+                              className="h-7 w-7 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate text-foreground">
+                                {task.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {task.assignee}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-xs text-muted-foreground truncate block">
+                              {task.project}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-xs text-muted-foreground">
+                              {task.dueDate ? format(task.dueDate, "MMM d") : "—"}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "text-[11px] font-medium",
+                                task.status === "Completed" &&
+                                  "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15",
+                                task.status === "In Progress" &&
+                                  "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15",
+                                task.status === "To Do" &&
+                                  "bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/15"
+                              )}
+                            >
+                              {task.status}
+                            </Badge>
+                          </div>
+                          <div className="col-span-1">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] font-medium border-0",
+                                task.priority === "URGENT" &&
+                                  "bg-red-500/10 text-red-600 dark:text-red-400",
+                                task.priority === "HIGH" &&
+                                  "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+                                task.priority === "MEDIUM" &&
+                                  "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+                                task.priority === "LOW" &&
+                                  "bg-slate-500/10 text-slate-600 dark:text-slate-400"
+                              )}
+                            >
+                              {task.priority}
+                            </Badge>
+                          </div>
+                        </Link>
+                      ))
+                    ) : (
+                      <div className="py-12 text-center">
+                        <Layers className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">No work items yet</p>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                          Create your first task to get started
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

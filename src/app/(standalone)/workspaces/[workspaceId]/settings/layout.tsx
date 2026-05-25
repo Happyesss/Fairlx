@@ -20,7 +20,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         <div className="lg:pl-[264px] w-full flex flex-col min-h-screen">
           <Navbar />
           <div className="flex-1 overflow-y-auto bg-background">
-            <main className="flex flex-col py-8 px-6">
+            <main className="flex flex-col py-4 px-3 sm:py-8 sm:px-6">
               {children}
             </main>
           </div>
