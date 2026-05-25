@@ -208,14 +208,14 @@ export const ProfileClient = ({ initialData }: ProfileClientProps) => {
   };
 
   return (
-    <div className="h-full w-full p-6">
+    <div className="h-full w-full">
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Back Navigation */}
         <BackButton />
 
-        <div className="w-full p-5 rounded-xl border flex items-center justify-between">
-          <div className="flex items-start gap-5">
+        <div className="w-full p-4 sm:p-5 rounded-xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-start gap-4 sm:gap-5">
             <div className="relative group">
               <input
                 id="profile-image-upload"

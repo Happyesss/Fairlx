@@ -249,7 +249,7 @@ export function UsageDashboardClient() {
                         <ArrowLeft className="size-4" />
                         {isOrg ? "Back to Organization" : "Back to Workspace"}
                     </Button>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
                         <p className="text-sm text-muted-foreground">
                             {isOrg
                                 ? "Organization-wide usage monitoring and billing insights"
@@ -273,7 +273,7 @@ export function UsageDashboardClient() {
                 </div>
 
                 {/* Toolbar - Matching workspace dashboard style */}
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border">
                             <Shield className="h-3.5 w-3.5" />

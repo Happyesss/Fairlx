@@ -84,11 +84,11 @@ export const TaskIdClient = () => {
   }
 
   return (
-    <div className="flex flex-col h-[91vh]">
+    <div className="flex flex-col sm:h-[91vh]">
       <ConfirmDialog />
 
       {/* Modal-like Content */}
-      <div className="flex flex-1 overflow-hidden bg-background">
+      <div className="flex flex-col flex-1 sm:flex-row sm:overflow-hidden bg-background">
         {/* Left Section - Main Content - Scrollable */}
         <div className="flex-1 overflow-y-auto">
           {/* Task Title */}
@@ -200,7 +200,7 @@ export const TaskIdClient = () => {
         </div>
 
         {/* Right Section - Details Panel */}
-        <div className="w-[280px] border-l border-border bg-muted/30 flex flex-col overflow-y-auto">
+        <div className="w-full border-t sm:w-[280px] sm:border-t-0 sm:border-l border-border bg-muted/30 flex flex-col sm:overflow-y-auto">
           <div className="">
             <div className="flex items-center justify-between  pt-2">
               <div className="flex items-center justify-between px-3 pt-2 pb-4 w-full  border-b border-border">
