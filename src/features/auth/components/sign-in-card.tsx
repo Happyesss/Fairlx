@@ -37,9 +37,13 @@ interface SignInCardProps {
    * - "Sign in with your organisation" section is hidden
    */
   byobOrgSlug?: string;
+  /** Error code forwarded from the OAuth callback (e.g. "email_exists"). */
+  error?: string;
+  /** Email address to pre-fill when redirected from the OAuth duplicate guard. */
+  prefillEmail?: string;
 }
 
-export const SignInCard = ({ returnUrl, byobOrgSlug }: SignInCardProps) => {
+export const SignInCard = ({ returnUrl, byobOrgSlug, error, prefillEmail }: SignInCardProps) => {
   const [twoFactorData, setTwoFactorData] = useState<{
     tempToken: string;
     method: TwoFactorMethod;
@@ -52,7 +56,7 @@ export const SignInCard = ({ returnUrl, byobOrgSlug }: SignInCardProps) => {
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      email: prefillEmail ?? "",
       password: "",
     },
   });
@@ -98,6 +102,13 @@ export const SignInCard = ({ returnUrl, byobOrgSlug }: SignInCardProps) => {
         <h1 className="mb-1 text-2xl font-bold leading-[1.3] tracking-tight text-[#1c65ee] md:text-[1.75rem]">Manage your projects.</h1>
         <p className="text-base leading-relaxed text-muted-foreground">Welcome back to Fairlx.</p>
       </div>
+
+      {/* Duplicate-email error banner */}
+      {error === "email_exists" && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300">
+          <strong>An account with this email already exists.</strong> Please sign in with your email and password below. You can link additional providers from your account settings afterwards.
+        </div>
+      )}
 
       {/* OAuth Buttons — hidden in BYOB context */}
       {!byobOrgSlug && (
