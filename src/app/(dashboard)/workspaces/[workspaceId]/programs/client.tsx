@@ -247,7 +247,7 @@ export const ProgramsClient = () => {
 
       {/* Header */}
       <div className="border-b bg-background">
-        <div className="px-6 py-5 flex items-center justify-between">
+        <div className="px-3 sm:px-6 py-4 sm:py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
               <Layers className="h-5 w-5 text-primary" />
@@ -278,7 +278,7 @@ export const ProgramsClient = () => {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <div className="px-6 py-6 space-y-6">
+        <div className="px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
           {/* Summary pills */}
           {!isLoading && !!programs?.documents.length && (
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -313,13 +313,13 @@ export const ProgramsClient = () => {
 
           {/* Toolbar */}
           {!isLoading && !!programs?.documents.length && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search programs..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px] h-9">
+                <SelectTrigger className="w-[140px] sm:w-[160px] h-9">
                   <Filter className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>

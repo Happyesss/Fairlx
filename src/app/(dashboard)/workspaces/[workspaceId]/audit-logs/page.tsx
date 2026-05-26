@@ -484,7 +484,9 @@ export default function AuditLogsPage() {
               </div>
             ) : (
               <>
-                <ActivityTableView activities={activities || []} />
+                <div className="overflow-x-auto">
+                  <ActivityTableView activities={activities || []} />
+                </div>
 
                 {/* Load More Button */}
                 {hasNextPage && (

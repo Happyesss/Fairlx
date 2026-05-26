@@ -98,7 +98,7 @@ export const MySpaceClient = () => {
                 onValueChange={(v) => setActiveTab(v as TopTab)}
                 className="w-full"
             >
-                <div className="flex gap-1 border-b border-border pb-0">
+                <div className="flex gap-1 border-b border-border pb-0 overflow-x-auto">
                     {TOP_TABS.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -206,7 +206,7 @@ export const MySpaceClient = () => {
 
                 {/* Settings Tab — Link to personal settings */}
                 <TabsContent value="settings" className="mt-4">
-                    <div className="border rounded-lg bg-card p-6 space-y-6">
+                    <div className="border rounded-lg bg-card p-4 sm:p-6 space-y-6">
                         <div>
                             <h3 className="text-lg font-semibold mb-1">Personal Settings</h3>
                             <p className="text-sm text-muted-foreground">

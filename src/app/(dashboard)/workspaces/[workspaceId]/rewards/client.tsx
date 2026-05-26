@@ -45,9 +45,9 @@ export const RewardsPageClient = () => {
     }
 
     return (
-        <div className="flex flex-col gap-6 p-6 max-w-3xl">
+        <div className="flex flex-col gap-6 max-w-3xl">
             {/* Header ... */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                     <h1 className="text-2xl font-bold">Rewards</h1>
                     <p className="text-muted-foreground">

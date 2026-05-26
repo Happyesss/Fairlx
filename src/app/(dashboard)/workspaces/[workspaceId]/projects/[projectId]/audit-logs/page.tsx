@@ -107,12 +107,12 @@ export default function ProjectAuditLogsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Filter className="size-4" />
               Activity Logs
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={selectedType} onValueChange={setSelectedType}>
                 <SelectTrigger className="w-[150px] h-9">
                   <SelectValue placeholder="All Types" />

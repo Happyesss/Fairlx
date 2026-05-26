@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight, Clock as ClockIcon, Activity, Shield, CreditCard, User, Gift } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock as ClockIcon, Activity, CreditCard, User, Gift } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -53,12 +53,6 @@ export const Tools = () => {
       icon: <Activity className="size-4" />,
     },
     {
-      label: "Admin Panel",
-      href: "/admin/usage",
-      icon: <Shield className="size-4" />,
-      adminOnly: true,
-    },
-    {
       label: "Billing",
       href: "/billing",
       icon: <CreditCard className="size-4" />,
@@ -84,9 +78,9 @@ export const Tools = () => {
     // Use department-based permissions for org admin checks
     if (tool.orgAdminOnly && !canViewAudit) return false;
 
-    // For org accounts: Hide Admin Panel, Billing, and Rewards from sidebar
-    // These are now accessible on the Organization settings page
-    if (hasOrg && (tool.label === "Admin Panel" || tool.label === "Billing" || tool.label === "Rewards")) {
+    // For org accounts: Hide Billing and Rewards from sidebar
+    // These are accessible on the Organization settings page
+    if (hasOrg && (tool.label === "Billing" || tool.label === "Rewards")) {
       return false;
     }
     return true;
@@ -104,12 +98,7 @@ export const Tools = () => {
       fullHref = tool.href;
     } else {
       if (!workspaceId) return;
-      // Special case for Admin Panel
-      if (tool.label === "Admin Panel" && hasOrg) {
-        fullHref = "/organization/usage";
-      } else {
-        fullHref = `/workspaces/${workspaceId}${tool.href}`;
-      }
+      fullHref = `/workspaces/${workspaceId}${tool.href}`;
     }
 
     router.push(fullHref);
@@ -121,11 +110,7 @@ export const Tools = () => {
     if (tool.orgRoute) {
       targetPath = tool.href;
     } else {
-      if (tool.label === "Admin Panel" && hasOrg) {
-        targetPath = "/organization/usage";
-      } else {
-        targetPath = `/workspaces/${workspaceId}${tool.href}`;
-      }
+      targetPath = `/workspaces/${workspaceId}${tool.href}`;
     }
 
     return pathname === targetPath;

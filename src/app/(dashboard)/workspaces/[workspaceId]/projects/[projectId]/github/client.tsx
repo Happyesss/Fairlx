@@ -325,7 +325,7 @@ export const GitHubIntegrationClient = () => {
   // Repository connected - show full interface
   return (
     <div className="flex flex-col gap-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-4">
           {/* <Link href={`/workspaces/${workspaceId}/projects/${projectId}`}>
             <Button variant="ghost" size="icon" className="size-9">
