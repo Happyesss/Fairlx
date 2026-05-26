@@ -13,7 +13,8 @@ import {
     Loader2,
     ExternalLink,
     FileText,
-    Clock
+    Clock,
+    BarChart3
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, differenceInDays } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -231,9 +232,22 @@ export const BillingDashboardClient = () => {
                         }
                     </p>
                 </div>
-                <Badge variant={isOrg ? "default" : "secondary"} className="text-xs">
-                    {accountType} Account
-                </Badge>
+                <div className="flex items-center gap-2">
+                    {!isOrg && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1.5"
+                            onClick={() => window.location.href = `/workspaces/${workspaceId}/admin/usage`}
+                        >
+                            <BarChart3 className="size-3.5" />
+                            Usage Dashboard
+                        </Button>
+                    )}
+                    <Badge variant={isOrg ? "default" : "secondary"} className="text-xs">
+                        {accountType} Account
+                    </Badge>
+                </div>
             </div>
 
             <Separator />
