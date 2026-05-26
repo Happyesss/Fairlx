@@ -385,7 +385,7 @@ export const OrganizationSettingsClient = () => {
     return (
         <div className="flex flex-col gap-6 w-full">
             {/* Header */}
-            <div className="flex flex-col  sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div>
                         {isLoadingOrg ? (
@@ -422,6 +422,7 @@ export const OrganizationSettingsClient = () => {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+  <div className="overflow-x-auto -mx-1 px-1 pb-1">
   <TabsList className="relative flex w-fit gap-1 rounded-xl border border-border bg-muted/20 p-1 h-auto">
                         <TabsTrigger
       value="general"
@@ -546,7 +547,8 @@ export const OrganizationSettingsClient = () => {
       <Gift className="size-4 mr-2" />
       Rewards
     </TabsTrigger>
-                </TabsList>
+    </TabsList>
+  </div>
 
                 {/* ==================== GENERAL TAB ==================== */}
                 <TabsContent value="general" className="mt-6">
@@ -624,7 +626,7 @@ export const OrganizationSettingsClient = () => {
                                         onChange={(e) => setOrgName(e.target.value)}
                                         placeholder="Organization name"
                                         disabled={!canEditSettings}
-                                        className="w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
+                                        className="w-full sm:w-6/12 h-8 text-sm rounded-md border border-border bg-transparent px-2 shadow-none focus-visible:ring-0 focus-visible:border-primary"
                                     />
                                 </div>
 
@@ -637,7 +639,7 @@ export const OrganizationSettingsClient = () => {
                                         id="orgId"
                                         value={primaryOrganizationId || ""}
                                         disabled
-                                        className="w-6/12 font-mono text-xs h-8 bg-muted/50"
+                                        className="w-full sm:w-6/12 font-mono text-xs h-8 bg-muted/50"
                                     />
                                 </div>
 
@@ -652,7 +654,7 @@ export const OrganizationSettingsClient = () => {
                                             : "-"
                                         }
                                         disabled
-                                        className="w-6/12 h-8 bg-muted/50"
+                                        className="w-full sm:w-6/12 h-8 bg-muted/50"
                                     />
                                 </div>
                             </div>
@@ -675,7 +677,7 @@ export const OrganizationSettingsClient = () => {
                 {/* ==================== MEMBERS TAB ==================== */}
                 <TabsContent value="members" className="mt-6">
                     <section className="px-4">
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
                             <div>
                                 <h2 className="text-[18px] font-semibold">Members</h2>
                                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -812,7 +814,8 @@ export const OrganizationSettingsClient = () => {
                                     )}
                                     
                                     
-                            <div className="border rounded-lg overflow-hidden">
+                            <div className="overflow-x-auto -mx-4 px-4">
+                            <div className="border rounded-lg overflow-hidden min-w-[480px]">
                                 {/* Table Header */}
                                 <div className="flex items-center gap-4 px-4 py-2.5 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
                                     {canManageMembers && (
@@ -1088,9 +1091,10 @@ export const OrganizationSettingsClient = () => {
         </div>
     ))}
 </div>
+</div>
                             </div>
 
-                            </>
+</>
                         )}
                     </section>
                 </TabsContent>
@@ -1102,7 +1106,7 @@ export const OrganizationSettingsClient = () => {
                         <p className="text-xs text-muted-foreground mb-6">Organization security and access settings</p>
 
                         <div className="divide-y divide-border">
-                            <div className="flex items-center justify-between py-8 gap-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-8 gap-4">
                                 <div className="shrink-0">
                                     <p className="text-sm font-medium">Workspace Creation</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -1110,7 +1114,7 @@ export const OrganizationSettingsClient = () => {
                                     </p>
                                 </div>
                                 <Select defaultValue="admins" disabled={!canViewSecurity}>
-                                    <SelectTrigger className="w-40 h-8 text-xs">
+                                    <SelectTrigger className="w-full sm:w-40 h-8 text-xs">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1120,7 +1124,7 @@ export const OrganizationSettingsClient = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="flex items-center justify-between py-8 gap-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-8 gap-4">
                                 <div className="shrink-0">
                                     <p className="text-sm font-medium">Member Invitations</p>
                                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -1128,7 +1132,7 @@ export const OrganizationSettingsClient = () => {
                                     </p>
                                 </div>
                                 <Select defaultValue="admins" disabled={!canViewSecurity}>
-                                    <SelectTrigger className="w-40 h-8 text-xs">
+                                    <SelectTrigger className="w-full sm:w-40 h-8 text-xs">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>

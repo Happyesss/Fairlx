@@ -6,7 +6,7 @@ import { SignInCard } from "@/features/auth/components/sign-in-card";
 const SignInPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ returnUrl?: string }>;
+  searchParams: Promise<{ returnUrl?: string; error?: string; email?: string }>;
 }) => {
   const user = await getCurrent();
   const params = await searchParams;
@@ -19,7 +19,7 @@ const SignInPage = async ({
     redirect("/");
   }
 
-  return <SignInCard returnUrl={params.returnUrl} />;
+  return <SignInCard returnUrl={params.returnUrl} error={params.error} prefillEmail={params.email} />;
 };
 
 export default SignInPage;

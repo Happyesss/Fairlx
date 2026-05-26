@@ -13,7 +13,8 @@ import {
     Loader2,
     ExternalLink,
     FileText,
-    Clock
+    Clock,
+    BarChart3
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, differenceInDays } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -219,9 +220,9 @@ export const BillingDashboardClient = () => {
     });
 
     return (
-        <div className="flex flex-col gap-8 p-8 min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-background via-background to-muted/20">
+        <div className="flex flex-col gap-6 sm:gap-8 min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-background via-background to-muted/20">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                     <h1 className="text-2xl font-bold">Billing & Usage</h1>
                     <p className="text-muted-foreground">
@@ -231,9 +232,22 @@ export const BillingDashboardClient = () => {
                         }
                     </p>
                 </div>
-                <Badge variant={isOrg ? "default" : "secondary"} className="text-xs">
-                    {accountType} Account
-                </Badge>
+                <div className="flex items-center gap-2">
+                    {!isOrg && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1.5"
+                            onClick={() => window.location.href = `/workspaces/${workspaceId}/admin/usage`}
+                        >
+                            <BarChart3 className="size-3.5" />
+                            Usage Dashboard
+                        </Button>
+                    )}
+                    <Badge variant={isOrg ? "default" : "secondary"} className="text-xs">
+                        {accountType} Account
+                    </Badge>
+                </div>
             </div>
 
             <Separator />
@@ -311,7 +325,7 @@ export const BillingDashboardClient = () => {
                             <div>
                                 <span className="text-blue-200 text-xs uppercase tracking-widest font-bold">Total Available</span>
                                 <div className="flex items-baseline gap-2 mt-1">
-                                    <span className="text-6xl font-extrabold text-white tracking-tighter">
+                                    <span className="text-4xl sm:text-6xl font-extrabold text-white tracking-tighter">
                                         {new Intl.NumberFormat("en-US", {
                                             style: "currency",
                                             currency: walletCurrency,
@@ -605,8 +619,8 @@ export const BillingDashboardClient = () => {
                     <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20" />
                     <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
                     
-                    <CardContent className="py-8 relative z-10 text-white">
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <CardContent className="py-6 sm:py-8 relative z-10 text-white">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
                             <div className="text-center md:text-left">
                                 <h3 className="text-xl font-bold">Scale to Organization</h3>
                                 <p className="text-blue-100/70 text-sm mt-1 max-w-md">

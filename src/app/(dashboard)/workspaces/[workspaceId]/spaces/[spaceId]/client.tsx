@@ -260,7 +260,7 @@ export const SpaceIdClient = () => {
       {/* Projects Section */}
       <Card className=" mt-8 shadow-none border-none rounded-lg">
         <CardHeader className="pb-6 border-t  mb-6">
-          <div className="flex items-center  justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
              
               <div>
