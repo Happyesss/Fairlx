@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -169,6 +169,9 @@ export const EnhancedDataKanban = ({
 
   const [tasks, setTasks] = useState<TasksState>({});
   const [orderedColumns, setOrderedColumns] = useState<ColumnData[]>([]);
+  // Track current orderedColumns in a ref so the sync effect never goes stale
+  const orderedColumnsRef = useRef(orderedColumns);
+  orderedColumnsRef.current = orderedColumns;
 
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -215,9 +218,33 @@ export const EnhancedDataKanban = ({
     });
   };
 
-  // Update ordered columns when allColumns changes
+  // Sync orderedColumns from allColumns ONLY when the set of column IDs changes
+  // (initial load, or columns added/removed). Ignores position-only changes so
+  // that a manual drag-reorder is never snapped back by a subsequent re-render.
   useEffect(() => {
-    setOrderedColumns(allColumns);
+    const current = orderedColumnsRef.current;
+    const currentIds = new Set(current.map((c) => c.id));
+    const newIds = new Set(allColumns.map((c) => c.id));
+
+    const hasAdded = allColumns.some((c) => !currentIds.has(c.id));
+    const hasRemoved = current.some((c) => !newIds.has(c.id));
+
+    // Initial load — set directly
+    if (current.length === 0) {
+      setOrderedColumns(allColumns);
+      return;
+    }
+
+    // No structural change — preserve the user's manual order
+    if (!hasAdded && !hasRemoved) return;
+
+    // Columns were added or removed — merge while preserving current order
+    const allColumnsMap = new Map(allColumns.map((c) => [c.id, c]));
+    const merged = current
+      .filter((c) => newIds.has(c.id))
+      .map((c) => allColumnsMap.get(c.id)!)
+      .concat(allColumns.filter((c) => !currentIds.has(c.id)));
+    setOrderedColumns(merged);
   }, [allColumns]);
 
   // Update tasks when data changes or columns change

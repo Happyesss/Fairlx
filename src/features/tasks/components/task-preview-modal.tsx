@@ -760,6 +760,11 @@ export const TaskPreviewModalWrapper = () => {
 
   const closeAttachmentPreview = () => setPreviewAttachment(null);
 
+  // Reset attachment preview when the task changes
+  useEffect(() => {
+    setPreviewAttachment(null);
+  }, [taskId]);
+
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
