@@ -34,9 +34,10 @@ interface DataFiltersProps {
   showMyTasksOnly?: boolean; // New prop to hide assignee filter in My Tasks
   projects?: Project[]; // Passed in My Space mode for cross-workspace filters
   disableManageColumns?: boolean; // Disable when project setup is needed
+  hideManageColumns?: boolean; // Hide entirely (e.g. calendar view)
 }
 
-export const DataFilters = ({ hideProjectFilter, showMyTasksOnly, projects: passedProjects, disableManageColumns }: DataFiltersProps) => {
+export const DataFilters = ({ hideProjectFilter, showMyTasksOnly, projects: passedProjects, disableManageColumns, hideManageColumns }: DataFiltersProps) => {
   const workspaceId = useWorkspaceId();
   const currentProjectId = useProjectId();
 
@@ -303,16 +304,18 @@ export const DataFilters = ({ hideProjectFilter, showMyTasksOnly, projects: pass
         />
       </div>
 
-      <Button
-        size="sm"
-        onClick={openManageModal}
-        disabled={disableManageColumns}
-        title={disableManageColumns ? "Complete project setup in Backlog first" : undefined}
-        className="h-8 text-xs lg:ml-auto gap-2"
-      >
-        <Settings2Icon className="size-4 mr-2" />
-        Manage Columns
-      </Button>
+      {!hideManageColumns && (
+        <Button
+          size="sm"
+          onClick={openManageModal}
+          disabled={disableManageColumns}
+          title={disableManageColumns ? "Complete project setup in Backlog first" : undefined}
+          className="h-8 text-xs lg:ml-auto gap-2"
+        >
+          <Settings2Icon className="size-4 mr-2" />
+          Manage Columns
+        </Button>
+      )}
     </div>
   );
 };

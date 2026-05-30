@@ -493,6 +493,7 @@ export const TaskViewSwitcher = ({
           showMyTasksOnly={showMyTasksOnly}
           projects={showMyTasksOnly ? (mySpaceProjectsQuery.data?.documents || []) : undefined}
           disableManageColumns={effectiveProjectId ? setupState.needsSetup : false}
+          hideManageColumns={view === "calendar"}
         />
       )}
 
