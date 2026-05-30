@@ -157,18 +157,26 @@ export const ProjectMembersClient = () => {
         });
     };
 
-    const memberOptions = workspaceMembers.map((member) => ({
-        label: member.name || "Unknown",
-        value: member.userId,
-        icon: () => (
-            <Avatar className="h-5 w-5 mr-2">
-                <AvatarImage src={member.profileImageUrl || undefined} />
-                <AvatarFallback className="text-[8px]">
-                    {member.name?.charAt(0).toUpperCase()}
-                </AvatarFallback>
-            </Avatar>
-        ),
-    }));
+    // IDs of members already in this project
+    const existingProjectMemberUserIds = new Set(projectMembers.map((m) => m.userId));
+
+    const memberOptions = workspaceMembers
+        // Exclude members already in the project
+        .filter((member) => !existingProjectMemberUserIds.has(member.userId))
+        // Exclude workspace OWNER (they have implicit access to all projects)
+        .filter((member) => member.role !== "OWNER")
+        .map((member) => ({
+            label: member.name || "Unknown",
+            value: member.userId,
+            icon: () => (
+                <Avatar className="h-5 w-5 mr-2">
+                    <AvatarImage src={member.profileImageUrl || undefined} />
+                    <AvatarFallback className="text-[8px]">
+                        {member.name?.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                </Avatar>
+            ),
+        }));
 
     if (isLoading) {
         return (
