@@ -163,8 +163,8 @@ export const ProjectMembersClient = () => {
     const memberOptions = workspaceMembers
         // Exclude members already in the project
         .filter((member) => !existingProjectMemberUserIds.has(member.userId))
-        // Exclude workspace OWNER (they have implicit access to all projects)
-        .filter((member) => member.role !== "OWNER")
+        // Exclude workspace OWNER and ADMIN (they have implicit access to all projects)
+        .filter((member) => member.role !== "OWNER" && member.role !== "ADMIN")
         .map((member) => ({
             label: member.name || "Unknown",
             value: member.userId,
