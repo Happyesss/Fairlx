@@ -20,6 +20,7 @@ import { useCreateTaskModal } from "../hooks/use-create-task-modal";
 import { useGetProject } from "@/features/projects/api/use-get-project";
 import { useValidateTransition, TransitionValidationResult } from "@/features/workflows/api/use-validate-transition";
 import { useGetWorkflowStatuses } from "@/features/workflows/api/use-get-workflow-statuses";
+import { useKanbanAutoScroll } from "@/hooks/use-kanban-auto-scroll";
 
 const boards: TaskStatus[] = [
   TaskStatus.TODO,
@@ -92,6 +93,7 @@ export const DataKanban = ({
   const { mutate: bulkUpdateTasks } = useBulkUpdateTasks();
   const { open: openCreateTask } = useCreateTaskModal();
   const { mutateAsync: validateTransition } = useValidateTransition();
+  const { scrollRef, handleDragStart, handleDragEnd } = useKanbanAutoScroll();
 
   // Check if TODO column should be visible (only when tasks are TODO or unassigned)
   const shouldShowTodoColumn = useMemo(() => {
@@ -456,8 +458,14 @@ export const DataKanban = ({
         </div>
       </div>
 
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex overflow-x-scroll gap-4 pb-4 kanban-scrollbar">
+      <DragDropContext
+        onDragEnd={(result) => {
+          handleDragEnd();
+          onDragEnd(result);
+        }}
+        onDragStart={handleDragStart}
+      >
+        <div ref={scrollRef} className="flex overflow-x-scroll gap-4 pb-4 kanban-scrollbar">
           {visibleBoards.map((board) => {
             const selectedInColumn = tasks[board].filter(task =>
               selectedTasks.has(task.$id)

@@ -33,11 +33,14 @@ import {
   COMMIT_CACHE_CHANNEL,
 } from "@/features/github-integration/lib/commit-cache";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 
 export const GitHubIntegrationClient = () => {
   const projectId = useProjectId();
   const workspaceId = useWorkspaceId();
   const { data: repository, isLoading } = useGetRepository(projectId);
+  const { isProjectAdmin } = useProjectPermissions({ projectId, workspaceId });
+  const canManageGithub = isProjectAdmin;
   const [commitsCount, setCommitsCount] = useState(0);
   const documentationPath = workspaceId
     ? `/workspaces/${workspaceId}/projects/${projectId}/github/documentation`
@@ -188,7 +191,7 @@ export const GitHubIntegrationClient = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <ConnectRepository projectId={projectId} />
+                    <ConnectRepository projectId={projectId} canManage={canManageGithub} />
                   </CardContent>
                 </Card>
                 {/* Connection node indicator */}
@@ -438,7 +441,7 @@ export const GitHubIntegrationClient = () => {
 
               </div>
               <div className="pt-6 px-6 border-t ">
-                <ConnectRepository projectId={projectId} isUpdate />
+                <ConnectRepository projectId={projectId} isUpdate canManage={canManageGithub} />
               </div>
             </SheetContent>
           </Sheet>

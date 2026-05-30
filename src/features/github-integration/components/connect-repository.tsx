@@ -50,11 +50,13 @@ type FormValues = z.infer<typeof formSchema>;
 interface ConnectRepositoryProps {
   projectId: string;
   isUpdate?: boolean;
+  canManage?: boolean;
 }
 
 export const ConnectRepository = ({
   projectId,
   isUpdate = false,
+  canManage = false,
 }: ConnectRepositoryProps) => {
   const [open, setOpen] = useState(false);
   const [isCheckingRepo, setIsCheckingRepo] = useState(false);
@@ -174,6 +176,7 @@ export const ConnectRepository = ({
   };
 
   if (isUpdate && repository) {
+    if (!canManage) return null;
     return (
       <>
         <ConfirmDialog />
@@ -329,6 +332,8 @@ export const ConnectRepository = ({
       </>
     );
   }
+
+  if (!canManage) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

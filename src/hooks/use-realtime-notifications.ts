@@ -150,12 +150,6 @@ export function useRealtimeNotifications({
             return;
         }
 
-        // TEMPORARY FIX: Suppress real-time disconnected errors in dev mode
-        if (process.env.NODE_ENV !== 'production') {
-             setIsConnected(false);
-             return;
-        }
-
         const client = getAppwriteClient();
         const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID!;
         const notificationsId = process.env.NEXT_PUBLIC_APPWRITE_NOTIFICATIONS_ID!;
