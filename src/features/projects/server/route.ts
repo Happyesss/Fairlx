@@ -324,6 +324,21 @@ const app = new Hono()
         updateData.workflowId = (workflowId === null || workflowId === "" || workflowId === "null") ? null : workflowId;
       }
 
+      // When removing a project from a space (spaceId → null) and workflowId was NOT
+      // explicitly provided, auto-clear the workflowId if it was inherited from the
+      // old space. This prevents stale workflow references from blocking kanban drags.
+      if (updateData.spaceId === null && workflowId === undefined && existingProject.spaceId && existingProject.workflowId) {
+        try {
+          const oldSpace = await databases.getDocument<Space>(DATABASE_ID, SPACES_ID, existingProject.spaceId);
+          if (oldSpace.defaultWorkflowId && existingProject.workflowId === oldSpace.defaultWorkflowId) {
+            updateData.workflowId = null;
+          }
+        } catch {
+          // Old space not found — safe to clear the orphaned workflowId
+          updateData.workflowId = null;
+        }
+      }
+
       // Update custom definitions
       if (customWorkItemTypes !== undefined) {
         updateData.customWorkItemTypes = JSON.stringify(customWorkItemTypes);

@@ -174,48 +174,53 @@ const app = new Hono()
         sessionMiddleware,
         zValidator("json", createProjectTeamSchema),
         async (c) => {
-            const { databases: adminDb } = await createAdminClient();
-            const user = c.get("user");
-            const data = c.req.valid("json");
+            try {
+                const { databases: adminDb } = await createAdminClient();
+                const user = c.get("user");
+                const data = c.req.valid("json");
 
-            // Check project access + permission
-            const access = await resolveUserProjectAccess(adminDb, user.$id, data.projectId);
-            if (!access.hasAccess) {
-                return c.json({ error: "Unauthorized: Not a project member" }, 403);
-            }
-            if (!hasProjectPermission(access, ProjectPermissionKey.MANAGE_TEAMS)) {
-                return c.json({ error: "Forbidden: Requires MANAGE_TEAMS permission" }, 403);
-            }
-
-            // Check for duplicate team name
-            const existing = await adminDb.listDocuments(
-                DATABASE_ID,
-                PROJECT_TEAMS_ID,
-                [
-                    Query.equal("projectId", data.projectId),
-                    Query.equal("name", data.name),
-                ]
-            );
-
-            if (existing.total > 0) {
-                return c.json({ error: "Team name already exists in this project" }, 409);
-            }
-
-            // Create team
-            const team = await adminDb.createDocument<ProjectTeam>(
-                DATABASE_ID,
-                PROJECT_TEAMS_ID,
-                ID.unique(),
-                {
-                    projectId: data.projectId,
-                    name: data.name,
-                    description: data.description || null,
-                    color: data.color || "#4F46E5",
-                    createdBy: user.$id,
+                // Check project access + permission
+                const access = await resolveUserProjectAccess(adminDb, user.$id, data.projectId);
+                if (!access.hasAccess) {
+                    return c.json({ error: "Unauthorized: Not a project member" }, 403);
                 }
-            );
+                if (!hasProjectPermission(access, ProjectPermissionKey.MANAGE_TEAMS)) {
+                    return c.json({ error: "Forbidden: Requires MANAGE_TEAMS permission" }, 403);
+                }
 
-            return c.json({ data: team }, 201);
+                // Check for duplicate team name
+                const existing = await adminDb.listDocuments(
+                    DATABASE_ID,
+                    PROJECT_TEAMS_ID,
+                    [
+                        Query.equal("projectId", data.projectId),
+                        Query.equal("name", data.name),
+                    ]
+                );
+
+                if (existing.total > 0) {
+                    return c.json({ error: "Team name already exists in this project" }, 409);
+                }
+
+                // Create team
+                const team = await adminDb.createDocument<ProjectTeam>(
+                    DATABASE_ID,
+                    PROJECT_TEAMS_ID,
+                    ID.unique(),
+                    {
+                        projectId: data.projectId,
+                        name: data.name,
+                        description: data.description || null,
+                        color: data.color || "#4F46E5",
+                        createdBy: user.$id,
+                    }
+                );
+
+                return c.json({ data: team }, 201);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to create team";
+                return c.json({ error: message }, 500);
+            }
         }
     )
 

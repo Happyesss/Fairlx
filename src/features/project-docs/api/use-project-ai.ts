@@ -88,7 +88,7 @@ export const useAICreateTask = () => {
     },
     onSuccess: (data) => {
       if (data.action?.executed && data.success) {
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        queryClient.invalidateQueries({ queryKey: ["work-items"] });
         queryClient.invalidateQueries({ queryKey: ["project-analytics"] });
         toast.success(data.message || "Task created successfully");
       }
@@ -122,8 +122,8 @@ export const useAIUpdateTask = () => {
     },
     onSuccess: (data) => {
       if (data.action?.executed && data.success) {
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        queryClient.invalidateQueries({ queryKey: ["task", data.task?.id] });
+        queryClient.invalidateQueries({ queryKey: ["work-items"] });
+        queryClient.invalidateQueries({ queryKey: ["work-item", data.task?.id] });
         queryClient.invalidateQueries({ queryKey: ["project-analytics"] });
         toast.success(data.message || "Task updated successfully");
       }
@@ -171,10 +171,10 @@ export const useExecuteTaskSuggestion = () => {
       return await response.json() as AITaskResponse;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["work-items"] });
       queryClient.invalidateQueries({ queryKey: ["project-analytics"] });
       if (data.task?.id) {
-        queryClient.invalidateQueries({ queryKey: ["task", data.task.id] });
+        queryClient.invalidateQueries({ queryKey: ["work-item", data.task.id] });
       }
       toast.success(data.message || "Task operation completed");
     },
