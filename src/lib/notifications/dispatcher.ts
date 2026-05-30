@@ -311,7 +311,7 @@ class NotificationDispatcher {
                     workspaceId: event.workspaceId,
                     triggeredBy: event.triggeredBy,
                     metadata: JSON.stringify(payload.metadata || {}),
-                    read: false,
+                    isRead: false,
                 },
                 [
                     `read("user:${userId}")`,

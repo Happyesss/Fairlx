@@ -49,6 +49,28 @@ const app = new Hono()
           return c.json({ error: "Unauthorized" }, 401);
         }
 
+        // Check if repo is already linked (determines connect vs. update)
+        const existing = await databases.listDocuments<GitHubRepository>(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          [Query.equal("projectId", projectId)]
+        );
+
+        // RBAC: Only project admins/owners can create new repository connections.
+        // All project members can update/refetch an existing connection.
+        if (existing.total === 0) {
+          const { resolveUserProjectAccess } = await import(
+            "@/lib/permissions/resolveUserProjectAccess"
+          );
+          const access = await resolveUserProjectAccess(databases, user.$id, projectId);
+          if (!access.isAdmin) {
+            return c.json(
+              { error: "Only project admins and owners can connect repositories" },
+              403
+            );
+          }
+        }
+
         // Parse GitHub URL
         const { owner, repo } = githubAPI.parseGitHubUrl(githubUrl);
 
@@ -66,13 +88,6 @@ const app = new Hono()
             400
           );
         }
-
-        // Check if repo is already linked
-        const existing = await databases.listDocuments<GitHubRepository>(
-          DATABASE_ID,
-          GITHUB_REPOS_ID,
-          [Query.equal("projectId", projectId)]
-        );
 
         let repository: GitHubRepository;
 
@@ -257,6 +272,18 @@ const app = new Hono()
 
         if (!member) {
           return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // RBAC: Only project admins/owners can disconnect repositories
+        const { resolveUserProjectAccess } = await import(
+          "@/lib/permissions/resolveUserProjectAccess"
+        );
+        const access = await resolveUserProjectAccess(databases, user.$id, repository.projectId);
+        if (!access.isAdmin) {
+          return c.json(
+            { error: "Only project admins and owners can disconnect repositories" },
+            403
+          );
         }
 
         // Delete repository connection

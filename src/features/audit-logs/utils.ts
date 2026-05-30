@@ -164,14 +164,10 @@ export async function getActivityLogs({
 
     // Now create activity logs with resolved user info
     for (const { doc, activityType, activityAction } of tempActivities) {
-      let userId = getUserIdFromDocument(doc, activityType, activityAction);
+      const userId = getUserIdFromDocument(doc, activityType, activityAction);
 
-      // Don't use currentUserId as fallback - we want to show "Unknown User" 
-      // when we genuinely don't know who performed the action
-      // Only fallback to workspace members for created items where we have no user field
-      if (!userId && activityAction === "created" && membersResult.documents.length > 0) {
-        userId = membersResult.documents[0].userId as string;
-      }
+      // No fallback to workspace members — that would attribute actions to the wrong person.
+      // If we can't determine the user, show "Unknown User".
 
       const userInfo = userId ? userMap.get(userId) : null;
 
@@ -250,23 +246,17 @@ export async function getActivityLogs({
 function getUserIdFromDocument(
   doc: Record<string, unknown>,
   activityType: ActivityType,
-  action?: string
+  _action?: string
 ): string | undefined {
-  // First, check if document has lastModifiedBy field (for updates)
-  if (action === "updated" && doc.lastModifiedBy) {
+  // Check lastModifiedBy first — it's set on both task creates AND updates
+  if (doc.lastModifiedBy) {
     return doc.lastModifiedBy as string;
   }
 
   switch (activityType) {
     case ActivityType.TASK:
-      // For task creates, use assigneeId or the first assigneeIds
-      // For updates, we now check lastModifiedBy first (above)
-      if (action === "created") {
-        const assigneeId = doc.assigneeId as string | undefined;
-        const assigneeIds = doc.assigneeIds as string[] | undefined;
-        return assigneeId || (assigneeIds?.[0]);
-      }
-      // For updates without lastModifiedBy, return undefined
+      // lastModifiedBy already handled above for both creates and updates.
+      // Return undefined — we don't want to fall back to the assignee as the "author".
       return undefined;
 
     case ActivityType.TIME_LOG:
@@ -298,10 +288,11 @@ function getUserIdFromDocument(
 
     case ActivityType.PROJECT:
     case ActivityType.SPRINT:
+      // Both have a createdBy field stored at creation time
+      return (doc.createdBy as string | undefined);
+
     case ActivityType.CUSTOM_COLUMN:
     case ActivityType.NOTIFICATION:
-      // These don't have direct user fields
-      // We'll need to infer from workspace membership
       return undefined;
 
     default:

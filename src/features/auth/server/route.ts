@@ -2,6 +2,33 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
+import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { promisify } from "util";
+
+const scryptAsync = promisify(scrypt);
+const PASSWORD_HISTORY_LIMIT = 10;
+
+async function hashPasswordForHistory(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${salt.toString("hex")}:${hash.toString("hex")}`;
+}
+
+async function isPasswordInHistory(password: string, history: string[]): Promise<boolean> {
+  for (const storedHash of history) {
+    try {
+      const [saltHex, hashHex] = storedHash.split(":");
+      if (!saltHex || !hashHex) continue;
+      const salt = Buffer.from(saltHex, "hex");
+      const storedHashBuffer = Buffer.from(hashHex, "hex");
+      const computedHash = (await scryptAsync(password, salt, 64)) as Buffer;
+      if (timingSafeEqual(storedHashBuffer, computedHash)) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
 
 import {
   loginSchema,
@@ -669,10 +696,36 @@ const app = new Hono()
     async (c) => {
       try {
         const account = c.get("account");
+        const user = c.get("user");
         const { currentPassword, newPassword } = c.req.valid("json");
 
-        // Update password using Appwrite's updatePassword method
+        // Check new password against previously used password history
+        const passwordHistory: string[] = Array.isArray(user.prefs?.passwordHistory)
+          ? (user.prefs.passwordHistory as string[])
+          : [];
+
+        if (await isPasswordInHistory(newPassword, passwordHistory)) {
+          return c.json({
+            error: "You have used this password before. Please choose a password you haven't used previously.",
+          }, 400);
+        }
+
+        // Update password — Appwrite verifies currentPassword internally
         await account.updatePassword(newPassword, currentPassword);
+
+        // Hash the retired password and prepend to history (keep last N)
+        const retiredHash = await hashPasswordForHistory(currentPassword);
+        const updatedHistory = [retiredHash, ...passwordHistory].slice(0, PASSWORD_HISTORY_LIMIT);
+
+        const currentPrefs: Record<string, unknown> = {};
+        if (user.prefs && typeof user.prefs === "object" && !Array.isArray(user.prefs)) {
+          Object.entries(user.prefs).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && typeof v !== "function") {
+              currentPrefs[k] = v;
+            }
+          });
+        }
+        await account.updatePrefs({ ...currentPrefs, passwordHistory: updatedHistory });
 
         return c.json({ success: true, message: "Password updated successfully" });
       } catch (error: unknown) {
