@@ -48,6 +48,7 @@ import { useValidateTransition, TransitionValidationResult } from "@/features/wo
 import { useGetCustomColumns } from "../api/use-get-custom-columns";
 import { useDefaultColumns } from "../hooks/use-default-columns";
 import { CustomColumnHeader } from "./custom-column-header";
+import { useKanbanAutoScroll } from "@/hooks/use-kanban-auto-scroll";
 import { CustomColumn } from "../types";
 import { useUpdateColumnOrder } from "@/features/default-column-settings/api/use-update-column-order";
 
@@ -117,6 +118,7 @@ export const EnhancedDataKanban = ({
 
 
   useCreateTaskModal();
+  const { scrollRef, handleDragStart, handleDragEnd } = useKanbanAutoScroll();
   const { getEnabledColumns } = useDefaultColumns(workspaceId, projectId);
   const { mutate: updateColumnOrder } = useUpdateColumnOrder();
 
@@ -628,12 +630,21 @@ export const EnhancedDataKanban = ({
           </div>
         </div>
 
-        <DragDropContext onDragEnd={onDragEnd}>
+        <DragDropContext
+          onDragEnd={(result) => {
+            handleDragEnd();
+            onDragEnd(result);
+          }}
+          onDragStart={handleDragStart}
+        >
           <Droppable droppableId="columns" direction="horizontal" type="column">
             {(provided) => (
               <div
                 {...provided.droppableProps}
-                ref={provided.innerRef}
+                ref={(el: HTMLDivElement | null) => {
+                  scrollRef.current = el;
+                  provided.innerRef(el);
+                }}
                 className="flex overflow-x-scroll gap-4 pb-4 kanban-scrollbar"
               >
                 {orderedColumns.map((column, index) => {

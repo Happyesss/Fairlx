@@ -26,6 +26,7 @@ import {
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useGetProjects } from "@/features/projects/api/use-get-projects";
+import { useKanbanAutoScroll } from "@/hooks/use-kanban-auto-scroll";
 
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -246,6 +247,7 @@ export const MyWorkView = () => {
   }, [workItems]);
 
   // Handle drag and drop
+  const { scrollRef, handleDragStart, handleDragEnd } = useKanbanAutoScroll();
   const onDragEnd = useCallback(
     (result: DropResult) => {
       if (!result.destination) return;
@@ -495,8 +497,14 @@ export const MyWorkView = () => {
           </div>
         ) : view === "board" ? (
           /* Board View - Kanban Style with drag and drop */
-          <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex overflow-x-scroll gap-4 p-4 h-full pb-4 kanban-scrollbar">
+          <DragDropContext
+            onDragEnd={(result) => {
+              handleDragEnd();
+              onDragEnd(result);
+            }}
+            onDragStart={handleDragStart}
+          >
+            <div ref={scrollRef} className="flex overflow-x-scroll gap-4 p-4 h-full pb-4 kanban-scrollbar">
               {visibleColumns.map((column) => {
                 const items = itemsByStatus[column.id] || [];
                 return (

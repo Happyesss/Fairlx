@@ -266,7 +266,7 @@ export async function createNotification({
       workspaceId,
       triggeredBy,
       metadata: JSON.stringify(metadata),
-      read: false,
+      isRead: false,
     },
     [
       `read("user:${userId}")`,
