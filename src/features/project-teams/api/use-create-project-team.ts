@@ -15,7 +15,7 @@ export const useCreateProjectTeam = () => {
             const response = await client.api["project-teams"].$post({ json });
 
             if (!response.ok) {
-                const error = await response.json();
+                const error = await response.json().catch(() => ({ error: "Failed to create team" }));
                 throw new Error((error as { error: string }).error || "Failed to create team");
             }
 
