@@ -91,14 +91,22 @@ export const useGetAccountLifecycle = () => {
             const response = await client.api.auth.lifecycle.$get();
 
             if (!response.ok) {
-                // If unauthorized, return unauthenticated state
+                // If unauthorized/session invalid, redirect to sign-in
                 return {
                     data: {
                         ...INITIAL_LIFECYCLE_STATE,
                         isLoaded: true,
                         isLoading: false,
                     },
-                    lifecycle: INITIAL_ROUTING,
+                    lifecycle: {
+                        state: "UNAUTHENTICATED",
+                        redirectTo: "/sign-in",
+                        allowedPaths: [],
+                        blockedPaths: ["*"],
+                        isTrialExpired: false,
+                        trialCreditGranted: false,
+                        trialCreditExpiresAt: null,
+                    },
                 };
             }
 

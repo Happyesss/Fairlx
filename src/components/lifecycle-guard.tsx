@@ -53,6 +53,14 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
             return;
         }
 
+        // Guard: If loaded and not authenticated, always redirect to sign-in
+        if (!lifecycleState.isAuthenticated) {
+            const returnUrl = encodeURIComponent(pathname);
+            redirectingRef.current = true;
+            router.push(`/sign-in?returnUrl=${returnUrl}`);
+            return;
+        }
+
         // 1. Force Redirect (Server Authority)
         // If server explicitly says "Go here" AND we aren't already there.
         // EXCEPTION: Allow access to any path in allowedPaths even if redirectTo is set.
