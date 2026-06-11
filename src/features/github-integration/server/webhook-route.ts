@@ -526,7 +526,7 @@ async function processIssuesEvent(
       }
     }
 
-    let projectKey = project.name.substring(0, 3).toUpperCase();
+    const projectKey = project.name.substring(0, 3).toUpperCase();
     const existingItems = await databases.listDocuments(
       DATABASE_ID,
       TASKS_ID,

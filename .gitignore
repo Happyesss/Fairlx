@@ -20,7 +20,8 @@ pnpm-lock.yaml
 /.nyc_output
 /src/lib/__tests__
 
-
+# docs
+/docs/Integrations
 
 # next.js
 /.next/
