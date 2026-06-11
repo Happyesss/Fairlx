@@ -558,6 +558,194 @@ export class GitHubAPI {
 
     return mermaid;
   }
+
+  // ─── Webhook Management ──────────────────
+
+  /**
+   * Register a webhook on a GitHub repository.
+   * Returns the webhook ID for later deletion.
+   */
+  async registerWebhook(
+    owner: string,
+    repo: string,
+    webhookUrl: string,
+    secret: string,
+    events: string[] = ["push", "pull_request"]
+  ): Promise<{ id: number; url: string }> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/hooks`;
+
+    const response = await this.fetchWithRetry(url, {
+      method: "POST",
+      headers: {
+        ...this.getHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "web",
+        active: true,
+        events,
+        config: {
+          url: webhookUrl,
+          content_type: "json",
+          secret,
+          insecure_ssl: "0",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(
+        `Failed to register webhook: ${response.statusText} - ${JSON.stringify(errorBody)}`
+      );
+    }
+
+    const data = await response.json() as { id: number; url: string };
+    return { id: data.id, url: data.url };
+  }
+
+  /**
+   * Delete a webhook from a GitHub repository.
+   */
+  async deleteWebhook(
+    owner: string,
+    repo: string,
+    hookId: number
+  ): Promise<void> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/hooks/${hookId}`;
+
+    const response = await this.fetchWithRetry(url, {
+      method: "DELETE",
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Failed to delete webhook: ${response.statusText}`);
+    }
+  }
+
+  /**
+   * List webhooks on a GitHub repository.
+   */
+  async listWebhooks(
+    owner: string,
+    repo: string
+  ): Promise<Array<{ id: number; config: { url: string }; events: string[]; active: boolean }>> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/hooks`;
+
+    const response = await this.fetchWithRetry(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list webhooks: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // ─── Pull Requests ──────────────────
+
+  /**
+   * List pull requests for a repository.
+   */
+  async listPullRequests(
+    owner: string,
+    repo: string,
+    state: "open" | "closed" | "all" = "open",
+    perPage: number = 30
+  ): Promise<Array<{
+    number: number;
+    title: string;
+    state: string;
+    html_url: string;
+    user: { login: string; avatar_url: string };
+    head: { ref: string };
+    base: { ref: string };
+    created_at: string;
+    updated_at: string;
+    merged_at: string | null;
+  }>> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls?state=${state}&per_page=${perPage}`;
+
+    const response = await this.fetchWithRetry(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list pull requests: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // ─── Issues ──────────────────
+
+  /**
+   * Get a single issue from a repository.
+   */
+  async getIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number
+  ): Promise<{
+    number: number;
+    title: string;
+    state: string;
+    html_url: string;
+    body: string | null;
+    labels: Array<{ name: string; color: string }>;
+    assignees: Array<{ login: string; avatar_url: string }>;
+  }> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}`;
+
+    const response = await this.fetchWithRetry(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get issue #${issueNumber}: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * List repositories accessible to the user
+   */
+  async listUserRepositories(): Promise<Array<{
+    id: number;
+    name: string;
+    full_name: string;
+    private: boolean;
+    html_url: string;
+    owner: { login: string };
+    default_branch: string;
+  }>> {
+    const url = `${GITHUB_API_BASE}/user/repos?per_page=100&sort=updated`;
+    const response = await this.fetchWithRetry(url, { headers: this.getHeaders() });
+    if (!response.ok) {
+      throw new Error(`Failed to list repositories: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * List branches for a repository
+   */
+  async listBranches(owner: string, repo: string): Promise<Array<{
+    name: string;
+    commit: { sha: string };
+    protected: boolean;
+  }>> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/branches?per_page=100`;
+    const response = await this.fetchWithRetry(url, { headers: this.getHeaders() });
+    if (!response.ok) {
+      throw new Error(`Failed to list branches: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }
 
 export const githubAPI = new GitHubAPI();
+

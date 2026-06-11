@@ -37,6 +37,16 @@ interface TimelineGridProps {
   onItemClick: (itemId: string) => void;
   onItemUpdate: (itemId: string, updates: { startDate?: string; dueDate?: string }) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
+  releases?: Array<{
+    $id: string;
+    projectId: string;
+    tagName: string;
+    name: string;
+    body: string;
+    publishedAt: string;
+    htmlUrl: string;
+    authorName: string;
+  }>;
 }
 
 export function TimelineGrid({
@@ -47,6 +57,7 @@ export function TimelineGrid({
   onItemClick,
   onItemUpdate,
   scrollContainerRef,
+  releases = [],
 }: TimelineGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState>({
@@ -204,6 +215,11 @@ export function TimelineGrid({
 
       {/* Today Marker */}
       <TodayMarker gridConfig={gridConfig} items={items} />
+
+      {/* GitHub Release Markers */}
+      {releases.length > 0 && (
+        <ReleaseMarkers gridConfig={gridConfig} items={items} releases={releases} />
+      )}
 
       {/* Task Bars */}
       <TooltipProvider>
@@ -528,5 +544,52 @@ function TaskBar({
         </div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+interface ReleaseMarkersProps {
+  gridConfig: TimelineGridConfig;
+  items: TimelineItem[];
+  releases: Array<{
+    $id: string;
+    tagName: string;
+    name: string;
+    publishedAt: string;
+    htmlUrl: string;
+    body?: string;
+  }>;
+}
+
+function ReleaseMarkers({ gridConfig, items, releases }: ReleaseMarkersProps) {
+  const totalHeight = items.length * gridConfig.rowHeight;
+
+  return (
+    <>
+      {releases.map((release) => {
+        const releaseDate = new Date(release.publishedAt);
+        if (releaseDate < gridConfig.minDate || releaseDate > gridConfig.maxDate) {
+          return null;
+        }
+
+        const x = dateToPixel(releaseDate, gridConfig);
+
+        return (
+          <div
+            key={release.$id}
+            className="absolute top-0 w-0.5 bg-purple-600/40 border-l border-dashed border-purple-500/60 z-20 hover:w-1 hover:bg-purple-600 transition-all group pointer-events-auto cursor-pointer"
+            style={{
+              left: x,
+              height: totalHeight + gridConfig.headerHeight,
+            }}
+            title={`${release.tagName}: ${release.name || "Release"}`}
+            onClick={() => window.open(release.htmlUrl, "_blank")}
+          >
+            <div className="absolute top-10 -left-12 bg-purple-600 hover:bg-purple-700 text-white text-[9px] px-1.5 py-0.5 rounded font-mono font-bold whitespace-nowrap shadow-sm group-hover:scale-105 transition-transform flex items-center gap-1 z-30">
+              🚀 {release.tagName}
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }

@@ -84,7 +84,12 @@ const app = new Hono()
         ) as unknown as Documentation | undefined;
 
         // 5. Initialize GitHub API with token for authenticated requests
-        const githubAPI = new GitHubAPI(repository.accessToken);
+        let token = repository.accessToken;
+        if (token && token.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          token = decryptToken(token);
+        }
+        const githubAPI = new GitHubAPI(token);
 
         // 6. Fetch some files for context (limit for performance)
         const files = await githubAPI.getAllFiles(

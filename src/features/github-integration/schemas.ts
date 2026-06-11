@@ -41,3 +41,18 @@ export const saveDocumentationSchema = z.object({
   fileStructure: z.string().optional(),
   mermaidDiagram: z.string().optional(),
 });
+
+// ─── OAuth & Webhook Schemas ──────────────────
+
+export const oauthCallbackSchema = z.object({
+  code: z.string().min(1, "Authorization code is required"),
+  state: z.string().min(1, "State parameter is required"),
+});
+
+export const oauthAuthorizeSchema = z.object({
+  projectId: z.string().min(1, "Project ID is required"),
+  githubUrl: z.string().optional(),
+  branch: z.string().optional(),
+});
+
+

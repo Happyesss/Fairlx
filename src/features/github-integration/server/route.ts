@@ -1,12 +1,17 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { ID, Query } from "node-appwrite";
+import { z } from "zod";
 
 import {
   DATABASE_ID,
   GITHUB_REPOS_ID,
   PROJECTS_ID,
   CODE_DOCS_ID,
+  TASKS_ID,
+  GITHUB_COMMITS_ID,
+  GITHUB_PRS_ID,
+  GITHUB_RELEASES_ID,
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { getMember } from "@/features/members/utils";
@@ -75,7 +80,17 @@ const app = new Hono()
         const { owner, repo } = githubAPI.parseGitHubUrl(githubUrl);
 
         // Verify repository exists and is accessible
-        const api = githubToken ? new GitHubAPI(githubToken) : githubAPI;
+        let activeToken: string | undefined = githubToken || undefined;
+        if (!activeToken && existing.total > 0 && existing.documents[0].accessToken) {
+          let token = existing.documents[0].accessToken;
+          if (token.includes(":")) {
+            const { decryptToken } = await import("../lib/encryption");
+            token = decryptToken(token);
+          }
+          activeToken = token;
+        }
+
+        const api = new GitHubAPI(activeToken);
 
         try {
           await api.getRepository(owner, repo);
@@ -88,6 +103,11 @@ const app = new Hono()
             400
           );
         }
+
+        // Generate webhook secret and register webhook on GitHub
+        const webhookSecret = ID.unique();
+        const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/github/webhooks/incoming/${projectId}`;
+        let webhookId: number | undefined;
 
         let repository: GitHubRepository;
 
@@ -109,6 +129,29 @@ const app = new Hono()
               await databases.deleteDocument(DATABASE_ID, CODE_DOCS_ID, doc.$id);
             }
           }
+
+          // Delete old webhook if it exists
+          if (oldRepo.webhookId) {
+            try {
+              let oldToken = oldRepo.accessToken;
+              if (oldToken && oldToken.includes(":")) {
+                const { decryptToken } = await import("../lib/encryption");
+                oldToken = decryptToken(oldToken);
+              }
+              const oldApi = oldToken ? new GitHubAPI(oldToken) : api;
+              await oldApi.deleteWebhook(oldRepo.owner, oldRepo.repositoryName, oldRepo.webhookId);
+            } catch (err) {
+              console.error("[GitHub Webhook] Failed to delete old webhook during update:", err);
+            }
+          }
+
+          // Register new webhook
+          try {
+            const hook = await api.registerWebhook(owner, repo, webhookUrl, webhookSecret);
+            webhookId = hook.id;
+          } catch (err) {
+            console.error("[GitHub Webhook] Failed to register new webhook during update:", err);
+          }
           
           repository = await databases.updateDocument<GitHubRepository>(
             DATABASE_ID,
@@ -119,14 +162,24 @@ const app = new Hono()
               repositoryName: repo,
               owner,
               branch,
-              accessToken: githubToken || undefined,
+              ...(githubToken ? { accessToken: githubToken } : {}),
               status: "connected",
               lastSyncedAt: new Date().toISOString(),
               error: null,
               lastModifiedBy: user.$id,
+              webhookId,
+              webhookSecret,
             }
           );
         } else {
+          // Register webhook for new connection
+          try {
+            const hook = await api.registerWebhook(owner, repo, webhookUrl, webhookSecret);
+            webhookId = hook.id;
+          } catch (err) {
+            console.error("[GitHub Webhook] Failed to register webhook during link:", err);
+          }
+
           // Create new
           repository = await databases.createDocument<GitHubRepository>(
             DATABASE_ID,
@@ -144,9 +197,17 @@ const app = new Hono()
               lastSyncedAt: new Date().toISOString(),
               createdBy: user.$id,
               lastModifiedBy: user.$id,
+              webhookId,
+              webhookSecret,
+              autoFetchCommits: true,
+              linkCommitsToTasks: true,
+              syncComments: true,
+              allowPrMerge: true,
+              createTasksFromIssues: false,
             }
           );
         }
+
 
         return c.json({ data: repository });
       } catch (error: unknown) {
@@ -286,6 +347,21 @@ const app = new Hono()
           );
         }
 
+        // Delete webhook from GitHub if registered
+        if (repository.webhookId) {
+          try {
+            let token = repository.accessToken;
+            if (token && token.includes(":")) {
+              const { decryptToken } = await import("../lib/encryption");
+              token = decryptToken(token);
+            }
+            const api = token ? new GitHubAPI(token) : githubAPI;
+            await api.deleteWebhook(repository.owner, repository.repositoryName, repository.webhookId);
+          } catch (err) {
+            console.error("[GitHub Webhook] Failed to delete webhook during disconnect:", err);
+          }
+        }
+
         // Delete repository connection
         await databases.deleteDocument(
           DATABASE_ID,
@@ -293,11 +369,355 @@ const app = new Hono()
           repositoryId
         );
 
+
         return c.json({ success: true });
       } catch (error: unknown) {
         return c.json(
           {
             error: "Failed to disconnect repository",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // Update repository settings/options
+  .patch(
+    "/:repositoryId/settings",
+    sessionMiddleware,
+    zValidator("json", z.object({
+      autoFetchCommits: z.boolean().optional(),
+      linkCommitsToTasks: z.boolean().optional(),
+      syncComments: z.boolean().optional(),
+      allowPrMerge: z.boolean().optional(),
+      createTasksFromIssues: z.boolean().optional(),
+    })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { repositoryId } = c.req.param();
+        const settings = c.req.valid("json");
+
+        const repository = await databases.getDocument<GitHubRepository>(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          repositoryId
+        );
+
+        if (!repository) {
+          return c.json({ error: "Repository not found" }, 404);
+        }
+
+        const { resolveUserProjectAccess } = await import(
+          "@/lib/permissions/resolveUserProjectAccess"
+        );
+        const access = await resolveUserProjectAccess(databases, user.$id, repository.projectId);
+        if (!access.isAdmin) {
+          return c.json(
+            { error: "Only project admins and owners can update repository settings" },
+            403
+          );
+        }
+
+        const updated = await databases.updateDocument<GitHubRepository>(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          repositoryId,
+          {
+            autoFetchCommits: settings.autoFetchCommits,
+            linkCommitsToTasks: settings.linkCommitsToTasks,
+            syncComments: settings.syncComments,
+            allowPrMerge: settings.allowPrMerge,
+            createTasksFromIssues: settings.createTasksFromIssues,
+            lastModifiedBy: user.$id,
+          }
+        );
+
+        return c.json({ data: updated });
+      } catch (error: unknown) {
+        return c.json(
+          {
+            error: "Failed to update settings",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // List user repositories for the connected OAuth account
+  .get(
+    "/user-repos",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId } = c.req.valid("query");
+
+        // Get the project to verify workspace membership
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        if (!project) {
+          return c.json({ error: "Project not found" }, 404);
+        }
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // Get the GitHub token from the database
+        const repositories = await databases.listDocuments<GitHubRepository>(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          [Query.equal("projectId", projectId), Query.limit(1)]
+        );
+
+        if (repositories.total === 0 || !repositories.documents[0].accessToken) {
+          return c.json({ error: "Not authenticated with GitHub" }, 400);
+        }
+
+        const repository = repositories.documents[0];
+        let decryptedToken = repository.accessToken;
+        if (!decryptedToken) {
+          return c.json({ error: "Not authenticated with GitHub" }, 400);
+        }
+        if (decryptedToken.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          decryptedToken = decryptToken(decryptedToken);
+        }
+
+        const api = new GitHubAPI(decryptedToken);
+        const repos = await api.listUserRepositories();
+
+        return c.json({ data: repos });
+      } catch (error: unknown) {
+        console.error("[GitHub List Repos Error]:", error);
+        return c.json(
+          {
+            error: "Failed to list repositories",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // List branches for a selected repository
+  .get(
+    "/branches",
+    sessionMiddleware,
+    zValidator(
+      "query",
+      z.object({
+        projectId: z.string(),
+        owner: z.string(),
+        repo: z.string(),
+      })
+    ),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId, owner, repo } = c.req.valid("query");
+
+        // Get the project to verify workspace membership
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        if (!project) {
+          return c.json({ error: "Project not found" }, 404);
+        }
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // Get the GitHub token from the database
+        const repositories = await databases.listDocuments<GitHubRepository>(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          [Query.equal("projectId", projectId), Query.limit(1)]
+        );
+
+        if (repositories.total === 0 || !repositories.documents[0].accessToken) {
+          return c.json({ error: "Not authenticated with GitHub" }, 400);
+        }
+
+        const repository = repositories.documents[0];
+        let decryptedToken = repository.accessToken;
+        if (!decryptedToken) {
+          return c.json({ error: "Not authenticated with GitHub" }, 400);
+        }
+        if (decryptedToken.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          decryptedToken = decryptToken(decryptedToken);
+        }
+
+        const api = new GitHubAPI(decryptedToken);
+        const branches = await api.listBranches(owner, repo);
+
+        return c.json({ data: branches });
+      } catch (error: unknown) {
+        console.error("[GitHub List Branches Error]:", error);
+        return c.json(
+          {
+            error: "Failed to list branches",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // Get GitHub events (commits & PRs) linked to a specific task
+  .get(
+    "/task-events/:taskKey",
+    sessionMiddleware,
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { taskKey } = c.req.param();
+
+        // 1. Get the task (work item) by its key to find workspace and project ID
+        const tasks = await databases.listDocuments(
+          DATABASE_ID,
+          TASKS_ID,
+          [Query.equal("key", taskKey.toUpperCase()), Query.limit(1)]
+        );
+
+        if (tasks.total === 0) {
+          return c.json({ error: "Task not found" }, 404);
+        }
+
+        const task = tasks.documents[0];
+
+        // 2. Check workspace membership
+        const member = await getMember({
+          databases,
+          workspaceId: task.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // 3. Query github_commits and github_pull_requests collections
+        const [commits, prs] = await Promise.all([
+          databases.listDocuments(
+            DATABASE_ID,
+            GITHUB_COMMITS_ID,
+            [
+              Query.equal("projectId", task.projectId),
+              Query.equal("taskId", taskKey.toUpperCase()),
+              Query.orderDesc("processedAt"),
+              Query.limit(100)
+            ]
+          ),
+          databases.listDocuments(
+            DATABASE_ID,
+            GITHUB_PRS_ID,
+            [
+              Query.equal("projectId", task.projectId),
+              Query.equal("taskId", taskKey.toUpperCase()),
+              Query.orderDesc("processedAt"),
+              Query.limit(100)
+            ]
+          )
+        ]);
+
+        return c.json({
+          data: {
+            commits: commits.documents,
+            pullRequests: prs.documents,
+          }
+        });
+      } catch (error: unknown) {
+        console.error("[GitHub Get Task Events Error]:", error);
+        return c.json(
+          {
+            error: "Failed to fetch task github events",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // Get GitHub releases for a project
+  .get(
+    "/releases",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId } = c.req.valid("query");
+
+        // 1. Check project access
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // 2. Fetch releases sorted by publishedAt descending
+        const releases = await databases.listDocuments(
+          DATABASE_ID,
+          GITHUB_RELEASES_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.orderDesc("publishedAt"),
+            Query.limit(100),
+          ]
+        );
+
+        return c.json({ data: releases.documents });
+      } catch (error: unknown) {
+        console.error("[GitHub Get Releases Error]:", error);
+        return c.json(
+          {
+            error: "Failed to fetch project releases",
             message: error instanceof Error ? error.message : "Unknown error",
           },
           500

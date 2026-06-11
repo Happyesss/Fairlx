@@ -919,6 +919,90 @@ const app = new Hono()
       // Invalidate task list caches for this workspace after update
       await invalidateCachePattern(CKPattern.taskLists(existingTask.workspaceId));
 
+      // ======= BI-DIRECTIONAL GITHUB ISSUE SYNC =======
+      if (statusChanged && existingTask.lastModifiedBy !== "github-webhook" && user.$id !== "github-webhook") {
+        (async () => {
+          try {
+            const { GITHUB_ISSUES_ID, GITHUB_REPOS_ID } = await import("@/config");
+            const { githubAPI } = await import("@/features/github-integration/lib/github-api");
+
+            const mappings = await databases.listDocuments(
+              DATABASE_ID,
+              GITHUB_ISSUES_ID,
+              [
+                Query.equal("projectId", existingTask.projectId),
+                Query.equal("taskId", taskId),
+                Query.limit(1)
+              ]
+            );
+
+            if (mappings.total > 0) {
+              const mapping = mappings.documents[0];
+              const issueNumber = mapping.issueNumber as number;
+
+              const repos = await databases.listDocuments(
+                DATABASE_ID,
+                GITHUB_REPOS_ID,
+                [Query.equal("projectId", existingTask.projectId), Query.limit(1)]
+              );
+
+              if (repos.total > 0) {
+                const repoDoc = repos.documents[0];
+                let decryptedToken = repoDoc.accessToken as string | undefined;
+                if (decryptedToken && decryptedToken.includes(":")) {
+                  const { decryptToken } = await import("@/features/github-integration/lib/encryption");
+                  decryptedToken = decryptToken(decryptedToken);
+                }
+
+                if (decryptedToken) {
+                  const isClosed = status === "DONE" || status === "CLOSED" || status.toLowerCase() === "done" || status.toLowerCase() === "closed";
+                  const githubState = isClosed ? "closed" : "open";
+
+                  const ownerRepo = repoDoc.repoFullName.split("/");
+                  if (ownerRepo.length === 2) {
+                    const [owner, repo] = ownerRepo;
+                    
+                    const response = await fetch(
+                      `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+                      {
+                        method: "PATCH",
+                        headers: {
+                          Authorization: `Bearer ${decryptedToken}`,
+                          Accept: "application/vnd.github+json",
+                          "User-Agent": "Fairlx-Sync",
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          state: githubState,
+                        }),
+                      }
+                    );
+
+                    if (response.ok) {
+                      await databases.updateDocument(
+                        DATABASE_ID,
+                        GITHUB_ISSUES_ID,
+                        mapping.$id,
+                        {
+                          lastSyncedAt: new Date().toISOString(),
+                        }
+                      );
+                      console.log(`[GitHub Sync] Successfully updated GitHub issue #${issueNumber} state to ${githubState}`);
+                    } else {
+                      const errText = await response.text();
+                      console.error(`[GitHub Sync] Failed to update GitHub issue #${issueNumber}:`, errText);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (syncErr) {
+            console.error("[GitHub Sync Error]:", syncErr);
+          }
+        })();
+      }
+      // ======= END BI-DIRECTIONAL GITHUB ISSUE SYNC =======
+
       return c.json({ data: task });
     }
   )

@@ -5,6 +5,7 @@ export const GITHUB_INTEGRATION_QUERY_KEYS = {
   documentation: (projectId: string) => ["github-docs", projectId],
   commits: (projectId: string) => ["github-commits", projectId],
   questions: (projectId: string) => ["github-questions", projectId],
+  events: (projectId: string) => ["github-events", projectId],
 };
 
 export const DOCUMENTATION_QUESTIONS = [

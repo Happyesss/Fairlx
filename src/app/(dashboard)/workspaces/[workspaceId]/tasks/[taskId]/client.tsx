@@ -22,6 +22,7 @@ import { TaskTimeLogs } from "@/features/time-tracking/components/task-time-logs
 import { WorkItemLinksSection } from "@/features/work-item-links/components/work-item-links-section";
 import { useDeleteTask } from "@/features/tasks/api/use-delete-task";
 import { useCurrent } from "@/features/auth/api/use-current";
+import { TaskGitHubEvents } from "@/features/github-integration/components/task-github-events";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -29,7 +30,7 @@ import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal
 import { SubIssuesList } from "@/features/tasks/components/sub-issues-list";
 
 export const TaskIdClient = () => {
-  const [activeTab, setActiveTab] = useState<"activity" | "timelogs">("activity");
+  const [activeTab, setActiveTab] = useState<"activity" | "timelogs" | "github">("activity");
   const taskId = useTaskId();
   const workspaceId = useWorkspaceId();
   const router = useRouter();
@@ -157,6 +158,20 @@ export const TaskIdClient = () => {
                   <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
                 )}
               </button>
+              <button
+                className={cn(
+                  "px-4 py-2 text-sm font-medium transition-colors relative",
+                  activeTab === "github"
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setActiveTab("github")}
+              >
+                Development
+                {activeTab === "github" && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                )}
+              </button>
             </div>
 
             {/* Activity Tab Content */}
@@ -193,6 +208,11 @@ export const TaskIdClient = () => {
                 taskName={data.name}
                 workspaceId={workspaceId}
               />
+            )}
+
+            {/* Development Tab Content */}
+            {activeTab === "github" && data && (
+              <TaskGitHubEvents taskKey={data.key || ""} />
             )}
           </div>
 
