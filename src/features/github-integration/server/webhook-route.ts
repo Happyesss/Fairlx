@@ -465,7 +465,7 @@ async function processIssuesEvent(
   databases: Databases,
   projectId: string,
   payload: GitHubIssuePayload,
-  deliveryId: string
+  _deliveryId: string
 ) {
   const { action, issue, repository: repo } = payload;
   const repoFullName = repo.full_name;
@@ -501,7 +501,7 @@ async function processIssuesEvent(
     let project;
     try {
       project = await databases.getDocument(DATABASE_ID, PROJECTS_ID, projectId);
-    } catch (e) {
+    } catch {
       console.error("[GitHub Sync] Project not found:", projectId);
       return;
     }
@@ -637,7 +637,7 @@ async function processReleaseEvent(
   databases: Databases,
   projectId: string,
   payload: GitHubReleasePayload,
-  deliveryId: string
+  _deliveryId: string
 ) {
   const { release } = payload;
 

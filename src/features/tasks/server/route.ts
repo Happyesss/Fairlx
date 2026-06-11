@@ -924,7 +924,6 @@ const app = new Hono()
         (async () => {
           try {
             const { GITHUB_ISSUES_ID, GITHUB_REPOS_ID } = await import("@/config");
-            const { githubAPI } = await import("@/features/github-integration/lib/github-api");
 
             const mappings = await databases.listDocuments(
               DATABASE_ID,

@@ -135,7 +135,6 @@ export const ProjectTools = () => {
       canView: () => effectiveCanManageSettings,
     },
   ], [
-    effectiveCanViewProject,
     effectiveCanManageSettings,
     effectiveCanViewDocs,
     effectiveCanViewMembers,

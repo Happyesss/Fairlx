@@ -393,7 +393,7 @@ type UpdateRepositorySettingsRequest = {
 export const useUpdateRepositorySettings = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<any, Error, UpdateRepositorySettingsRequest>({
+  return useMutation<unknown, Error, UpdateRepositorySettingsRequest>({
     mutationFn: async ({ param, json }) => {
       const response = await client.api.github.repository[":repositoryId"].settings.$patch({
         param,
