@@ -957,9 +957,9 @@ const app = new Hono()
                   const isClosed = status === "DONE" || status === "CLOSED" || status.toLowerCase() === "done" || status.toLowerCase() === "closed";
                   const githubState = isClosed ? "closed" : "open";
 
-                  const ownerRepo = repoDoc.repoFullName.split("/");
-                  if (ownerRepo.length === 2) {
-                    const [owner, repo] = ownerRepo;
+                  const owner = repoDoc.owner;
+                  const repo = repoDoc.repositoryName;
+                  if (owner && repo) {
                     
                     const response = await fetch(
                       `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,

@@ -494,81 +494,91 @@ async function processIssuesEvent(
 
   if (action === "opened") {
     if (isMapped) return;
-    if (!createTasksFromIssues) return;
 
-    const { PROJECTS_ID, TASKS_ID, WORKFLOW_STATUSES_ID } = await import("@/config");
-    
-    let project;
-    try {
-      project = await databases.getDocument(DATABASE_ID, PROJECTS_ID, projectId);
-    } catch {
-      console.error("[GitHub Sync] Project not found:", projectId);
-      return;
-    }
+    let taskId: string | undefined = undefined;
 
-    let initialStatus = "TODO";
-    if (project.workflowId) {
+    if (createTasksFromIssues) {
+      const { PROJECTS_ID, TASKS_ID, WORKFLOW_STATUSES_ID } = await import("@/config");
+      
+      let project;
       try {
-        const workflowStatuses = await databases.listDocuments(
-          DATABASE_ID,
-          WORKFLOW_STATUSES_ID,
-          [
-            Query.equal("workflowId", project.workflowId),
-            Query.equal("isInitial", true),
-            Query.limit(1)
-          ]
-        );
-        if (workflowStatuses.total > 0) {
-          initialStatus = workflowStatuses.documents[0].key;
+        project = await databases.getDocument(DATABASE_ID, PROJECTS_ID, projectId);
+      } catch {
+        console.error("[GitHub Sync] Project not found:", projectId);
+        return;
+      }
+
+      let initialStatus = "TODO";
+      if (project.workflowId) {
+        try {
+          const workflowStatuses = await databases.listDocuments(
+            DATABASE_ID,
+            WORKFLOW_STATUSES_ID,
+            [
+              Query.equal("workflowId", project.workflowId),
+              Query.equal("isInitial", true),
+              Query.limit(1)
+            ]
+          );
+          if (workflowStatuses.total > 0) {
+            initialStatus = workflowStatuses.documents[0].key;
+          }
+        } catch (err) {
+          console.error("[GitHub Sync] Workflow initial status fetch error:", err);
         }
+      }
+
+      const projectKey = project.name.substring(0, 3).toUpperCase();
+      const existingItems = await databases.listDocuments(
+        DATABASE_ID,
+        TASKS_ID,
+        [Query.equal("projectId", projectId)]
+      );
+      const keyNumber = existingItems.total + 1;
+      const taskKey = `${projectKey}-${keyNumber}`;
+
+      let type = "ISSUE";
+      const labels = issue.labels?.map(l => l.name.toLowerCase()) || [];
+      if (labels.includes("bug") || labels.includes("defect") || labels.includes("error")) {
+        type = "BUG";
+      }
+
+      try {
+        const task = await databases.createDocument(
+          DATABASE_ID,
+          TASKS_ID,
+          ID.unique(),
+          {
+            title: issue.title,
+            type,
+            key: taskKey,
+            status: initialStatus,
+            workspaceId: project.workspaceId,
+            projectId,
+            description: issue.body || "No description provided.",
+            priority: "MEDIUM",
+            labels: issue.labels?.map(l => l.name) || [],
+            position: 1000,
+            flagged: false,
+            lastModifiedBy: "github-webhook",
+          }
+        );
+        taskId = task.$id;
+        console.log(`[GitHub Sync] Mapped new task ${taskKey} from GitHub issue #${issue.number}`);
       } catch (err) {
-        console.error("[GitHub Sync] Workflow initial status fetch error:", err);
+        console.error("[GitHub Sync] Failed to create task from GitHub issue:", err);
       }
     }
 
-    const projectKey = project.name.substring(0, 3).toUpperCase();
-    const existingItems = await databases.listDocuments(
-      DATABASE_ID,
-      TASKS_ID,
-      [Query.equal("projectId", projectId)]
-    );
-    const keyNumber = existingItems.total + 1;
-    const taskKey = `${projectKey}-${keyNumber}`;
-
-    let type = "ISSUE";
-    const labels = issue.labels?.map(l => l.name.toLowerCase()) || [];
-    if (labels.includes("bug") || labels.includes("defect") || labels.includes("error")) {
-      type = "BUG";
-    }
-
+    // Always create the GITHUB_ISSUES mapping so it shows up in the Issues list
     try {
-      const task = await databases.createDocument(
-        DATABASE_ID,
-        TASKS_ID,
-        ID.unique(),
-        {
-          title: issue.title,
-          type,
-          key: taskKey,
-          status: initialStatus,
-          workspaceId: project.workspaceId,
-          projectId,
-          description: issue.body || "No description provided.",
-          priority: "MEDIUM",
-          labels: issue.labels?.map(l => l.name) || [],
-          position: 1000,
-          flagged: false,
-          lastModifiedBy: "github-webhook",
-        }
-      );
-
       await databases.createDocument(
         DATABASE_ID,
         GITHUB_ISSUES_ID,
         ID.unique(),
         {
           projectId,
-          taskId: task.$id,
+          taskId: taskId || "",
           issueId: String(issue.id),
           issueNumber: issue.number,
           issueUrl: issue.html_url,
@@ -576,10 +586,8 @@ async function processIssuesEvent(
           lastSyncedAt: new Date().toISOString(),
         }
       );
-      
-      console.log(`[GitHub Sync] Mapped new task ${taskKey} from GitHub issue #${issue.number}`);
     } catch (err) {
-      console.error("[GitHub Sync] Failed to create task from GitHub issue:", err);
+      console.error("[GitHub Sync] Failed to create issue mapping:", err);
     }
   } else if (isMapped) {
     const mapping = mappedIssues.documents[0];
@@ -587,36 +595,56 @@ async function processIssuesEvent(
     const { TASKS_ID } = await import("@/config");
 
     if (action === "closed") {
-      try {
-        await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
-          status: "DONE",
-          lastModifiedBy: "github-webhook",
-        });
-        console.log(`[GitHub Sync] Closed task ${taskId} from GitHub issue #${issue.number} close`);
-      } catch (err) {
-        console.error("[GitHub Sync] Failed to update task status to DONE:", err);
+      if (taskId) {
+        try {
+          await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
+            status: "DONE",
+            lastModifiedBy: "github-webhook",
+          });
+          console.log(`[GitHub Sync] Closed task ${taskId} from GitHub issue #${issue.number} close`);
+        } catch (err) {
+          console.error("[GitHub Sync] Failed to update task status to DONE:", err);
+        }
       }
     } else if (action === "reopened") {
-      try {
-        await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
-          status: "IN_PROGRESS",
-          lastModifiedBy: "github-webhook",
-        });
-        console.log(`[GitHub Sync] Reopened task ${taskId} from GitHub issue #${issue.number} reopen`);
-      } catch (err) {
-        console.error("[GitHub Sync] Failed to update task status to IN_PROGRESS:", err);
+      if (taskId) {
+        try {
+          await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
+            status: "IN_PROGRESS",
+            lastModifiedBy: "github-webhook",
+          });
+          console.log(`[GitHub Sync] Reopened task ${taskId} from GitHub issue #${issue.number} reopen`);
+        } catch (err) {
+          console.error("[GitHub Sync] Failed to update task status to IN_PROGRESS:", err);
+        }
       }
     } else if (action === "edited") {
-      try {
-        await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
-          title: issue.title,
-          description: issue.body || "",
-          lastModifiedBy: "github-webhook",
-        });
-        console.log(`[GitHub Sync] Updated task ${taskId} fields from GitHub issue #${issue.number} edits`);
-      } catch (err) {
-        console.error("[GitHub Sync] Failed to update task fields:", err);
+      if (taskId) {
+        try {
+          await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
+            title: issue.title,
+            description: issue.body || "",
+            lastModifiedBy: "github-webhook",
+          });
+          console.log(`[GitHub Sync] Updated task ${taskId} fields from GitHub issue #${issue.number} edits`);
+        } catch (err) {
+          console.error("[GitHub Sync] Failed to update task fields:", err);
+        }
       }
+    }
+
+    // Always update lastSyncedAt on mapping
+    try {
+      await databases.updateDocument(
+        DATABASE_ID,
+        GITHUB_ISSUES_ID,
+        mapping.$id,
+        {
+          lastSyncedAt: new Date().toISOString(),
+        }
+      );
+    } catch (err) {
+      console.error("[GitHub Sync] Failed to update issue mapping sync time:", err);
     }
   }
 }

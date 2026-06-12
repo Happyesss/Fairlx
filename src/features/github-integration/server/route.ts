@@ -49,7 +49,7 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
   }
 
   const repoConfig = repos.documents[0];
-  const { owner, repositoryName: repo, branch } = repoConfig;
+  const { owner, repositoryName: repo } = repoConfig;
 
   let activeToken: string | undefined = undefined;
   if (repoConfig.accessToken) {
@@ -172,45 +172,57 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
     console.error("[GitHub Sync History] Failed to sync PRs:", err);
   }
 
-  // 3. Sync Commits
+  // 3. Sync Commits (All Branches)
   try {
-    const commits = await api.getCommits(owner, repo, branch || "main", 100);
-    for (const commit of commits) {
-      const taskIdsFromMessage = parseTaskIdsFromCommitMessage(commit.commit.message);
-      const allTaskIds = [...new Set(taskIdsFromMessage)];
-      const taskIdsToMap = allTaskIds.length > 0 ? allTaskIds : [""];
+    const branches = await api.listBranches(owner, repo);
+    const processedCommitShas = new Set<string>();
 
-      for (const tId of taskIdsToMap) {
-        const existing = await databases.listDocuments(
-          DATABASE_ID,
-          GITHUB_COMMITS_ID,
-          [
-            Query.equal("projectId", projectId),
-            Query.equal("taskId", tId.toUpperCase()),
-            Query.equal("commitSha", commit.sha),
-            Query.limit(1)
-          ]
-        );
+    for (const b of branches) {
+      try {
+        const commits = await api.getCommits(owner, repo, b.name, 50);
+        for (const commit of commits) {
+          if (processedCommitShas.has(commit.sha)) continue;
+          processedCommitShas.add(commit.sha);
 
-        if (existing.total === 0) {
-          await databases.createDocument(
-            DATABASE_ID,
-            GITHUB_COMMITS_ID,
-            ID.unique(),
-            {
-              projectId,
-              taskId: tId.toUpperCase(),
-              commitSha: commit.sha,
-              commitMessage: commit.commit.message.slice(0, 1000),
-              commitUrl: commit.html_url,
-              authorName: commit.commit.author.name,
-              authorEmail: commit.commit.author.email,
-              branchName: branch || "main",
-              repoFullName: `${owner}/${repo}`,
-              processedAt: commit.commit.author.date || new Date().toISOString(),
+          const taskIdsFromMessage = parseTaskIdsFromCommitMessage(commit.commit.message);
+          const allTaskIds = [...new Set(taskIdsFromMessage)];
+          const taskIdsToMap = allTaskIds.length > 0 ? allTaskIds : [""];
+
+          for (const tId of taskIdsToMap) {
+            const existing = await databases.listDocuments(
+              DATABASE_ID,
+              GITHUB_COMMITS_ID,
+              [
+                Query.equal("projectId", projectId),
+                Query.equal("taskId", tId.toUpperCase()),
+                Query.equal("commitSha", commit.sha),
+                Query.limit(1)
+              ]
+            );
+
+            if (existing.total === 0) {
+              await databases.createDocument(
+                DATABASE_ID,
+                GITHUB_COMMITS_ID,
+                ID.unique(),
+                {
+                  projectId,
+                  taskId: tId.toUpperCase(),
+                  commitSha: commit.sha,
+                  commitMessage: commit.commit.message.slice(0, 1000),
+                  commitUrl: commit.html_url,
+                  authorName: commit.commit.author.name,
+                  authorEmail: commit.commit.author.email,
+                  branchName: b.name,
+                  repoFullName: `${owner}/${repo}`,
+                  processedAt: commit.commit.author.date || new Date().toISOString(),
+                }
+              );
             }
-          );
+          }
         }
+      } catch (branchErr) {
+        console.error(`[GitHub Sync History] Failed to sync commits for branch ${b.name}:`, branchErr);
       }
     }
   } catch (err) {
@@ -238,15 +250,17 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
         const taskId = mapping.taskId as string;
         const statusValue = issue.state === "closed" ? "DONE" : "IN_PROGRESS";
         
-        try {
-          await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
-            title: issue.title,
-            description: issue.body || "",
-            status: statusValue,
-            lastModifiedBy: "github-sync-history",
-          });
-        } catch (err) {
-          console.error(`[GitHub Sync History] Failed to update task fields for ${taskId}:`, err);
+        if (taskId) {
+          try {
+            await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
+              title: issue.title,
+              description: issue.body || "",
+              status: statusValue,
+              lastModifiedBy: "github-sync-history",
+            });
+          } catch (err) {
+            console.error(`[GitHub Sync History] Failed to update task fields for ${taskId}:`, err);
+          }
         }
 
         await databases.updateDocument(
@@ -257,74 +271,84 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
             lastSyncedAt: new Date().toISOString(),
           }
         );
-      } else if (repoConfig.createTasksFromIssues) {
-        let initialStatus = "TODO";
-        if (project.workflowId) {
-          try {
-            const workflowStatuses = await databases.listDocuments(
-              DATABASE_ID,
-              WORKFLOW_STATUSES_ID,
-              [
-                Query.equal("workflowId", project.workflowId),
-                Query.equal("isInitial", true),
-                Query.limit(1)
-              ]
-            );
-            if (workflowStatuses.total > 0) {
-              initialStatus = workflowStatuses.documents[0].key;
+      } else {
+        let taskId = "";
+
+        if (repoConfig.createTasksFromIssues) {
+          let initialStatus = "TODO";
+          if (project.workflowId) {
+            try {
+              const workflowStatuses = await databases.listDocuments(
+                DATABASE_ID,
+                WORKFLOW_STATUSES_ID,
+                [
+                  Query.equal("workflowId", project.workflowId),
+                  Query.equal("isInitial", true),
+                  Query.limit(1)
+                ]
+              );
+              if (workflowStatuses.total > 0) {
+                initialStatus = workflowStatuses.documents[0].key;
+              }
+            } catch (err) {
+              console.error("[GitHub Sync History] Workflow initial status fetch error:", err);
             }
+          }
+
+          if (issue.state === "closed") {
+            initialStatus = "DONE";
+          }
+
+          const projectKey = project.name.substring(0, 3).toUpperCase();
+          const existingItems = await databases.listDocuments(
+            DATABASE_ID,
+            TASKS_ID,
+            [Query.equal("projectId", projectId)]
+          );
+          const keyNumber = existingItems.total + 1;
+          const taskKey = `${projectKey}-${keyNumber}`;
+
+          let type = "ISSUE";
+          const labels = issue.labels?.map(l => l.name.toLowerCase()) || [];
+          if (labels.includes("bug") || labels.includes("defect") || labels.includes("error")) {
+            type = "BUG";
+          }
+
+          try {
+            const task = await databases.createDocument(
+              DATABASE_ID,
+              TASKS_ID,
+              ID.unique(),
+              {
+                title: issue.title,
+                type,
+                key: taskKey,
+                status: initialStatus,
+                workspaceId: project.workspaceId,
+                projectId,
+                description: issue.body || "No description provided.",
+                priority: "MEDIUM",
+                labels: issue.labels?.map(l => l.name) || [],
+                position: 1000,
+                flagged: false,
+                lastModifiedBy: "github-sync-history",
+              }
+            );
+            taskId = task.$id;
           } catch (err) {
-            console.error("[GitHub Sync History] Workflow initial status fetch error:", err);
+            console.error("[GitHub Sync History] Failed to create task from issue:", err);
           }
         }
 
-        if (issue.state === "closed") {
-          initialStatus = "DONE";
-        }
-
-        const projectKey = project.name.substring(0, 3).toUpperCase();
-        const existingItems = await databases.listDocuments(
-          DATABASE_ID,
-          TASKS_ID,
-          [Query.equal("projectId", projectId)]
-        );
-        const keyNumber = existingItems.total + 1;
-        const taskKey = `${projectKey}-${keyNumber}`;
-
-        let type = "ISSUE";
-        const labels = issue.labels?.map(l => l.name.toLowerCase()) || [];
-        if (labels.includes("bug") || labels.includes("defect") || labels.includes("error")) {
-          type = "BUG";
-        }
-
+        // Always create mapping so it shows up in the Issues list
         try {
-          const task = await databases.createDocument(
-            DATABASE_ID,
-            TASKS_ID,
-            ID.unique(),
-            {
-              title: issue.title,
-              type,
-              key: taskKey,
-              status: initialStatus,
-              workspaceId: project.workspaceId,
-              projectId,
-              description: issue.body || "No description provided.",
-              priority: "MEDIUM",
-              labels: issue.labels?.map(l => l.name) || [],
-              position: 1000,
-              flagged: false,
-              lastModifiedBy: "github-sync-history",
-            }
-          );
-
           await databases.createDocument(
             DATABASE_ID,
             GITHUB_ISSUES_ID,
             ID.unique(),
             {
               projectId,
-              taskId: task.$id,
+              taskId: taskId || "",
               issueId: String(issue.id),
               issueNumber: issue.number,
               issueUrl: issue.html_url,
@@ -333,7 +357,7 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
             }
           );
         } catch (err) {
-          console.error("[GitHub Sync History] Failed to create task from issue:", err);
+          console.error("[GitHub Sync History] Failed to create issue mapping:", err);
         }
       }
     }
@@ -1375,35 +1399,27 @@ const app = new Hono()
           decryptedToken = decryptToken(decryptedToken);
         }
 
-        // 3. Request the asset URL using the decrypted token to get the S3 redirect location
+        // 3. Request the asset URL using the decrypted token and follow redirects
         const res = await fetch(url, {
-          method: "HEAD",
+          method: "GET",
           headers: {
             "Authorization": `Bearer ${decryptedToken}`
           },
-          redirect: "manual"
+          redirect: "follow"
         });
 
-        const redirectUrl = res.headers.get("location");
-        if (res.status === 302 && redirectUrl) {
-          return c.redirect(redirectUrl);
-        }
-
-        // Fallback: If no redirect headers or not 302, try to stream/fetch directly
-        const directRes = await fetch(url, {
-          headers: {
-            "Authorization": `Bearer ${decryptedToken}`
-          }
-        });
-
-        if (!directRes.ok) {
+        if (!res.ok) {
           return c.json({ error: "Failed to load asset from GitHub" }, 400);
         }
 
-        // Return the image data directly
-        const contentType = directRes.headers.get("content-type") || "image/png";
-        const bodyStream = directRes.body;
-        return new Response(bodyStream, {
+        // If the URL was redirected (e.g. to a signed S3 URL), redirect the client
+        if (res.url && res.url !== url) {
+          return c.redirect(res.url);
+        }
+
+        // Otherwise stream the image content directly
+        const contentType = res.headers.get("content-type") || "image/png";
+        return new Response(res.body, {
           headers: {
             "Content-Type": contentType,
             "Cache-Control": "public, max-age=3600"

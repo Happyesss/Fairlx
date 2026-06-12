@@ -120,7 +120,7 @@ const TaskPreviewContent = ({ task, workspaceId, onEdit, onClose, onAttachmentPr
   // Convert GitHub asset URLs to proxy URLs for rendering/display
   const toProxyUrl = useCallback((text: string) => {
     if (!task.projectId) return text;
-    const githubAssetRegex = /https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+/g;
+    const githubAssetRegex = /(https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9.\/_-]+|https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/assets\/[0-9]+\/[a-zA-Z0-9.\/_-]+)/g;
     return text.replace(githubAssetRegex, (match) => {
       return `/api/github/image-proxy?projectId=${task.projectId}&url=${encodeURIComponent(match)}`;
     });

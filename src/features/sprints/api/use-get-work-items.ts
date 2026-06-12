@@ -63,6 +63,7 @@ export const useGetWorkItems = ({
       isTourActive,
     ],
     enabled: Boolean(workspaceId) && enabled,
+    refetchInterval: 4000,
     staleTime: QUERY_CONFIG.DYNAMIC.staleTime,
     gcTime: QUERY_CONFIG.DYNAMIC.gcTime,
     placeholderData: keepPreviousData,

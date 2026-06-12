@@ -809,6 +809,24 @@ export class GitHubAPI {
     }
     return response.json();
   }
+
+  /**
+   * Close an issue on GitHub
+   */
+  async closeIssue(owner: string, repo: string, issueNumber: number): Promise<void> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}`;
+    const response = await this.fetchWithRetry(url, {
+      method: "PATCH",
+      headers: {
+        ...this.getHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ state: "closed" }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to close issue #${issueNumber}: ${response.statusText}`);
+    }
+  }
 }
 
 export const githubAPI = new GitHubAPI();
