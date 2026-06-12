@@ -21,6 +21,8 @@ import {
   parseTaskIdsFromPRTitle,
 } from "../lib/task-parser";
 import { sessionMiddleware } from "@/lib/session-middleware";
+import { createAdminClient } from "@/lib/appwrite";
+import { replaceGitHubImagesInMarkdown } from "./image-sync";
 import { getMember } from "@/features/members/utils";
 
 import { connectGitHubRepoSchema } from "../schemas";
@@ -141,6 +143,7 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
     activeToken = token;
   }
 
+  const { storage } = await createAdminClient();
   const api = new GitHubAPI(activeToken);
 
   // 1. Sync Releases
@@ -315,6 +318,13 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
     for (const issue of issues) {
       if (issue.pull_request) continue;
 
+      const rawBodyText = issue.body || "";
+      const processedDescription = await replaceGitHubImagesInMarkdown(
+        rawBodyText,
+        activeToken,
+        storage
+      );
+
       const existing = await databases.listDocuments(
         DATABASE_ID,
         GITHUB_ISSUES_ID,
@@ -334,7 +344,7 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
           try {
             await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
               title: issue.title,
-              description: issue.body || "",
+              description: processedDescription || "",
               status: statusValue,
               lastModifiedBy: "github-sync-history",
             });
@@ -406,7 +416,7 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
                 status: initialStatus,
                 workspaceId: project.workspaceId,
                 projectId,
-                description: issue.body || "No description provided.",
+                description: processedDescription || "No description provided.",
                 priority: "MEDIUM",
                 labels: issue.labels?.map(l => l.name) || [],
                 position: 1000,

@@ -12,6 +12,7 @@ import {
   GITHUB_RELEASES_ID,
 } from "@/config";
 import { createAdminClient } from "@/lib/appwrite";
+import { replaceGitHubImagesInMarkdown } from "./image-sync";
 
 import { GitHubRepository, GitHubWebhookEventType } from "../types";
 import {
@@ -480,6 +481,21 @@ async function processIssuesEvent(
   const repoConfig = repositories.documents[0];
   const createTasksFromIssues = repoConfig.createTasksFromIssues;
 
+  // Decrypt access token and initialize storage for image processing
+  let decryptedToken = repoConfig.accessToken;
+  if (decryptedToken && decryptedToken.includes(":")) {
+    const { decryptToken } = await import("../lib/encryption");
+    decryptedToken = decryptToken(decryptedToken);
+  }
+  const { storage } = await createAdminClient();
+
+  const rawBodyText = issue.body || "";
+  const processedDescription = await replaceGitHubImagesInMarkdown(
+    rawBodyText,
+    decryptedToken,
+    storage
+  );
+
   const mappedIssues = await databases.listDocuments(
     DATABASE_ID,
     GITHUB_ISSUES_ID,
@@ -555,7 +571,7 @@ async function processIssuesEvent(
             status: initialStatus,
             workspaceId: project.workspaceId,
             projectId,
-            description: issue.body || "No description provided.",
+            description: processedDescription || "No description provided.",
             priority: "MEDIUM",
             labels: issue.labels?.map(l => l.name) || [],
             position: 1000,
@@ -623,7 +639,7 @@ async function processIssuesEvent(
         try {
           await databases.updateDocument(DATABASE_ID, TASKS_ID, taskId, {
             title: issue.title,
-            description: issue.body || "",
+            description: processedDescription || "",
             lastModifiedBy: "github-webhook",
           });
           console.log(`[GitHub Sync] Updated task ${taskId} fields from GitHub issue #${issue.number} edits`);
