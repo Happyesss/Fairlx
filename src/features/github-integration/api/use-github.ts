@@ -562,3 +562,60 @@ export const useGetGitHubIssues = (projectId: string, enabled: boolean = true) =
   });
 };
 
+// Fetch GitHub commits for a project
+export const useGetProjectCommits = (projectId: string, enabled: boolean = true) => {
+  return useQuery({
+    queryKey: ["github-project-commits", projectId],
+    queryFn: async () => {
+      const response = await client.api.github.repository.commits.$get({
+        query: { projectId },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch project commits");
+      }
+      const { data } = await response.json();
+      return data as unknown as Array<{
+        $id: string;
+        commitSha: string;
+        commitMessage: string;
+        commitUrl: string;
+        authorName: string;
+        authorEmail: string;
+        branchName: string;
+        repoFullName: string;
+        processedAt: string;
+        taskId?: string;
+      }>;
+    },
+    enabled: !!projectId && enabled,
+  });
+};
+
+// Fetch GitHub pull requests for a project
+export const useGetProjectPullRequests = (projectId: string, enabled: boolean = true) => {
+  return useQuery({
+    queryKey: ["github-project-pull-requests", projectId],
+    queryFn: async () => {
+      const response = await client.api.github.repository["pull-requests"].$get({
+        query: { projectId },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch project pull requests");
+      }
+      const { data } = await response.json();
+      return data as unknown as Array<{
+        $id: string;
+        prNumber: number;
+        prTitle: string;
+        prState: "open" | "closed" | "merged";
+        prUrl: string;
+        branchName: string;
+        repoFullName: string;
+        processedAt: string;
+        taskId?: string;
+      }>;
+    },
+    enabled: !!projectId && enabled,
+  });
+};
+

@@ -777,6 +777,108 @@ const app = new Hono()
         );
       }
     }
+  )
+
+  // Get all GitHub commits synced for a project
+  .get(
+    "/commits",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId } = c.req.valid("query");
+
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const commits = await databases.listDocuments(
+          DATABASE_ID,
+          GITHUB_COMMITS_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.orderDesc("processedAt"),
+            Query.limit(100),
+          ]
+        );
+
+        return c.json({ data: commits.documents });
+      } catch (error: unknown) {
+        console.error("[GitHub Get Project Commits Error]:", error);
+        return c.json(
+          {
+            error: "Failed to fetch project commits",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // Get all GitHub pull requests synced for a project
+  .get(
+    "/pull-requests",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId } = c.req.valid("query");
+
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        const prs = await databases.listDocuments(
+          DATABASE_ID,
+          GITHUB_PRS_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.orderDesc("processedAt"),
+            Query.limit(100),
+          ]
+        );
+
+        return c.json({ data: prs.documents });
+      } catch (error: unknown) {
+        console.error("[GitHub Get Project PRs Error]:", error);
+        return c.json(
+          {
+            error: "Failed to fetch project pull requests",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
   );
 
 export default app;
