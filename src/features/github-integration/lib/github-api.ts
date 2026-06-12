@@ -711,6 +711,70 @@ export class GitHubAPI {
   }
 
   /**
+   * List issues for a repository.
+   */
+  async listIssues(
+    owner: string,
+    repo: string,
+    state: "open" | "closed" | "all" = "all",
+    perPage: number = 100
+  ): Promise<Array<{
+    id: number;
+    number: number;
+    title: string;
+    state: string;
+    html_url: string;
+    body: string | null;
+    labels: Array<{ name: string; color: string }>;
+    assignees: Array<{ login: string; avatar_url: string }>;
+    created_at: string;
+    updated_at: string;
+    closed_at: string | null;
+    pull_request?: Record<string, unknown>;
+  }>> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues?state=${state}&per_page=${perPage}`;
+
+    const response = await this.fetchWithRetry(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list issues: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * List releases for a repository.
+   */
+  async listReleases(
+    owner: string,
+    repo: string,
+    perPage: number = 100
+  ): Promise<Array<{
+    id: number;
+    tag_name: string;
+    name: string;
+    body: string | null;
+    published_at: string;
+    html_url: string;
+    author: { login: string };
+  }>> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases?per_page=${perPage}`;
+
+    const response = await this.fetchWithRetry(url, {
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list releases: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * List repositories accessible to the user
    */
   async listUserRepositories(): Promise<Array<{

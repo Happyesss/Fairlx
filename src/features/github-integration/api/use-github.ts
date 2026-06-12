@@ -619,3 +619,49 @@ export const useGetProjectPullRequests = (projectId: string, enabled: boolean = 
   });
 };
 
+// Sync historical GitHub data (commits, PRs, issues, releases)
+type SyncGitHubHistoryRequest = {
+  json: { projectId: string };
+};
+
+export const useSyncGitHubHistory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<unknown, Error, SyncGitHubHistoryRequest>({
+    mutationFn: async ({ json }) => {
+      const response = await client.api.github.repository["sync-history"].$post({ json });
+
+      if (!response.ok) {
+        const errorData = await response.json() as { error?: string };
+        throw new Error(errorData.error || "Failed to sync GitHub history");
+      }
+
+      return await response.json();
+    },
+    onSuccess: (_, variables) => {
+      toast.success("GitHub repository history successfully synchronized!");
+      
+      // Invalidate all related queries to refresh the UI
+      queryClient.invalidateQueries({
+        queryKey: GITHUB_INTEGRATION_QUERY_KEYS.repository(variables.json.projectId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["github-releases", variables.json.projectId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["github-issues", variables.json.projectId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["github-project-commits", variables.json.projectId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["github-project-pull-requests", variables.json.projectId],
+      });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to sync history");
+    },
+  });
+};
+
+

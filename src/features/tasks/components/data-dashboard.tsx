@@ -35,13 +35,15 @@ import { ProjectActivityLogWidget } from "@/features/audit-logs/components/proje
 import { ProjectMembersWidget } from "@/features/members/components/project-members-widget";
 import { MemberAvatar } from "@/features/members/components/member-avatar";
 import { useGetMySpaceMembers } from "@/features/my-space/api/use-get-my-space-members";
+import { Button } from "@/components/ui/button";
 import {
   useGetRepository,
   useGetGitHubReleases,
   useGetProjectCommits,
   useGetProjectPullRequests,
+  useSyncGitHubHistory,
 } from "@/features/github-integration/api/use-github";
-import { GitBranch, GitPullRequest, GitCommit, Package, ExternalLink, Github } from "lucide-react";
+import { GitBranch, GitPullRequest, GitCommit, Package, ExternalLink, Github, RefreshCw } from "lucide-react";
 
 // ---------- Constants ----------
 const STATUS_COLORS: Record<string, string> = {
@@ -80,6 +82,7 @@ export const DataDashboard = ({
   const { data: releases } = useGetGitHubReleases(projectId, isRepoLinked);
   const { data: commits } = useGetProjectCommits(projectId, isRepoLinked);
   const { data: pullRequests } = useGetProjectPullRequests(projectId, isRepoLinked);
+  const { mutate: syncHistory, isPending: isSyncing } = useSyncGitHubHistory();
 
   const { data: membersData } = useGetMembers({
     workspaceId,
@@ -418,10 +421,22 @@ export const DataDashboard = ({
               <Github className="size-5 text-foreground" />
               <h3 className="text-sm font-semibold tracking-tight">GitHub Live Activity ({repository.owner}/{repository.repositoryName})</h3>
             </div>
-            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-              <GitBranch className="size-3 mr-1" />
-              Syncing branch: {repository.branch || "main"}
-            </Badge>
+            <div className="flex items-center gap-x-2">
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                <GitBranch className="size-3 mr-1" />
+                Syncing branch: {repository.branch || "main"}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[10px] h-6 py-0 px-2 flex items-center gap-x-1 hover:bg-accent border border-border/50 text-foreground"
+                onClick={() => syncHistory({ json: { projectId } })}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={cn("size-3", isSyncing && "animate-spin")} />
+                {isSyncing ? "Syncing..." : "Sync Repository"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
