@@ -808,6 +808,67 @@ const app = new Hono()
           dispatchWorkitemEvent(event).catch(() => {
             // Silent failure for non-critical event dispatch
           });
+
+          // ======= GITHUB SYNC (Close Issue) =======
+          try {
+            const { GITHUB_ISSUES_ID, GITHUB_REPOS_ID } = await import("@/config");
+            const { GitHubAPI } = await import("@/features/github-integration/lib/github-api");
+            
+            const issues = await databases.listDocuments(
+              DATABASE_ID,
+              GITHUB_ISSUES_ID,
+              [
+                Query.equal("taskId", task.$id),
+                Query.limit(1)
+              ]
+            );
+            
+            if (issues.total > 0) {
+              const issueMapping = issues.documents[0];
+              
+              const repos = await databases.listDocuments(
+                DATABASE_ID,
+                GITHUB_REPOS_ID,
+                [
+                  Query.equal("projectId", task.projectId),
+                  Query.limit(1)
+                ]
+              );
+              
+              if (repos.total > 0) {
+                const repoConfig = repos.documents[0];
+                const repoFullName = issueMapping.repoFullName as string;
+                if (repoFullName) {
+                  const [owner, repoName] = repoFullName.split("/");
+                  
+                  let activeToken: string | undefined = undefined;
+                  if (repoConfig.accessToken) {
+                    let token = repoConfig.accessToken;
+                    if (token.includes(":")) {
+                      const { decryptToken } = await import("@/features/github-integration/lib/encryption");
+                      token = decryptToken(token);
+                    }
+                    activeToken = token;
+                  }
+                  
+                  if (activeToken) {
+                    const api = new GitHubAPI(activeToken);
+                    await api.closeIssue(owner, repoName, issueMapping.issueNumber as number);
+                    await api.createIssueComment(
+                      owner, 
+                      repoName, 
+                      issueMapping.issueNumber as number, 
+                      `✅ Marked as **DONE** in Fairlx by ${userName}.`
+                    );
+                    console.log(`[Tasks] Successfully closed GitHub issue #${issueMapping.issueNumber} because task was marked as DONE`);
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.error("[Tasks] Failed to sync status DONE to GitHub issue:", err);
+          }
+          // ======= END GITHUB SYNC =======
         } else {
           // Resolve status IDs to human-readable names for notifications
           const [oldStatusName, newStatusName] = await Promise.all([

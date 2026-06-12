@@ -415,7 +415,7 @@ export const ProjectIntegrationsSettings = ({
                           onClick={handleSaveSettings}
                           disabled={!hasChanges || isUpdating}
                           size="sm"
-                          className="px-6 text-xs font-semibold animate-shimmer"
+                          className="px-6 text-xs font-semibold"
                         >
                           {isUpdating ? (
                             <>

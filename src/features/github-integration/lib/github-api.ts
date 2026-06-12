@@ -863,6 +863,24 @@ export class GitHubAPI {
       throw new Error(`Failed to close issue #${issueNumber}: ${response.statusText}`);
     }
   }
+
+  /**
+   * Create a comment on an issue or PR
+   */
+  async createIssueComment(owner: string, repo: string, issueNumber: number, body: string): Promise<void> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+    const response = await this.fetchWithRetry(url, {
+      method: "POST",
+      headers: {
+        ...this.getHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ body }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create comment on issue #${issueNumber}: ${response.statusText}`);
+    }
+  }
 }
 
 export const githubAPI = new GitHubAPI();

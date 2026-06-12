@@ -274,6 +274,44 @@ async function processPushEvent(
               processedAt: new Date().toISOString(),
             }
           );
+
+          // ======= Post Comment to Fairlx Task =======
+          try {
+            const { TASKS_ID, COMMENTS_ID } = await import("@/config");
+            const tasks = await databases.listDocuments(
+              DATABASE_ID,
+              TASKS_ID,
+              [
+                Query.equal("projectId", projectId),
+                Query.equal("key", taskId.toUpperCase()),
+                Query.limit(1)
+              ]
+            );
+            
+            if (tasks.total > 0) {
+              const taskDoc = tasks.documents[0];
+              const commitHash = commit.id.substring(0, 7);
+              const markdownComment = `### 🔗 GitHub Commit Linked\n\n**${commit.author.name}** pushed a commit related to this work item:\n\n> [\`${commitHash}\`](${commit.url}) - ${commit.message.split('\\n')[0]}`;
+              
+              await databases.createDocument(
+                DATABASE_ID,
+                COMMENTS_ID,
+                ID.unique(),
+                {
+                  content: markdownComment,
+                  taskId: taskDoc.$id,
+                  workspaceId: taskDoc.workspaceId,
+                  projectId: projectId,
+                  authorId: "github-webhook",
+                  isEdited: false,
+                }
+              );
+            }
+          } catch (err) {
+            console.error(`[GitHub Webhook] Failed to post comment to task:`, err);
+          }
+          // ======= END Post Comment =======
+
         } catch (error) {
           console.error(`[GitHub Webhook] Failed to store push event in github_commits:`, error);
         }
