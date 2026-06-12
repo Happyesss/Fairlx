@@ -1310,6 +1310,111 @@ const app = new Hono()
         );
       }
     }
+  )
+
+  // Proxy GitHub asset images for private repositories
+  .get(
+    "/image-proxy",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string(), url: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId, url } = c.req.valid("query");
+
+        // 1. Verify project access
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        if (!project) {
+          return c.json({ error: "Project not found" }, 404);
+        }
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // 2. Fetch the connected repository configuration to get the access token
+        const repositories = await databases.listDocuments(
+          DATABASE_ID,
+          GITHUB_REPOS_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.limit(1)
+          ]
+        );
+
+        if (repositories.total === 0) {
+          return c.json({ error: "No repository connected for this project" }, 404);
+        }
+
+        const repository = repositories.documents[0];
+        let decryptedToken = repository.accessToken;
+        if (!decryptedToken) {
+          return c.json({ error: "Repository is not configured with an access token" }, 400);
+        }
+
+        if (decryptedToken.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          decryptedToken = decryptToken(decryptedToken);
+        }
+
+        // 3. Request the asset URL using the decrypted token to get the S3 redirect location
+        const res = await fetch(url, {
+          method: "HEAD",
+          headers: {
+            "Authorization": `Bearer ${decryptedToken}`
+          },
+          redirect: "manual"
+        });
+
+        const redirectUrl = res.headers.get("location");
+        if (res.status === 302 && redirectUrl) {
+          return c.redirect(redirectUrl);
+        }
+
+        // Fallback: If no redirect headers or not 302, try to stream/fetch directly
+        const directRes = await fetch(url, {
+          headers: {
+            "Authorization": `Bearer ${decryptedToken}`
+          }
+        });
+
+        if (!directRes.ok) {
+          return c.json({ error: "Failed to load asset from GitHub" }, 400);
+        }
+
+        // Return the image data directly
+        const contentType = directRes.headers.get("content-type") || "image/png";
+        const bodyStream = directRes.body;
+        return new Response(bodyStream, {
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "public, max-age=3600"
+          }
+        });
+
+      } catch (error: unknown) {
+        console.error("[GitHub Image Proxy Error]:", error);
+        return c.json(
+          {
+            error: "Failed to proxy GitHub image",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
   );
 
 export default app;

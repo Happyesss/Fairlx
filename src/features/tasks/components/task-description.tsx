@@ -28,6 +28,27 @@ export const TaskDescription = ({
   const { mutate: updateTask } = useUpdateTask();
   const { data: members } = useGetMembers({ workspaceId: workspaceId || "" });
 
+  // Convert GitHub asset URLs to proxy URLs for rendering/display
+  const toProxyUrl = useCallback((text: string) => {
+    if (!projectId) return text;
+    const githubAssetRegex = /https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+/g;
+    return text.replace(githubAssetRegex, (match) => {
+      return `/api/github/image-proxy?projectId=${projectId}&url=${encodeURIComponent(match)}`;
+    });
+  }, [projectId]);
+
+  // Convert proxy URLs back to original GitHub asset URLs for saving
+  const fromProxyUrl = useCallback((text: string) => {
+    const proxyRegex = /\/api\/github\/image-proxy\?projectId=[a-zA-Z0-9_-]+&url=([^"'\s>]+)/g;
+    return text.replace(proxyRegex, (match, urlParam) => {
+      try {
+        return decodeURIComponent(urlParam);
+      } catch {
+        return urlParam;
+      }
+    });
+  }, []);
+
   // Use localStorage-based draft
   const {
     content: value,
@@ -35,11 +56,11 @@ export const TaskDescription = ({
     isSyncing: isSaving,
   } = useLocalDraft({
     taskId: task.$id,
-    initialContent: task.description || "",
+    initialContent: toProxyUrl(task.description || ""),
     onSync: async (content) => {
       updateTask({
         param: { taskId: task.$id },
-        json: { description: content },
+        json: { description: fromProxyUrl(content) },
       });
     },
   });

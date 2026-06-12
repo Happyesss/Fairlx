@@ -12,8 +12,8 @@
  *   - PR:     "[FLX-123] Fix login redirect"
  */
 
-const TASK_ID_REGEX = /\[?FLX-(\d+)\]?/gi;
-const BRANCH_TASK_ID_REGEX = /^flx-(\d+)/i;
+const TASK_ID_REGEX = /\[?([a-zA-Z]{2,10})-(\d+)\]?/gi;
+const BRANCH_TASK_ID_REGEX = /^([a-zA-Z]{2,10})-(\d+)/i;
 
 /**
  * Extract all task IDs from a commit message.
@@ -29,7 +29,7 @@ export function parseTaskIdsFromCommitMessage(message: string): string[] {
   TASK_ID_REGEX.lastIndex = 0;
 
   while ((match = TASK_ID_REGEX.exec(message)) !== null) {
-    matches.push(`FLX-${match[1]}`);
+    matches.push(`${match[1].toUpperCase()}-${match[2]}`);
   }
 
   // Deduplicate
@@ -38,7 +38,7 @@ export function parseTaskIdsFromCommitMessage(message: string): string[] {
 
 /**
  * Extract a single task ID from a branch name.
- * Branch must start with "flx-{id}" prefix.
+ * Branch must start with "{prefix}-{id}" prefix.
  * Returns uppercase task ID (e.g., "FLX-123") or null if no match.
  */
 export function parseTaskIdFromBranchName(
@@ -52,7 +52,7 @@ export function parseTaskIdFromBranchName(
   const match = BRANCH_TASK_ID_REGEX.exec(branchName);
   if (!match) return null;
 
-  return `FLX-${match[1]}`;
+  return `${match[1].toUpperCase()}-${match[2]}`;
 }
 
 /**
