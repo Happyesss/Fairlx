@@ -535,7 +535,7 @@ async function processIssuesEvent(
     const keyNumber = existingItems.total + 1;
     const taskKey = `${projectKey}-${keyNumber}`;
 
-    let type = "TASK";
+    let type = "ISSUE";
     const labels = issue.labels?.map(l => l.name.toLowerCase()) || [];
     if (labels.includes("bug") || labels.includes("defect") || labels.includes("error")) {
       type = "BUG";

@@ -15,6 +15,7 @@ const defaultTypes = [
     { key: "EPIC", label: "Epic", icon: "crown", color: "#a855f7" },
     { key: "STORY", label: "Story", icon: "file-text", color: "#10b981" },
     { key: "SUBTASK", label: "Subtask", icon: "arrow-right", color: "#6b7280" },
+    { key: "ISSUE", label: "Issue", icon: "alert-circle", color: "#eab308" },
 ];
 
 interface TypeSelectorProps {

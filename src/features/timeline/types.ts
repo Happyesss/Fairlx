@@ -143,6 +143,12 @@ export const TYPE_COLORS: Record<WorkItemType, { bg: string; text: string; borde
     border: "border border-white/10 border-l-white/60",
     accent: "bg-white/35",
   },
+  [WorkItemType.ISSUE]: {
+    bg: "bg-gradient-to-r from-amber-600/95 via-amber-500/85 to-amber-400/80",
+    text: "text-white",
+    border: "border border-white/10 border-l-white/60",
+    accent: "bg-white/35",
+  },
 };
 
 // Priority colors for visual indicators

@@ -260,7 +260,7 @@ const app = new Hono()
             linkCommitsToTasks: true,
             syncComments: true,
             allowPrMerge: true,
-            createTasksFromIssues: false,
+            createTasksFromIssues: true,
           }
         );
       }

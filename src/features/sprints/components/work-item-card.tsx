@@ -9,6 +9,7 @@ import {
   Bug,
   CheckSquare,
   ListTodo,
+  AlertCircle,
 } from "lucide-react";
 import { resolveIconSync, preloadIcons } from "@/lib/resolve-icon";
 
@@ -58,6 +59,7 @@ const typeConfig = {
   [WorkItemType.TASK]: { icon: CheckSquare, color: "text-green-600", bg: "bg-green-500", light: "bg-green-50 dark:bg-green-900/20" },
   [WorkItemType.EPIC]: { icon: Layers, color: "text-purple-600", bg: "bg-purple-500", light: "bg-purple-50 dark:bg-purple-900/20" },
   [WorkItemType.SUBTASK]: { icon: ListTodo, color: "text-muted-foreground", bg: "bg-muted-foreground", light: "bg-muted" },
+  [WorkItemType.ISSUE]: { icon: AlertCircle, color: "text-orange-600", bg: "bg-orange-500", light: "bg-orange-50 dark:bg-orange-900/20" },
 };
 
 const priorityConfig = {
@@ -109,6 +111,7 @@ export const WorkItemCard = ({ workItem, workspaceId, projectId, onViewDetails, 
     { key: WorkItemType.STORY, label: "Story", icon: Bookmark, color: "text-blue-600", bg: "bg-blue-500", light: "bg-blue-50 dark:bg-blue-900/20" },
     { key: WorkItemType.EPIC, label: "Epic", icon: Layers, color: "text-purple-600", bg: "bg-purple-500", light: "bg-purple-50 dark:bg-purple-900/20" },
     { key: WorkItemType.SUBTASK, label: "Subtask", icon: ListTodo, color: "text-muted-foreground", bg: "bg-muted-foreground", light: "bg-muted" },
+    { key: WorkItemType.ISSUE, label: "Issue", icon: AlertCircle, color: "text-orange-600", bg: "bg-orange-500", light: "bg-orange-50 dark:bg-orange-900/20" },
   ];
 
   const TypeIcon = typeConfig[workItem.type]?.icon || CheckSquare;

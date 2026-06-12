@@ -533,3 +533,32 @@ export const useGetGitHubReleases = (projectId: string, enabled: boolean = true)
   });
 };
 
+// Fetch GitHub issues for a project
+export const useGetGitHubIssues = (projectId: string, enabled: boolean = true) => {
+  return useQuery({
+    queryKey: ["github-issues", projectId],
+    queryFn: async () => {
+      const response = await client.api.github.repository.issues.$get({
+        query: { projectId },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch project issues");
+      }
+      const { data } = await response.json();
+      return data as unknown as Array<{
+        $id: string;
+        projectId: string;
+        taskId: string;
+        issueId: number;
+        number: number;
+        title: string;
+        htmlUrl: string;
+        state: "open" | "closed";
+        repoFullName: string;
+        processedAt?: string;
+      }>;
+    },
+    enabled: !!projectId && enabled,
+  });
+};
+

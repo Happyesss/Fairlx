@@ -12,6 +12,7 @@ import {
   GITHUB_COMMITS_ID,
   GITHUB_PRS_ID,
   GITHUB_RELEASES_ID,
+  GITHUB_ISSUES_ID,
 } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { getMember } from "@/features/members/utils";
@@ -203,7 +204,7 @@ const app = new Hono()
               linkCommitsToTasks: true,
               syncComments: true,
               allowPrMerge: true,
-              createTasksFromIssues: false,
+              createTasksFromIssues: true,
             }
           );
         }
@@ -665,6 +666,58 @@ const app = new Hono()
         return c.json(
           {
             error: "Failed to fetch task github events",
+            message: error instanceof Error ? error.message : "Unknown error",
+          },
+          500
+        );
+      }
+    }
+  )
+
+  // Get GitHub issues for a project
+  .get(
+    "/issues",
+    sessionMiddleware,
+    zValidator("query", z.object({ projectId: z.string() })),
+    async (c) => {
+      try {
+        const databases = c.get("databases");
+        const user = c.get("user");
+        const { projectId } = c.req.valid("query");
+
+        // 1. Check project access
+        const project = await databases.getDocument(
+          DATABASE_ID,
+          PROJECTS_ID,
+          projectId
+        );
+
+        const member = await getMember({
+          databases,
+          workspaceId: project.workspaceId,
+          userId: user.$id,
+        });
+
+        if (!member) {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+
+        // 2. Fetch issues
+        const issues = await databases.listDocuments(
+          DATABASE_ID,
+          GITHUB_ISSUES_ID,
+          [
+            Query.equal("projectId", projectId),
+            Query.limit(100),
+          ]
+        );
+
+        return c.json({ data: issues.documents });
+      } catch (error: unknown) {
+        console.error("[GitHub Get Issues Error]:", error);
+        return c.json(
+          {
+            error: "Failed to fetch project issues",
             message: error instanceof Error ? error.message : "Unknown error",
           },
           500
