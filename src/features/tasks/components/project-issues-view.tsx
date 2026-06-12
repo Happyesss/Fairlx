@@ -181,7 +181,7 @@ export function ProjectIssuesView({ projectId, tasks = [] }: ProjectIssuesViewPr
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredIssues.map((issue) => {
-            const mappedTask = issue.taskId ? taskMap.get(issue.taskId) : null;
+            const mappedTask = issue.task || (issue.taskId ? taskMap.get(issue.taskId) : null);
 
             return (
               <Card 

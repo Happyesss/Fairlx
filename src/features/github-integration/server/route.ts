@@ -1080,7 +1080,7 @@ const app = new Hono()
           repoFullName: string;
           lastSyncedAt: string;
         }>).map((doc) => {
-          const task = doc.taskId ? (taskMap.get(doc.taskId) as { title: string; status: string } | undefined) : undefined;
+          const task = doc.taskId ? (taskMap.get(doc.taskId) as { $id: string; title: string; status: string; key: string } | undefined) : undefined;
           return {
             $id: doc.$id,
             projectId: doc.projectId,
@@ -1092,6 +1092,12 @@ const app = new Hono()
             processedAt: doc.lastSyncedAt,
             title: task ? task.title : `GitHub Issue #${doc.issueNumber}`,
             state: task ? (task.status === "DONE" ? "closed" : "open") : "open",
+            task: task ? {
+              $id: task.$id,
+              title: task.title,
+              key: task.key,
+              status: task.status,
+            } : null,
           };
         });
 

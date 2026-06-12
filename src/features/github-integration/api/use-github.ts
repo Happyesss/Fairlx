@@ -556,9 +556,16 @@ export const useGetGitHubIssues = (projectId: string, enabled: boolean = true) =
         state: "open" | "closed";
         repoFullName: string;
         processedAt?: string;
+        task?: {
+          $id: string;
+          title: string;
+          key: string;
+          status: string;
+        } | null;
       }>;
     },
     enabled: !!projectId && enabled,
+    refetchInterval: 4000, // Poll every 4 seconds to reflect issues raised on GitHub live
   });
 };
 
