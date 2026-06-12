@@ -27,6 +27,79 @@ import { connectGitHubRepoSchema } from "../schemas";
 import { GitHubRepository } from "../types";
 import { githubAPI, GitHubAPI } from "../lib/github-api";
 
+async function verifyAndUpdateWebhookHelper(databases: Databases, repoConfig: GitHubRepository) {
+  const { owner, repositoryName: repo, projectId } = repoConfig;
+  const expectedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/github/webhooks/incoming/${projectId}`;
+
+  if (!process.env.NEXT_PUBLIC_APP_URL || !process.env.NEXT_PUBLIC_APP_URL.startsWith("http")) {
+    console.log("[GitHub Webhook Verify] Skipping verification: NEXT_PUBLIC_APP_URL is not set or invalid:", process.env.NEXT_PUBLIC_APP_URL);
+    return;
+  }
+
+  let activeToken: string | undefined = undefined;
+  if (repoConfig.accessToken) {
+    let token = repoConfig.accessToken;
+    if (token.includes(":")) {
+      const { decryptToken } = await import("../lib/encryption");
+      token = decryptToken(token);
+    }
+    activeToken = token;
+  }
+
+  const api = new GitHubAPI(activeToken);
+
+  try {
+    const expectedEvents = ["push", "pull_request", "issues", "release"];
+    const webhookSecret = repoConfig.webhookSecret || ID.unique();
+    let needUpdate = false;
+    const registeredHookId = repoConfig.webhookId;
+
+    if (registeredHookId) {
+      // Check if it exists on GitHub
+      const hooks = await api.listWebhooks(owner, repo);
+      const matchingHook = hooks.find(h => h.id === Number(registeredHookId));
+
+      if (matchingHook) {
+        const hasCorrectUrl = matchingHook.config.url === expectedUrl;
+        const hasAllEvents = expectedEvents.every(e => matchingHook.events.includes(e));
+
+        if (!hasCorrectUrl || !hasAllEvents) {
+          console.log(`[GitHub Webhook Verify] Webhook url/events mismatch. Expected url: ${expectedUrl}, Got: ${matchingHook.config.url}. Expected events: ${expectedEvents}, Got: ${matchingHook.events}. Updating...`);
+          await api.updateWebhook(owner, repo, Number(registeredHookId), expectedUrl, webhookSecret, expectedEvents);
+          console.log("[GitHub Webhook Verify] Webhook updated successfully.");
+        } else {
+          console.log("[GitHub Webhook Verify] Webhook is up to date.");
+        }
+      } else {
+        // Registered hook ID exists in database but not on GitHub
+        needUpdate = true;
+      }
+    } else {
+      // No hook ID registered in database
+      needUpdate = true;
+    }
+
+    if (needUpdate) {
+      console.log(`[GitHub Webhook Verify] Creating new webhook for ${owner}/${repo}...`);
+      const hook = await api.registerWebhook(owner, repo, expectedUrl, webhookSecret, expectedEvents);
+      
+      // Update database
+      await databases.updateDocument(
+        DATABASE_ID,
+        GITHUB_REPOS_ID,
+        repoConfig.$id,
+        {
+          webhookId: hook.id,
+          webhookSecret,
+        }
+      );
+      console.log(`[GitHub Webhook Verify] Webhook registered successfully with ID ${hook.id}.`);
+    }
+  } catch (err) {
+    console.error("[GitHub Webhook Verify] Error verifying/updating webhook:", err);
+  }
+}
+
 async function syncGitHubHistoryHelper(databases: Databases, projectId: string) {
   const project = await databases.getDocument(
     DATABASE_ID,
@@ -50,6 +123,13 @@ async function syncGitHubHistoryHelper(databases: Databases, projectId: string) 
 
   const repoConfig = repos.documents[0];
   const { owner, repositoryName: repo } = repoConfig;
+
+  // Verify and update webhook
+  try {
+    await verifyAndUpdateWebhookHelper(databases, repoConfig);
+  } catch (err) {
+    console.error("[GitHub Sync History] Failed to verify/update webhook:", err);
+  }
 
   let activeToken: string | undefined = undefined;
   if (repoConfig.accessToken) {
@@ -630,6 +710,11 @@ const app = new Hono()
         }
 
         const repo = repositories.documents[0];
+
+        // Verify and update webhook in background
+        verifyAndUpdateWebhookHelper(databases, repo).catch((err) => {
+          console.error("[GitHub Webhook Background Verify Error]:", err);
+        });
         
         // Ensure status is not stuck on 'syncing'
         if (repo.status === 'syncing') {

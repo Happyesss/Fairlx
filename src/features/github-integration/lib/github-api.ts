@@ -570,7 +570,7 @@ export class GitHubAPI {
     repo: string,
     webhookUrl: string,
     secret: string,
-    events: string[] = ["push", "pull_request"]
+    events: string[] = ["push", "pull_request", "issues", "release"]
   ): Promise<{ id: number; url: string }> {
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/hooks`;
 
@@ -621,6 +621,42 @@ export class GitHubAPI {
 
     if (!response.ok && response.status !== 404) {
       throw new Error(`Failed to delete webhook: ${response.statusText}`);
+    }
+  }
+
+  /**
+   * Update a webhook configuration on a GitHub repository.
+   */
+  async updateWebhook(
+    owner: string,
+    repo: string,
+    hookId: number,
+    webhookUrl: string,
+    secret: string,
+    events: string[] = ["push", "pull_request", "issues", "release"]
+  ): Promise<void> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/hooks/${hookId}`;
+
+    const response = await this.fetchWithRetry(url, {
+      method: "PATCH",
+      headers: {
+        ...this.getHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        active: true,
+        events,
+        config: {
+          url: webhookUrl,
+          content_type: "json",
+          secret,
+          insecure_ssl: "0",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update webhook: ${response.statusText}`);
     }
   }
 
