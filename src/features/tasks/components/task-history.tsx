@@ -37,6 +37,7 @@ import { useUpdateComment } from "@/features/comments/hooks/use-update-comment";
 import { useDeleteComment } from "@/features/comments/hooks/use-delete-comment";
 import { useCreateComment } from "@/features/comments/hooks/use-create-comment";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useGetMembers } from "@/features/members/api/use-get-members";
 import { PopulatedTask } from "@/features/tasks/types";
 import { Attachment } from "@/features/attachments/types";
 import { PopulatedComment } from "@/features/comments/types";
@@ -477,34 +478,67 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
     workspaceId,
   });
 
-  const isLoading = commentsLoading || attachmentsLoading || timeLogsLoading;
+  const { data: members, isLoading: membersLoading } = useGetMembers({
+    workspaceId,
+  });
+
+  const isLoading = commentsLoading || attachmentsLoading || timeLogsLoading || membersLoading;
+
+  // Find the member who last modified the task
+  const updaterMember = useMemo(() => {
+    if (!members?.documents || !task.lastModifiedBy) return null;
+    return members.documents.find((m) => m.userId === task.lastModifiedBy);
+  }, [members, task.lastModifiedBy]);
 
   // Build unified history from all sources
   const historyItems = useMemo(() => {
     const items: HistoryItem[] = [];
 
     // Task created event - use reporter (creator) info, not assignee
+    let creatorName = task.reporter?.name;
+    let creatorEmail = task.reporter?.email;
+    let creatorImage = task.reporter?.profileImageUrl || undefined;
+
+    if (!creatorName) {
+      if (task.lastModifiedBy === "github-webhook" || task.lastModifiedBy === "github-sync-history") {
+        creatorName = "GitHub Integration";
+      } else {
+        creatorName = "Someone";
+      }
+    }
+
     items.push({
       id: `task-created-${task.$id}`,
       type: "created",
       timestamp: task.$createdAt,
       description: "created this task",
-      userName: task.reporter?.name || "Someone",
-      userEmail: task.reporter?.email,
-      userImage: task.reporter?.profileImageUrl || undefined,
+      userName: creatorName,
+      userEmail: creatorEmail,
+      userImage: creatorImage,
     });
 
     // Task updated event (if different from created)
-    // Note: We don't currently track lastModifiedBy user info, so show generic message
     if (task.$updatedAt && task.$updatedAt !== task.$createdAt) {
+      let updaterName = "Someone";
+      let updaterEmail = undefined;
+      let updaterImage = undefined;
+
+      if (task.lastModifiedBy === "github-webhook" || task.lastModifiedBy === "github-sync-history") {
+        updaterName = "GitHub Integration";
+      } else if (updaterMember) {
+        updaterName = updaterMember.name || updaterMember.email || "Someone";
+        updaterImage = updaterMember.profileImageUrl || undefined;
+        updaterEmail = updaterMember.email || undefined;
+      }
+
       items.push({
         id: `task-updated-${task.$id}`,
         type: "updated",
         timestamp: task.$updatedAt,
         description: "updated this task",
-        userName: "Someone", // TODO: Would need lastModifiedBy user lookup
-        userEmail: undefined,
-        userImage: undefined,
+        userName: updaterName,
+        userEmail: updaterEmail,
+        userImage: updaterImage,
       });
     }
 
@@ -529,12 +563,20 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
     if (attachments && Array.isArray(attachments)) {
       (attachments as Attachment[]).forEach((attachment) => {
         const displayName = attachment.fileName || attachment.name || 'file';
+        let attachmentUserName = "Someone";
+        if (members?.documents && attachment.uploadedBy) {
+          const uMember = members.documents.find(m => m.userId === attachment.uploadedBy);
+          if (uMember) {
+            attachmentUserName = uMember.name || "Someone";
+          }
+        }
+
         items.push({
           id: `attachment-${attachment.$id}`,
           type: "attachment",
           timestamp: attachment.$createdAt,
           description: `uploaded "${displayName}"`,
-          userName: "Someone",
+          userName: attachmentUserName,
           metadata: { fileName: displayName },
         });
       });
@@ -565,7 +607,7 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
 
     // Sort by timestamp (oldest first) so chat flows top->oldest ... bottom->newest
     return items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [task, comments, attachments, timeLogs]);
+  }, [task, comments, attachments, timeLogs, members, updaterMember]);
 
   // Auto-scroll container to bottom when items change so the latest is next to the input
   const containerRef = useRef<HTMLDivElement | null>(null);
