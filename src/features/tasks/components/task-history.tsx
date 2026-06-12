@@ -496,8 +496,8 @@ export const TaskHistory = ({ task, workspaceId, currentUserId, isAdmin = false 
 
     // Task created event - use reporter (creator) info, not assignee
     let creatorName = task.reporter?.name;
-    let creatorEmail = task.reporter?.email;
-    let creatorImage = task.reporter?.profileImageUrl || undefined;
+    const creatorEmail = task.reporter?.email;
+    const creatorImage = task.reporter?.profileImageUrl || undefined;
 
     if (!creatorName) {
       if (task.lastModifiedBy === "github-webhook" || task.lastModifiedBy === "github-sync-history") {
