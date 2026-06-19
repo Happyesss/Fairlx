@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Loader2, GitCommit, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { RichTextEditor, setMentionMembers } from "@/components/editor";
 import { useGetMembers } from "@/features/members/api/use-get-members";
 import { useLocalDraft } from "@/hooks/use-local-draft";
@@ -27,6 +28,35 @@ export const TaskDescription = ({
 }: TaskDescriptionProps) => {
   const { mutate: updateTask } = useUpdateTask();
   const { data: members } = useGetMembers({ workspaceId: workspaceId || "" });
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = () => {
+    navigator.clipboard.writeText(`git commit -m "feat: [${task.key}] your message"`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Commit command copied");
+  };
+
+  // Convert GitHub asset URLs to proxy URLs for rendering/display
+  const toProxyUrl = useCallback((text: string) => {
+    if (!projectId) return text;
+    const githubAssetRegex = /(https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9.\/_-]+|https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/assets\/[0-9]+\/[a-zA-Z0-9.\/_-]+)/g;
+    return text.replace(githubAssetRegex, (match) => {
+      return `/api/github/image-proxy?projectId=${projectId}&url=${encodeURIComponent(match)}`;
+    });
+  }, [projectId]);
+
+  // Convert proxy URLs back to original GitHub asset URLs for saving
+  const fromProxyUrl = useCallback((text: string) => {
+    const proxyRegex = /\/api\/github\/image-proxy\?projectId=[a-zA-Z0-9_-]+&url=([^"'\s>]+)/g;
+    return text.replace(proxyRegex, (match, urlParam) => {
+      try {
+        return decodeURIComponent(urlParam);
+      } catch {
+        return urlParam;
+      }
+    });
+  }, []);
 
   // Use localStorage-based draft
   const {
@@ -35,11 +65,11 @@ export const TaskDescription = ({
     isSyncing: isSaving,
   } = useLocalDraft({
     taskId: task.$id,
-    initialContent: task.description || "",
+    initialContent: toProxyUrl(task.description || ""),
     onSync: async (content) => {
       updateTask({
         param: { taskId: task.$id },
-        json: { description: content },
+        json: { description: fromProxyUrl(content) },
       });
     },
   });
@@ -119,6 +149,22 @@ export const TaskDescription = ({
           !canEdit && "pointer-events-none"
         )}
       />
+
+      <div className="mt-8 flex items-center justify-between rounded-lg border border-dashed border-border p-3 bg-muted/10">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold flex items-center gap-1.5">
+            <GitCommit className="size-3.5 text-blue-500" />
+            Link GitHub Commits & PRs
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Include <span className="font-mono font-medium text-foreground bg-muted px-1 py-0.5 rounded">[{task.key}]</span> in your commit message or branch name.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={onCopy}>
+          {copied ? <Check className="size-3 mr-1 text-green-500" /> : <Copy className="size-3 mr-1" />}
+          {copied ? "Copied" : "Copy Command"}
+        </Button>
+      </div>
     </div>
   );
 };

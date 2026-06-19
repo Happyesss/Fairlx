@@ -94,7 +94,12 @@ const app = new Hono()
         }
 
         // 3. Initialize GitHub API client
-        const githubAPI = new GitHubAPI(repository.accessToken);
+        let token = repository.accessToken;
+        if (token && token.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          token = decryptToken(token);
+        }
+        const githubAPI = new GitHubAPI(token);
 
         // 4. Fetch commits from GitHub (with file details in single call)
         const commits = await githubAPI.getCommits(

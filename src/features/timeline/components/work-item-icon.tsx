@@ -1,5 +1,5 @@
 import * as LucideIcons from "lucide-react";
-import { Layers, FileText, CheckSquare, Bug, ArrowRight, Bookmark, Clipboard, Target, Zap } from "lucide-react";
+import { Layers, FileText, CheckSquare, Bug, ArrowRight, Bookmark, Clipboard, Target, Zap, AlertCircle } from "lucide-react";
 import { WorkItemType } from "@/features/sprints/types";
 import { Project } from "@/features/projects/types";
 
@@ -19,6 +19,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string, style?:
   "Zap": Zap,
   "Layers": Layers,
   "ArrowRight": ArrowRight,
+  "AlertCircle": AlertCircle,
   "check-square": CheckSquare,
   "bookmark": Bookmark,
   "bug": Bug,
@@ -27,7 +28,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string, style?:
   "target": Target,
   "zap": Zap,
   "layers": Layers,
-  "arrow-right": ArrowRight
+  "arrow-right": ArrowRight,
+  "alert-circle": AlertCircle,
 };
 
 export function WorkItemIcon({ type, className = "h-4 w-4", project }: WorkItemIconProps) {
@@ -53,6 +55,8 @@ export function WorkItemIcon({ type, className = "h-4 w-4", project }: WorkItemI
       return <Bug className={className} style={{ color: "#EF4444" }} />;
     case WorkItemType.SUBTASK:
       return <ArrowRight className={className} style={{ color: "#6B7280" }} />;
+    case WorkItemType.ISSUE:
+      return <AlertCircle className={className} style={{ color: "#EAB308" }} />;
     default:
       return <CheckSquare className={className} />;
   }

@@ -117,6 +117,27 @@ const TaskPreviewContent = ({ task, workspaceId, onEdit, onClose, onAttachmentPr
     return paragraphs || '<p></p>';
   };
 
+  // Convert GitHub asset URLs to proxy URLs for rendering/display
+  const toProxyUrl = useCallback((text: string) => {
+    if (!task.projectId) return text;
+    const githubAssetRegex = /(https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9.\/_-]+|https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\/assets\/[0-9]+\/[a-zA-Z0-9.\/_-]+)/g;
+    return text.replace(githubAssetRegex, (match) => {
+      return `/api/github/image-proxy?projectId=${task.projectId}&url=${encodeURIComponent(match)}`;
+    });
+  }, [task.projectId]);
+
+  // Convert proxy URLs back to original GitHub asset URLs for saving
+  const fromProxyUrl = useCallback((text: string) => {
+    const proxyRegex = /\/api\/github\/image-proxy\?projectId=[a-zA-Z0-9_-]+&url=([^"'\s>]+)/g;
+    return text.replace(proxyRegex, (match, urlParam) => {
+      try {
+        return decodeURIComponent(urlParam);
+      } catch {
+        return urlParam;
+      }
+    });
+  }, []);
+
   // Use localStorage-based draft for description
   const {
     content: description,
@@ -125,11 +146,11 @@ const TaskPreviewContent = ({ task, workspaceId, onEdit, onClose, onAttachmentPr
     syncNow: syncDescriptionNow,
   } = useLocalDraft({
     taskId: task.$id,
-    initialContent: normalizeDescription(task.description),
+    initialContent: toProxyUrl(normalizeDescription(task.description)),
     onSync: async (content) => {
       updateTask({
         param: { taskId: task.$id },
-        json: { description: content },
+        json: { description: fromProxyUrl(content) },
       });
     },
   });

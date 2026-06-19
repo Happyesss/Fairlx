@@ -25,6 +25,11 @@ export const COMMENTS_ID = process.env.NEXT_PUBLIC_APPWRITE_COMMENTS_ID!;
 // GitHub Integration Collections
 export const GITHUB_REPOS_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_REPOS_ID!;
 export const CODE_DOCS_ID = process.env.NEXT_PUBLIC_APPWRITE_CODE_DOCS_ID!;
+export const GITHUB_EVENTS_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_EVENTS_ID!;
+export const GITHUB_COMMITS_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_COMMITS_ID || "github_commits";
+export const GITHUB_PRS_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_PRS_ID || "github_pull_requests";
+export const GITHUB_ISSUES_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_ISSUES_ID || "github_issues";
+export const GITHUB_RELEASES_ID = process.env.NEXT_PUBLIC_APPWRITE_GITHUB_RELEASES_ID || "github_releases";
 
 // Project Documents Collections
 export const PROJECT_DOCS_ID = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_DOCS_ID!;

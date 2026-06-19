@@ -44,6 +44,10 @@ const EnhancedBacklogScreen = dynamic(() => import("@/features/sprints/component
   loading: () => <div className="h-[400px] animate-pulse p-4 space-y-3">{[...Array(6)].map((_, i) => <div key={i} className="h-10 bg-muted/40 rounded-lg" />)}</div>,
 });
 
+const ProjectIssuesView = dynamic(() => import("./project-issues-view").then(mod => mod.ProjectIssuesView), {
+  loading: () => <div className="h-[400px] animate-pulse p-4 space-y-3">{[...Array(6)].map((_, i) => <div key={i} className="h-10 bg-muted/40 rounded-lg" />)}</div>,
+});
+
 import { createColumns } from "./columns";
 import { DataFilters } from "./data-filters";
 import { ProjectSetupOverlay } from "@/features/sprints/components/project-setup-overlay";
@@ -453,6 +457,11 @@ export const TaskViewSwitcher = ({
                 {showMyTasksOnly ? "Backlog" : "Backlog"}
               </SlidingTabsTrigger>
             )}
+            {paramProjectId && (
+              <SlidingTabsTrigger className="h-8 w-full text-xs lg:w-auto" value="issues">
+                Issues
+              </SlidingTabsTrigger>
+            )}
           </SlidingTabsList>
 
           {isAdmin && view === "kanban" && setupState.activeSprint && !showMyTasksOnly && (
@@ -487,7 +496,7 @@ export const TaskViewSwitcher = ({
       </div>
 
 
-      {(view !== "dashboard" && (showMyTasksOnly || (view !== "timeline" && view !== "backlog"))) && (
+      {(view !== "dashboard" && (showMyTasksOnly || (view !== "timeline" && view !== "backlog" && view !== "issues"))) && (
         <DataFilters
           hideProjectFilter={hideProjectFilter}
           showMyTasksOnly={showMyTasksOnly}
@@ -632,6 +641,16 @@ export const TaskViewSwitcher = ({
                 ) : (
                   <EnhancedBacklogScreen workspaceId={workspaceId} projectId={paramProjectId!} />
                 )}
+              </Suspense>
+            </TabsContent>
+          )}
+          {paramProjectId && (
+            <TabsContent value="issues" className="mt-0 h-full">
+              <Suspense fallback={<div className="h-[400px] flex items-center justify-center"><LoaderIcon className="size-5 animate-spin text-muted-foreground" /></div>}>
+                <ProjectIssuesView 
+                  projectId={paramProjectId} 
+                  tasks={filteredTasks?.documents} 
+                />
               </Suspense>
             </TabsContent>
           )}

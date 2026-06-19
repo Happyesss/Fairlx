@@ -1,6 +1,7 @@
-import { CalendarIcon, MoreHorizontalIcon, FlagIcon, MessageCircle } from "lucide-react";
+import { CalendarIcon, MoreHorizontalIcon, FlagIcon, MessageCircle, GitCommit, GitPullRequest } from "lucide-react";
 import { Project } from "@/features/projects/types";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+import { useGetTaskGitHubEvents } from "@/features/github-integration/api/use-github";
 
 import { TaskActions } from "./task-actions";
 import { LabelBadge } from "./LabelBadge";
@@ -32,6 +33,10 @@ export const KanbanCard = ({
     dragHandleProps
 }: KanbanCardProps) => {
     const { open: openPreview } = useTaskPreviewModal();
+
+    const { data: githubEvents } = useGetTaskGitHubEvents(task.key || "", !!task.key);
+    const commitCount = githubEvents?.commits?.length || 0;
+    const prCount = githubEvents?.pullRequests?.length || 0;
 
 
 
@@ -176,6 +181,20 @@ export const KanbanCard = ({
                         <MessageCircle className="size-[14px] text-muted-foreground" />
                         {task.commentCount ?? 0}
                     </p>
+
+                    {commitCount > 0 && (
+                        <p className="text-[11px] flex gap-0.5 items-center text-muted-foreground" title={`${commitCount} linked commits`}>
+                            <GitCommit className="size-[14px] text-blue-500" />
+                            {commitCount}
+                        </p>
+                    )}
+
+                    {prCount > 0 && (
+                        <p className="text-[11px] flex gap-0.5 items-center text-muted-foreground" title={`${prCount} linked pull requests`}>
+                            <GitPullRequest className="size-[14px] text-purple-500" />
+                            {prCount}
+                        </p>
+                    )}
 
                 </div>
 

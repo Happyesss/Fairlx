@@ -45,7 +45,7 @@ export async function setupWorkItems(databases: Databases, databaseId: string): 
     // Content & Meta
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'description', 65535, false);
     await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'priority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT'], false, 'MEDIUM');
-    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'type', ['TASK', 'STORY', 'BUG', 'EPIC', 'SUBTASK'], false, 'TASK');
+    await ensureEnumAttribute(databases, databaseId, COLLECTION_ID, 'type', ['TASK', 'STORY', 'BUG', 'EPIC', 'SUBTASK', 'ISSUE'], false, 'TASK');
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'labels', 128, false, undefined, true); // Array of strings
 
     // Relationships

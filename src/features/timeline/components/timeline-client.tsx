@@ -23,6 +23,7 @@ import {
 } from "@/features/timeline/types";
 import { PopulatedWorkItem, PopulatedSprint } from "@/features/sprints/types";
 import { CreateEpicDialog } from "@/features/sprints/components/create-epic-dialog";
+import { useGetGitHubReleases } from "@/features/github-integration/api/use-github";
 
 interface TimelineClientProps {
   initialData: {
@@ -105,6 +106,7 @@ export function TimelineClient({
   } = timelineState;
 
   const { mutate: updateItem } = useUpdateTimelineItem();
+  const { data: releases } = useGetGitHubReleases(projectId || "", !!projectId);
 
   // Initialize expanded items from server data
   React.useEffect(() => {
@@ -270,6 +272,7 @@ export function TimelineClient({
             onItemClick={setSelectedItemId}
             onItemUpdate={handleItemUpdate}
             scrollContainerRef={scrollContainerRef}
+            releases={releases || []}
           />
         </div>
 

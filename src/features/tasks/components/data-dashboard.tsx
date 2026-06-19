@@ -35,6 +35,15 @@ import { ProjectActivityLogWidget } from "@/features/audit-logs/components/proje
 import { ProjectMembersWidget } from "@/features/members/components/project-members-widget";
 import { MemberAvatar } from "@/features/members/components/member-avatar";
 import { useGetMySpaceMembers } from "@/features/my-space/api/use-get-my-space-members";
+import { Button } from "@/components/ui/button";
+import {
+  useGetRepository,
+  useGetGitHubReleases,
+  useGetProjectCommits,
+  useGetProjectPullRequests,
+  useSyncGitHubHistory,
+} from "@/features/github-integration/api/use-github";
+import { GitBranch, GitPullRequest, GitCommit, Package, ExternalLink, Github, RefreshCw } from "lucide-react";
 
 // ---------- Constants ----------
 const STATUS_COLORS: Record<string, string> = {
@@ -65,6 +74,15 @@ export const DataDashboard = ({
 }: DataDashboardProps) => {
   const workspaceId = useWorkspaceId();
   const projectId = useProjectId();
+
+  // Fetch GitHub linked repository details if we have a project ID
+  const { data: repository } = useGetRepository(projectId);
+  const isRepoLinked = !!repository && !isAggregated;
+
+  const { data: releases } = useGetGitHubReleases(projectId, isRepoLinked);
+  const { data: commits } = useGetProjectCommits(projectId, isRepoLinked);
+  const { data: pullRequests } = useGetProjectPullRequests(projectId, isRepoLinked);
+  const { mutate: syncHistory, isPending: isSyncing } = useSyncGitHubHistory();
 
   const { data: membersData } = useGetMembers({
     workspaceId,
@@ -394,6 +412,204 @@ export const DataDashboard = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── GitHub Repository Live Activity ── */}
+      {isRepoLinked && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-x-2">
+              <Github className="size-5 text-foreground" />
+              <h3 className="text-sm font-semibold tracking-tight">GitHub Live Activity ({repository.owner}/{repository.repositoryName})</h3>
+            </div>
+            <div className="flex items-center gap-x-2">
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                <GitBranch className="size-3 mr-1" />
+                Syncing branch: {repository.branch || "main"}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-[10px] h-6 py-0 px-2 flex items-center gap-x-1 hover:bg-accent border border-border/50 text-foreground"
+                onClick={() => syncHistory({ json: { projectId } })}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={cn("size-3", isSyncing && "animate-spin")} />
+                {isSyncing ? "Syncing..." : "Sync Repository"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {/* Releases widget */}
+            <Card className="border-border/50 flex flex-col h-[280px]">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Package className="size-4 text-purple-500" />
+                  Recent Releases
+                </CardTitle>
+                {releases && releases.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                    {releases.length} total
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="flex-1 overflow-auto py-2">
+                {releases && releases.length > 0 ? (
+                  <div className="space-y-3">
+                    {releases.slice(0, 5).map((release) => (
+                      <div key={release.$id} className="border-b border-border/30 pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <a
+                            href={release.htmlUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                          >
+                            {release.name || release.tagName}
+                            <ExternalLink className="size-3 shrink-0" />
+                          </a>
+                          <span className="text-[10px] text-muted-foreground">
+                            {format(new Date(release.publishedAt), "MMM d, yyyy")}
+                          </span>
+                        </div>
+                        {release.body && (
+                          <p className="text-[11px] text-muted-foreground line-clamp-2">
+                            {release.body.replace(/[\r\n]+/g, " ")}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground/80 mt-0.5">
+                          Released by: {release.authorName || "Unknown"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <Package className="size-8 text-muted-foreground/30 mb-2" />
+                    <p className="text-xs font-medium text-muted-foreground">No releases found</p>
+                    <p className="text-[10px] text-muted-foreground/75 mt-0.5">Create a release tag on GitHub to sync</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* PRs widget */}
+            <Card className="border-border/50 flex flex-col h-[280px]">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <GitPullRequest className="size-4 text-emerald-500" />
+                  Recent Pull Requests
+                </CardTitle>
+                {pullRequests && pullRequests.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    {pullRequests.length} active
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="flex-1 overflow-auto py-2">
+                {pullRequests && pullRequests.length > 0 ? (
+                  <div className="space-y-3">
+                    {pullRequests.slice(0, 5).map((pr) => (
+                      <div key={pr.$id} className="border-b border-border/30 pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <a
+                            href={pr.prUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-foreground hover:text-blue-600 hover:underline flex items-center gap-1 truncate max-w-[180px]"
+                          >
+                            #{pr.prNumber}: {pr.prTitle}
+                            <ExternalLink className="size-3 shrink-0" />
+                          </a>
+                          <Badge
+                            className={cn(
+                              "text-[9px] font-semibold uppercase px-1.5 py-0.5 border-0",
+                              pr.prState === "merged" && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+                              pr.prState === "open" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                              pr.prState === "closed" && "bg-red-500/10 text-red-600 dark:text-red-400"
+                            )}
+                          >
+                            {pr.prState}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-x-2 text-[10px] text-muted-foreground mt-1">
+                          <span className="flex items-center gap-0.5">
+                            <GitBranch className="size-2.5" />
+                            {pr.branchName}
+                          </span>
+                          {pr.taskId && (
+                            <span className="font-semibold text-blue-600">
+                              {pr.taskId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <GitPullRequest className="size-8 text-muted-foreground/30 mb-2" />
+                    <p className="text-xs font-medium text-muted-foreground">No pull requests found</p>
+                    <p className="text-[10px] text-muted-foreground/75 mt-0.5">Push code changes with PRs on GitHub</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Commits widget */}
+            <Card className="border-border/50 flex flex-col h-[280px]">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <GitCommit className="size-4 text-blue-500" />
+                  Recent Commits
+                </CardTitle>
+                {commits && commits.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    {commits.length} total
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="flex-1 overflow-auto py-2">
+                {commits && commits.length > 0 ? (
+                  <div className="space-y-3">
+                    {commits.slice(0, 5).map((commit) => (
+                      <div key={commit.$id} className="border-b border-border/30 pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-start justify-between mb-1">
+                          <a
+                            href={commit.commitUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-foreground hover:text-blue-600 hover:underline font-medium line-clamp-2 pr-2"
+                          >
+                            {commit.commitMessage}
+                          </a>
+                          <code className="text-[10px] text-muted-foreground bg-muted px-1 rounded font-mono shrink-0">
+                            {commit.commitSha.substring(0, 7)}
+                          </code>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
+                          <span>By: {commit.authorName}</span>
+                          {commit.taskId && (
+                            <span className="font-semibold text-blue-600">
+                              {commit.taskId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center">
+                    <GitCommit className="size-8 text-muted-foreground/30 mb-2" />
+                    <p className="text-xs font-medium text-muted-foreground">No commits found</p>
+                    <p className="text-[10px] text-muted-foreground/75 mt-0.5">Commit and push to sync repository history</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* ── Charts Row ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
