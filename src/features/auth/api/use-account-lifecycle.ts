@@ -130,6 +130,11 @@ export const useGetAccountLifecycle = () => {
 
     const refreshLifecycle = async () => {
         await queryClient.invalidateQueries({ queryKey: ["account-lifecycle"] });
+        // Force immediate refetch to get fresh server state (not cached)
+        await queryClient.refetchQueries({
+            queryKey: ["account-lifecycle"],
+            type: "active",
+        });
     };
 
     // PERF: Treat as "loaded" if we have ANY data (cached or fresh).

@@ -1162,6 +1162,10 @@ const app = new Hono()
           });
         }
 
+        // CRITICAL: Invalidate lifecycle cache so client sees fresh state immediately
+        // Without this, user stays "stuck" on the password reset screen until cache expires
+        await invalidateCache(CK.authLifecycle(user.$id));
+
         return c.json({
           success: true,
           message: "Password reset successfully! You can now access your account."
@@ -1253,6 +1257,9 @@ const app = new Hono()
           pendingOrganizationName: null, // Clear pending field
         });
 
+        // CRITICAL: Invalidate lifecycle cache so client reflects new account state
+        await invalidateCache(CK.authLifecycle(user.$id));
+
         return c.json({
           success: true,
           accountType: "ORG",
@@ -1308,6 +1315,10 @@ const app = new Hono()
       }
 
       await account.updatePrefs(newPrefs);
+
+      // CRITICAL: Invalidate lifecycle cache after pref updates
+      // Ensures guard sees fresh state immediately (e.g., after account type change)
+      await invalidateCache(CK.authLifecycle(user.$id));
 
       return c.json({ success: true, prefs: newPrefs });
     } catch {

@@ -158,11 +158,8 @@ const app = new Hono()
       }, 400);
     }
 
-    await databases.updateDocument(DATABASE_ID, MEMBERS_ID, memberId, {
-      status: MemberStatus.DELETED,
-      deletedAt: new Date().toISOString(),
-      deletedBy: user.$id,
-    });
+    // Hard-delete the member record from the database
+    await databases.deleteDocument(DATABASE_ID, MEMBERS_ID, memberId);
 
     // Dispatch member removal event (non-blocking)
     try {
