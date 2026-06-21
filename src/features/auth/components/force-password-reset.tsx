@@ -101,9 +101,14 @@ export function ForcePasswordReset({ onSuccess }: ForcePasswordResetProps) {
 
             return await response.json();
         },
-        onSuccess: () => {
+        onSuccess: async () => {
             toast.success("You're all set! Welcome to Fairlx.");
-            queryClient.invalidateQueries({ queryKey: ["account-lifecycle"] });
+            // Invalidate and refetch lifecycle to ensure guard sees fresh state immediately
+            await queryClient.invalidateQueries({ queryKey: ["account-lifecycle"] });
+            await queryClient.refetchQueries({
+                queryKey: ["account-lifecycle"],
+                type: "active",
+            });
             onSuccess?.();
         },
         onError: (error) => {
