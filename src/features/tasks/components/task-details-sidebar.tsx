@@ -134,6 +134,7 @@ const defaultWorkItemTypes = [
   { key: "EPIC", label: "Epic", icon: "layers", color: "#a855f7" },
   { key: "STORY", label: "Story", icon: "file-text", color: "#10b981" },
   { key: "SUBTASK", label: "Subtask", icon: "arrow-right", color: "#6b7280" },
+  { key: "ISSUE", label: "Issue", icon: "alert-circle", color: "#eab308" },
 ];
 
 // Helper function to get status icon based on workflow status configuration

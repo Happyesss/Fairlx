@@ -47,6 +47,16 @@ export const getCommentAuthors = async (
   const userMap = await batchGetUsers(users, uniqueAuthorIds);
 
   for (const authorId of uniqueAuthorIds) {
+    if (authorId === "github-webhook" || authorId === "github-sync-history" || authorId === "system") {
+      authorsMap.set(authorId, {
+        $id: authorId,
+        name: authorId === "system" ? "System" : "GitHub Integration",
+        email: undefined,
+        profileImageUrl: null,
+      });
+      continue;
+    }
+
     const userData = userMap.get(authorId);
     if (userData) {
       authorsMap.set(authorId, {

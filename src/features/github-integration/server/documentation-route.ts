@@ -70,7 +70,12 @@ const app = new Hono()
         const repository = repositories.documents[0];
 
           // Initialize GitHub API with repository-specific token
-          const repoApi = new GitHubAPI(repository.accessToken);
+          let token = repository.accessToken;
+          if (token && token.includes(":")) {
+            const { decryptToken } = await import("../lib/encryption");
+            token = decryptToken(token);
+          }
+          const repoApi = new GitHubAPI(token);
 
           // Get repository info
           const repoInfo = await repoApi.getRepository(
@@ -183,7 +188,12 @@ const app = new Hono()
         const repository = repositories.documents[0];
         
         // Initialize GitHub API with repository-specific token
-        const repoApi = new GitHubAPI(repository.accessToken);
+        let token = repository.accessToken;
+        if (token && token.includes(":")) {
+          const { decryptToken } = await import("../lib/encryption");
+          token = decryptToken(token);
+        }
+        const repoApi = new GitHubAPI(token);
         
         // Fetch a few files for context
         const files = await repoApi.getAllFiles(repository.owner, repository.repositoryName, repository.branch, "", 10);

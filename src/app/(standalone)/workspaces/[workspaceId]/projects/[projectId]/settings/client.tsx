@@ -25,8 +25,11 @@ import {
   Flag,
   Layers,
   Webhook,
+  Puzzle,
 } from "lucide-react";
 import { GoHome } from "react-icons/go";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 import { PageError } from "@/components/page-error";
 import { PageLoader } from "@/components/page-loader";
@@ -71,12 +74,21 @@ import { LabelSettings } from "@/features/projects/components/label-settings";
 import { CopySettingsDialog } from "@/features/projects/components/copy-settings-dialog";
 import { WebhookSettings } from "@/features/webhooks/components/webhook-settings";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { ProjectIntegrationsSettings } from "@/features/projects/components/project-integrations-settings";
 
-export const ProjectIdSettingsClient = () => {
+const ProjectIdSettingsClientContent = () => {
   const projectId = useProjectId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("general");
   const [isCopySettingsOpen, setIsCopySettingsOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Data fetching
   const { data: project, isLoading: isLoadingProject } = useGetProject({ projectId });
@@ -182,6 +194,7 @@ export const ProjectIdSettingsClient = () => {
     { id: "priorities", label: "Priorities", icon: Flag },
     { id: "labels", label: "Labels", icon: Tag },
     { id: "webhooks", label: "Webhooks", icon: Webhook },
+    { id: "integrations", label: "Integrations", icon: Puzzle },
     ...((isAdmin || canDeleteProject) ? [{ id: "danger", label: "Danger Zone", icon: Shield, danger: true }] : []),
   ];
 
@@ -706,6 +719,15 @@ export const ProjectIdSettingsClient = () => {
               </Card>
             )}
 
+            {/* Integrations */}
+            {activeTab === "integrations" && (
+              <Card>
+                <CardContent className="pt-6">
+                  <ProjectIntegrationsSettings projectId={projectId} isAdmin={isAdmin} />
+                </CardContent>
+              </Card>
+            )}
+
             {/* Danger Zone - Only show if user has DELETE_PROJECT permission */}
             {activeTab === "danger" && (isAdmin || canDeleteProject) && (
               <Card className="border-red-200">
@@ -773,5 +795,13 @@ export const ProjectIdSettingsClient = () => {
 
 
     </div>
+  );
+};
+
+export const ProjectIdSettingsClient = () => {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <ProjectIdSettingsClientContent />
+    </Suspense>
   );
 };

@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Layers,
   FileText,
-  Github,
   UserPlus,
   Settings,
 } from "lucide-react";
@@ -122,13 +121,6 @@ export const ProjectTools = () => {
       canView: () => effectiveCanViewDocs,
     },
     {
-      id: "github",
-      label: "AI Github",
-      href: "/github",
-      icon: <Github className="size-4" />,
-      canView: () => effectiveCanViewProject,
-    },
-    {
       id: "members",
       label: "Teams & Members",
       href: "/members",
@@ -143,7 +135,6 @@ export const ProjectTools = () => {
       canView: () => effectiveCanManageSettings,
     },
   ], [
-    effectiveCanViewProject,
     effectiveCanManageSettings,
     effectiveCanViewDocs,
     effectiveCanViewMembers,

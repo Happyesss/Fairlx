@@ -67,6 +67,7 @@ export const useGetTasks = ({
       isTourActive,
     ],
     enabled: Boolean(sanitizedWorkspaceId),
+    refetchInterval: 4000,
     queryFn: async () => {
       // DUMMY DATA FOR TOUR - RETURN IMMEDIATELY
       if (isTourActive) {

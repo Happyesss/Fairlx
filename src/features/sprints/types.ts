@@ -6,6 +6,7 @@ export enum WorkItemType {
   TASK = "TASK",
   EPIC = "EPIC",
   SUBTASK = "SUBTASK",
+  ISSUE = "ISSUE",
 }
 
 export enum WorkItemPriority {

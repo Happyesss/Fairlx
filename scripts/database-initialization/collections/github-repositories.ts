@@ -3,6 +3,7 @@ import {
     ensureCollection,
     ensureStringAttribute,
     ensureBooleanAttribute,
+    ensureIntegerAttribute,
     ensureDatetimeAttribute,
     ensureIndex,
     sleep,
@@ -32,8 +33,16 @@ export async function setupGithubRepositories(databases: Databases, databaseId: 
     await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, 'lastSyncedAt', false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'createdBy', 256, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'lastModifiedBy', 256, false);
+    await ensureIntegerAttribute(databases, databaseId, COLLECTION_ID, 'webhookId', false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'webhookSecret', 256, false);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'autoFetchCommits', false, true);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'linkCommitsToTasks', false, true);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'syncComments', false, true);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'allowPrMerge', false, true);
+    await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, 'createTasksFromIssues', false, false);
 
     await sleep(2000);
+
 
     // Indexes
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'projectId_idx', IndexType.Key, ['projectId']);
