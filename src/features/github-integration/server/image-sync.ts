@@ -65,8 +65,9 @@ async function fetchAndUploadPrivateGitHubAsset(
     
     console.log(`[GitHub Image Sync] Uploaded successfully: ${publicUrl}`);
     return publicUrl;
-  } catch (err: any) {
-    console.error(`[GitHub Image Sync] Error downloading/uploading asset ${url}:`, err.message || err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[GitHub Image Sync] Error downloading/uploading asset ${url}:`, errorMessage);
     return null;
   }
 }

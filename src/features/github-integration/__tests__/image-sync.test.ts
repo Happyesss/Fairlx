@@ -19,7 +19,7 @@ vi.mock('node-appwrite', () => ({
 }));
 
 describe('replaceGitHubImagesInMarkdown', () => {
-  let mockStorage: any;
+  let mockStorage: { createFile: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
