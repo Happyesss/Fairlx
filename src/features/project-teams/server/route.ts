@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
 import {
     DATABASE_ID,
+    PROJECTS_ID,
     PROJECT_TEAMS_ID,
     PROJECT_TEAM_MEMBERS_ID,
     PROJECT_MEMBERS_ID,
@@ -188,6 +189,9 @@ const app = new Hono()
                     return c.json({ error: "Forbidden: Requires MANAGE_TEAMS permission" }, 403);
                 }
 
+                // Fetch project to get workspaceId (required by collection schema)
+                const project = await adminDb.getDocument(DATABASE_ID, PROJECTS_ID, data.projectId);
+
                 // Check for duplicate team name
                 const existing = await adminDb.listDocuments(
                     DATABASE_ID,
@@ -209,6 +213,7 @@ const app = new Hono()
                     ID.unique(),
                     {
                         projectId: data.projectId,
+                        workspaceId: data.workspaceId || project.workspaceId,
                         name: data.name,
                         description: data.description || null,
                         color: data.color || "#4F46E5",

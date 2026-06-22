@@ -1102,7 +1102,6 @@ const app = new Hono()
     })),
     async (c) => {
       const user = c.get("user");
-      const databases = c.get("databases");
       const { newPassword } = c.req.valid("json");
 
       // GATE: Only allow if mustResetPassword is true
@@ -1113,43 +1112,57 @@ const app = new Hono()
       }
 
       try {
-        // Update password using Admin SDK (user may not have old password)
-        const { users } = await createAdminClient();
+        // Use Admin SDK for all operations — session may be invalidated after password change
+        const { users, databases: adminDatabases } = await createAdminClient();
+
         await users.updatePassword(user.$id, newPassword);
 
-        // Clear mustResetPassword flag
+        // Re-create session since updatePassword invalidates all active sessions for the user
+        const session = await users.createSession(user.$id);
+        const { setCookie } = await import("hono/cookie");
+        const { AUTH_COOKIE } = await import("@/features/auth/constants");
+
+        setCookie(c, AUTH_COOKIE, session.secret, {
+          path: "/",
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production" || c.req.header("x-forwarded-proto") === "https",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 30,
+        });
+
+        // Clear mustResetPassword flag via Admin SDK (session-independent)
         await users.updatePrefs(user.$id, {
           ...user.prefs,
           mustResetPassword: false,
         });
 
-        // Update org member status to ACTIVE
+        // Update org member status to ACTIVE via Admin SDK (session-independent)
         const { Query } = await import("node-appwrite");
-        const memberships = await databases.listDocuments(
+        const memberships = await adminDatabases.listDocuments(
           DATABASE_ID,
           ORGANIZATION_MEMBERS_ID,
           [
             Query.equal("userId", user.$id),
-            Query.equal("mustResetPassword", true),
           ]
         );
 
         for (const membership of memberships.documents) {
-          await databases.updateDocument(
-            DATABASE_ID,
-            ORGANIZATION_MEMBERS_ID,
-            membership.$id,
-            {
-              mustResetPassword: false,
-              status: "ACTIVE",
-            }
-          );
+          if (membership.mustResetPassword === true || membership.status !== "ACTIVE") {
+            await adminDatabases.updateDocument(
+              DATABASE_ID,
+              ORGANIZATION_MEMBERS_ID,
+              membership.$id,
+              {
+                mustResetPassword: false,
+                status: "ACTIVE",
+              }
+            );
+          }
         }
 
         // Log audit event
         if (memberships.total > 0) {
           const { logOrgAudit, OrgAuditAction } = await import("@/features/organizations/audit");
-          const { databases: adminDatabases } = await createAdminClient();
           await logOrgAudit({
             databases: adminDatabases,
             organizationId: memberships.documents[0].organizationId,
@@ -1161,6 +1174,9 @@ const app = new Hono()
             },
           });
         }
+
+        // CRITICAL: Invalidate lifecycle cache so client sees fresh state immediately
+        await invalidateCache(CK.authLifecycle(user.$id));
 
         return c.json({
           success: true,
@@ -1253,6 +1269,9 @@ const app = new Hono()
           pendingOrganizationName: null, // Clear pending field
         });
 
+        // CRITICAL: Invalidate lifecycle cache so client reflects new account state
+        await invalidateCache(CK.authLifecycle(user.$id));
+
         return c.json({
           success: true,
           accountType: "ORG",
@@ -1308,6 +1327,10 @@ const app = new Hono()
       }
 
       await account.updatePrefs(newPrefs);
+
+      // CRITICAL: Invalidate lifecycle cache after pref updates
+      // Ensures guard sees fresh state immediately (e.g., after account type change)
+      await invalidateCache(CK.authLifecycle(user.$id));
 
       return c.json({ success: true, prefs: newPrefs });
     } catch {

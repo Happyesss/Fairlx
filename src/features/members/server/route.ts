@@ -6,7 +6,7 @@ import { zValidator } from "@hono/zod-validator";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
-import { DATABASE_ID, MEMBERS_ID, NOTIFICATIONS_ID, WORKSPACES_ID } from "@/config";
+import { DATABASE_ID, MEMBERS_ID, NOTIFICATIONS_ID, WORKSPACES_ID, PROJECT_MEMBERS_ID } from "@/config";
 import { getPermissions } from "@/lib/rbac";
 import { validateUserOrgMembershipForWorkspace } from "@/lib/invariants";
 import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
@@ -158,11 +158,29 @@ const app = new Hono()
       }, 400);
     }
 
-    await databases.updateDocument(DATABASE_ID, MEMBERS_ID, memberId, {
-      status: MemberStatus.DELETED,
-      deletedAt: new Date().toISOString(),
-      deletedBy: user.$id,
-    });
+    // Hard-delete the member record from the database
+    await databases.deleteDocument(DATABASE_ID, MEMBERS_ID, memberId);
+
+    // Remove the user from all project memberships in this workspace (non-blocking, best-effort)
+    try {
+      const { databases: adminDb } = await createAdminClient();
+      const projectMemberships = await adminDb.listDocuments(
+        DATABASE_ID,
+        PROJECT_MEMBERS_ID,
+        [
+          Query.equal("userId", memberToDelete.userId),
+          Query.equal("workspaceId", memberToDelete.workspaceId),
+          Query.limit(100),
+        ]
+      );
+      await Promise.all(
+        projectMemberships.documents.map((pm) =>
+          adminDb.deleteDocument(DATABASE_ID, PROJECT_MEMBERS_ID, pm.$id)
+        )
+      );
+    } catch {
+      // Silent — workspace member is already removed; project cleanup is best-effort
+    }
 
     // Dispatch member removal event (non-blocking)
     try {
@@ -190,7 +208,8 @@ const app = new Hono()
     // Invalidate member and permission caches
     await invalidateCache(
       CK.workspaceMember(memberToDelete.userId, memberToDelete.workspaceId),
-      CK.memberList(memberToDelete.workspaceId)
+      CK.memberList(memberToDelete.workspaceId),
+      CK.authLifecycle(memberToDelete.userId)
     );
     await invalidateCachePattern(CKPattern.workspacePerms(memberToDelete.workspaceId));
     await invalidateCachePattern(CKPattern.allUserPerms(memberToDelete.userId));
@@ -297,7 +316,8 @@ const app = new Hono()
       // Invalidate member and permission caches on role change
       await invalidateCache(
         CK.workspaceMember(memberToUpdate.userId, memberToUpdate.workspaceId),
-        CK.memberList(memberToUpdate.workspaceId)
+        CK.memberList(memberToUpdate.workspaceId),
+        CK.authLifecycle(memberToUpdate.userId)
       );
       await invalidateCachePattern(CKPattern.workspacePerms(memberToUpdate.workspaceId));
       await invalidateCachePattern(CKPattern.allUserPerms(memberToUpdate.userId));
@@ -382,57 +402,10 @@ const app = new Hono()
         ]
       );
 
-      const existingMember = existingMembers.documents[0] as Member;
 
-      // LEDGER LOGIC: Handle Soft-Deleted Members
       if (existingMembers.total > 0) {
-        if (existingMember.status === MemberStatus.DELETED) {
-          // Reactivate the deleted member (Soft Restore)
-          const reactivatedMember = await databases.updateDocument(
-            DATABASE_ID,
-            MEMBERS_ID,
-            existingMember.$id,
-            {
-              status: MemberStatus.ACTIVE,
-              role,
-            }
-          );
-
-          // Notify about reactivation
-          try {
-            const adminDb = databases; // Reuse existing
-            const workspace = await adminDb.getDocument(DATABASE_ID, WORKSPACES_ID, workspaceId);
-            const callerName = user.name || user.email || "Someone";
-
-            const { users } = await createAdminClient();
-            const targetUser = await users.get(userId);
-            const targetName = targetUser.name || targetUser.email || "Someone";
-
-            const event = createMemberAddedEvent(
-              workspaceId,
-              workspace.name,
-              user.$id,
-              callerName,
-              userId,
-              targetName,
-              role
-            );
-            dispatchWorkitemEvent(event).catch(() => { });
-          } catch {
-            // silent
-          }
-
-          await invalidateCache(
-            CK.workspaceMember(userId, workspaceId),
-            CK.memberList(workspaceId)
-          );
-          await invalidateCachePattern(CKPattern.workspacePerms(workspaceId));
-
-          return c.json({ data: reactivatedMember });
-        } else {
-          // Active member already exists
-          return c.json({ error: "User is already a workspace member" }, 400);
-        }
+        // Active member already exists. Hard deletion means there are no soft-deleted members to reactivate.
+        return c.json({ error: "User is already a workspace member" }, 400);
       }
 
       // For org workspaces, validate org membership
@@ -482,7 +455,10 @@ const app = new Hono()
       }
 
       // Invalidate member caches
-      await invalidateCache(CK.memberList(workspaceId));
+      await invalidateCache(
+        CK.memberList(workspaceId),
+        CK.authLifecycle(userId)
+      );
       await invalidateCachePattern(CKPattern.workspacePerms(workspaceId));
 
       // LOG COMPUTE USAGE: Member Invite (from-org)

@@ -38,6 +38,7 @@ export enum ProjectMemberStatus {
  */
 export type ProjectTeam = Models.Document & {
     projectId: string;              // Parent project
+    workspaceId: string;            // Parent workspace (required by collection schema)
     name: string;                   // User-defined name (ANY name allowed)
     description?: string;           // Optional description
     color?: string;                 // Badge color for UI

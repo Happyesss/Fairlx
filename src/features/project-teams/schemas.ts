@@ -6,6 +6,7 @@ import { ProjectMemberRole, ProjectMemberStatus } from "./types";
 // =============================================================================
 
 export const createProjectTeamSchema = z.object({
+    workspaceId: z.string().min(1, "Workspace ID is required"),
     projectId: z.string().min(1, "Project ID is required"),
     name: z.string().min(1, "Team name is required").max(100, "Team name too long"),
     description: z.string().max(500).optional(),

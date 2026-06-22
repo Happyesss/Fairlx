@@ -36,6 +36,7 @@ import {
     createProjectMemberAddedEvent,
     createProjectMemberRemovedEvent,
 } from "@/lib/notifications/events";
+import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
 
 const app = new Hono()
     /**
@@ -404,6 +405,13 @@ const app = new Hono()
                 console.error("[ProjectMembers] Notification failed:", err);
             }
 
+            await invalidateCache(
+                CK.projectMemberList(data.projectId),
+                CK.authLifecycle(data.userId)
+            );
+            await invalidateCachePattern(CKPattern.projectPerms(data.projectId));
+            await invalidateCachePattern(CKPattern.allUserPerms(data.userId));
+
             return c.json({ data: membership }, 201);
         }
     )
@@ -468,6 +476,10 @@ const app = new Hono()
             );
 
             // Notify of member update? (Optional, skipping for now as it maps to the same MEMBER_ADDED usually)
+
+            await invalidateCache(CK.projectMemberList(membership.projectId));
+            await invalidateCachePattern(CKPattern.projectPerms(membership.projectId));
+            await invalidateCachePattern(CKPattern.allUserPerms(membership.userId));
 
             return c.json({ data: updated });
         }
@@ -541,6 +553,13 @@ const app = new Hono()
             } catch (err) {
                 console.error("[ProjectMembers] Remove notification failed:", err);
             }
+
+            await invalidateCache(
+                CK.projectMemberList(membership.projectId),
+                CK.authLifecycle(membership.userId)
+            );
+            await invalidateCachePattern(CKPattern.projectPerms(membership.projectId));
+            await invalidateCachePattern(CKPattern.allUserPerms(membership.userId));
 
             return c.json({ data: { $id: memberId, removedFromTeams: teamMemberships.total } });
         }
