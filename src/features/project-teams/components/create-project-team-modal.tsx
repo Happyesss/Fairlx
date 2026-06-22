@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { useCreateProjectTeam } from "../api/use-create-project-team";
+import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 
 const formSchema = z.object({
     name: z.string().min(1, "Team name is required").max(100, "Team name too long"),
@@ -56,6 +57,7 @@ export function CreateProjectTeamModal({
     open,
     onOpenChange,
 }: CreateProjectTeamModalProps) {
+    const workspaceId = useWorkspaceId();
     const { mutate: createTeam, isPending } = useCreateProjectTeam();
 
     const form = useForm<FormValues>({
@@ -70,6 +72,7 @@ export function CreateProjectTeamModal({
     const onSubmit = (values: FormValues) => {
         createTeam(
             {
+                workspaceId,
                 projectId,
                 name: values.name,
                 description: values.description,

@@ -213,7 +213,7 @@ const app = new Hono()
                     ID.unique(),
                     {
                         projectId: data.projectId,
-                        workspaceId: project.workspaceId,
+                        workspaceId: data.workspaceId || project.workspaceId,
                         name: data.name,
                         description: data.description || null,
                         color: data.color || "#4F46E5",

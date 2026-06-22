@@ -147,7 +147,10 @@ const app = new Hono()
       }
 
 
-      await invalidateCache(CK.projectList(workspaceId));
+      await invalidateCache(
+        CK.projectList(workspaceId),
+        CK.authLifecycle(user.$id)
+      );
       if (normalizedSpaceId) {
         await invalidateCache(CK.spaceProjectCount(normalizedSpaceId));
       }

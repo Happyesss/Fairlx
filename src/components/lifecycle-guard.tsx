@@ -102,18 +102,22 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
             // Find a safe fallback - prefer redirectTo if set, else check allowedPaths
             let fallback = "/welcome";
 
-            // Check if /welcome is blocked
-            const welcomeBlocked = lifecycleRouting.blockedPaths.some(b =>
-                b === "/welcome" || b === "*"
-            );
-
-            if (welcomeBlocked && lifecycleRouting.allowedPaths.length > 0) {
-                // Find first allowed concrete path
-                const firstAllowed = lifecycleRouting.allowedPaths.find(p =>
-                    !p.includes("*") && !p.includes("?")
+            if (lifecycleState.activeWorkspaceId) {
+                fallback = `/workspaces/${lifecycleState.activeWorkspaceId}`;
+            } else {
+                // Check if /welcome is blocked
+                const welcomeBlocked = lifecycleRouting.blockedPaths.some(b =>
+                    b === "/welcome" || b === "*"
                 );
-                if (firstAllowed) {
-                    fallback = firstAllowed;
+
+                if (welcomeBlocked && lifecycleRouting.allowedPaths.length > 0) {
+                    // Find first allowed concrete path
+                    const firstAllowed = lifecycleRouting.allowedPaths.find(p =>
+                        !p.includes("*") && !p.includes("?")
+                    );
+                    if (firstAllowed) {
+                        fallback = firstAllowed;
+                    }
                 }
             }
 
@@ -124,7 +128,7 @@ export function LifecycleGuard({ children }: LifecycleGuardProps) {
             return;
         }
 
-    }, [isLoaded, isPublicRoute, lifecycleState.isAuthenticated, lifecycleRouting, pathname, router]);
+    }, [isLoaded, isPublicRoute, lifecycleState.isAuthenticated, lifecycleState.activeWorkspaceId, lifecycleRouting, pathname, router]);
 
     // ZERO-FLASH: Show app-shell skeleton while state is loading
     if (!isLoaded) {

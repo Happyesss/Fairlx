@@ -1102,7 +1102,6 @@ const app = new Hono()
     })),
     async (c) => {
       const user = c.get("user");
-      const databases = c.get("databases");
       const { newPassword } = c.req.valid("json");
 
       // GATE: Only allow if mustResetPassword is true
@@ -1117,6 +1116,19 @@ const app = new Hono()
         const { users, databases: adminDatabases } = await createAdminClient();
 
         await users.updatePassword(user.$id, newPassword);
+
+        // Re-create session since updatePassword invalidates all active sessions for the user
+        const session = await users.createSession(user.$id);
+        const { setCookie } = await import("hono/cookie");
+        const { AUTH_COOKIE } = await import("@/features/auth/constants");
+
+        setCookie(c, AUTH_COOKIE, session.secret, {
+          path: "/",
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production" || c.req.header("x-forwarded-proto") === "https",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 30,
+        });
 
         // Clear mustResetPassword flag via Admin SDK (session-independent)
         await users.updatePrefs(user.$id, {
