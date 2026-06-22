@@ -6,7 +6,7 @@ import { zValidator } from "@hono/zod-validator";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
-import { DATABASE_ID, MEMBERS_ID, NOTIFICATIONS_ID, WORKSPACES_ID } from "@/config";
+import { DATABASE_ID, MEMBERS_ID, NOTIFICATIONS_ID, WORKSPACES_ID, PROJECT_MEMBERS_ID } from "@/config";
 import { getPermissions } from "@/lib/rbac";
 import { validateUserOrgMembershipForWorkspace } from "@/lib/invariants";
 import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
@@ -160,6 +160,27 @@ const app = new Hono()
 
     // Hard-delete the member record from the database
     await databases.deleteDocument(DATABASE_ID, MEMBERS_ID, memberId);
+
+    // Remove the user from all project memberships in this workspace (non-blocking, best-effort)
+    try {
+      const { databases: adminDb } = await createAdminClient();
+      const projectMemberships = await adminDb.listDocuments(
+        DATABASE_ID,
+        PROJECT_MEMBERS_ID,
+        [
+          Query.equal("userId", memberToDelete.userId),
+          Query.equal("workspaceId", memberToDelete.workspaceId),
+          Query.limit(100),
+        ]
+      );
+      await Promise.all(
+        projectMemberships.documents.map((pm) =>
+          adminDb.deleteDocument(DATABASE_ID, PROJECT_MEMBERS_ID, pm.$id)
+        )
+      );
+    } catch {
+      // Silent — workspace member is already removed; project cleanup is best-effort
+    }
 
     // Dispatch member removal event (non-blocking)
     try {

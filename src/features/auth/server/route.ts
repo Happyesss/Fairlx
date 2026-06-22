@@ -1113,43 +1113,44 @@ const app = new Hono()
       }
 
       try {
-        // Update password using Admin SDK (user may not have old password)
-        const { users } = await createAdminClient();
+        // Use Admin SDK for all operations — session may be invalidated after password change
+        const { users, databases: adminDatabases } = await createAdminClient();
+
         await users.updatePassword(user.$id, newPassword);
 
-        // Clear mustResetPassword flag
+        // Clear mustResetPassword flag via Admin SDK (session-independent)
         await users.updatePrefs(user.$id, {
           ...user.prefs,
           mustResetPassword: false,
         });
 
-        // Update org member status to ACTIVE
+        // Update org member status to ACTIVE via Admin SDK (session-independent)
         const { Query } = await import("node-appwrite");
-        const memberships = await databases.listDocuments(
+        const memberships = await adminDatabases.listDocuments(
           DATABASE_ID,
           ORGANIZATION_MEMBERS_ID,
           [
             Query.equal("userId", user.$id),
-            Query.equal("mustResetPassword", true),
           ]
         );
 
         for (const membership of memberships.documents) {
-          await databases.updateDocument(
-            DATABASE_ID,
-            ORGANIZATION_MEMBERS_ID,
-            membership.$id,
-            {
-              mustResetPassword: false,
-              status: "ACTIVE",
-            }
-          );
+          if (membership.mustResetPassword === true || membership.status !== "ACTIVE") {
+            await adminDatabases.updateDocument(
+              DATABASE_ID,
+              ORGANIZATION_MEMBERS_ID,
+              membership.$id,
+              {
+                mustResetPassword: false,
+                status: "ACTIVE",
+              }
+            );
+          }
         }
 
         // Log audit event
         if (memberships.total > 0) {
           const { logOrgAudit, OrgAuditAction } = await import("@/features/organizations/audit");
-          const { databases: adminDatabases } = await createAdminClient();
           await logOrgAudit({
             databases: adminDatabases,
             organizationId: memberships.documents[0].organizationId,
@@ -1163,7 +1164,6 @@ const app = new Hono()
         }
 
         // CRITICAL: Invalidate lifecycle cache so client sees fresh state immediately
-        // Without this, user stays "stuck" on the password reset screen until cache expires
         await invalidateCache(CK.authLifecycle(user.$id));
 
         return c.json({
