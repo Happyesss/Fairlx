@@ -139,8 +139,7 @@ const app = new Hono()
         );
       }
 
-      try {
-        const { projectId, githubUrl, branch } = oauthState;
+      const { projectId, githubUrl, branch } = oauthState;
 
       // Exchange code for access token
       const tokenResponse = await fetch(`${GITHUB_OAUTH_BASE}/access_token`, {
@@ -266,15 +265,9 @@ const app = new Hono()
         );
       }
 
-        // Redirect to the GitHub settings tab on the project settings page
-        const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/workspaces/${project.workspaceId}/projects/${projectId}/settings?tab=integrations&oauth=success&github_user=${githubUsername}`;
-        return c.redirect(redirectUrl);
-      } catch (err: unknown) {
-        console.error("[GitHub OAuth Callback] Uncaught Exception:", err);
-        return c.redirect(
-          `${process.env.NEXT_PUBLIC_APP_URL}?error=oauth_internal_error`
-        );
-      }
+      // Redirect to the GitHub settings tab on the project settings page
+      const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/workspaces/${project.workspaceId}/projects/${projectId}/settings?tab=integrations&oauth=success&github_user=${githubUsername}`;
+      return c.redirect(redirectUrl);
     }
   )
 
