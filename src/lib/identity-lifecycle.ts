@@ -291,15 +291,42 @@ async function resolveUserLifecycleStateInternal(
 
     if (mustResetPassword) {
         const routing = getLifecycleRouting(LifecycleState.MUST_RESET_PASSWORD);
+
+        // Fetch org data so ForcePasswordReset can show the org name/logo
+        let orgId: string | null = prefs.primaryOrganizationId || null;
+        let orgName: string | null = null;
+        let orgImageUrl: string | null = null;
+        let orgRole: "OWNER" | "ADMIN" | "MODERATOR" | "MEMBER" | null = null;
+        let orgMemberStatus = null;
+        try {
+            const orgMemberships = await databases.listDocuments(
+                DATABASE_ID,
+                ORGANIZATION_MEMBERS_ID,
+                [Query.equal("userId", user.$id)]
+            );
+            if (orgMemberships.total > 0) {
+                const primary = orgMemberships.documents.find(m => m.organizationId === orgId)
+                    || orgMemberships.documents[0];
+                orgId = primary.organizationId as string;
+                orgRole = primary.role as typeof orgRole;
+                orgMemberStatus = primary.status;
+                const orgDoc = await databases.getDocument(DATABASE_ID, ORGANIZATIONS_ID, orgId as string).catch(() => null);
+                if (orgDoc) {
+                    orgName = orgDoc.name || null;
+                    orgImageUrl = orgDoc.imageUrl || null;
+                }
+            }
+        } catch { /* non-critical — org context is display-only on this screen */ }
+
         return {
             state: LifecycleState.MUST_RESET_PASSWORD,
             userId: user.$id,
             accountType,
-            orgId: null,
-            orgName: null,
-            orgImageUrl: null,
-            orgRole: null,
-            orgMemberStatus: null,
+            orgId,
+            orgName,
+            orgImageUrl,
+            orgRole,
+            orgMemberStatus,
             workspaceId: null,
             hasWorkspace: false,
             mustResetPassword: true,
