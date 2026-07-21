@@ -775,6 +775,20 @@ const app = new Hono()
       const createEvent = createTaskCreatedEvent(taskLike, user.$id, userName);
       dispatchWorkitemEvent(createEvent).catch(() => { });
 
+      // Slack / Discord outbound (non-blocking)
+      import("@/features/integrations/lib/notify-channels")
+        .then(({ notifyProjectChannels }) =>
+          notifyProjectChannels(databases, {
+            projectId: data.projectId,
+            workspaceId: data.workspaceId,
+            workItemId: workItem.$id,
+            workItemKey: String(workItem.key),
+            title: "Work item created",
+            body: String(workItem.title),
+          })
+        )
+        .catch(() => { });
+
       // Dispatch notification for work item assignment (non-blocking)
       if (data.assigneeIds && data.assigneeIds.length > 0) {
         const event = createAssignedEvent(taskLike, user.$id, userName, data.assigneeIds);
@@ -850,6 +864,19 @@ const app = new Hono()
 
       // Status change notification
       if (updates.status && updates.status !== workItem.status) {
+        import("@/features/integrations/lib/notify-channels")
+          .then(({ notifyProjectChannels }) =>
+            notifyProjectChannels(databases, {
+              projectId: workItem.projectId,
+              workspaceId: workItem.workspaceId,
+              workItemId: workItem.$id,
+              workItemKey: String(updatedWorkItem.key || workItem.key),
+              title: "Status updated",
+              body: `${updatedWorkItem.title}: ${workItem.status} → ${updates.status}`,
+            })
+          )
+          .catch(() => { });
+
         const isDone = updates.status === "DONE";
         if (isDone) {
           const event = createCompletedEvent(taskLike, user.$id, userName);

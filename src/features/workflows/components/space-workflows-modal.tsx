@@ -52,6 +52,7 @@ import { useDeleteWorkflow } from "../api/use-delete-workflow";
 import { useGetProjects } from "@/features/projects/api/use-get-projects";
 import { useCreateWorkflowModal } from "../hooks/use-create-workflow-modal";
 import { CreateWorkflowModal } from "./create-workflow-modal";
+import { getWorkflowEditorHref } from "../lib/workflow-routes";
 
 interface SpaceWorkflowsModalProps {
   isOpen: boolean;
@@ -174,7 +175,13 @@ export const SpaceWorkflowsModal = ({
   };
 
   const handleEditWorkflow = (workflowId: string) => {
-    router.push(`/workspaces/${workspaceId}/spaces/${spaceId}/workflows/${workflowId}`);
+    router.push(
+      getWorkflowEditorHref({
+        workspaceId,
+        workflowId,
+        spaceId,
+      })
+    );
     onClose();
   };
 

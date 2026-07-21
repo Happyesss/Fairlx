@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { 
-  Github, 
   MessageSquare, 
   GitCommit, 
   GitPullRequest, 
@@ -13,12 +12,18 @@ import {
   CheckCircle2,
   ExternalLink,
   Puzzle,
-  Slack,
   Layers,
   FileText,
   Figma,
-  Bot
+  Bot,
 } from "lucide-react";
+import {
+  FaGithub,
+  FaGitlab,
+  FaBitbucket,
+  FaSlack,
+  FaDiscord,
+} from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -44,6 +49,10 @@ import {
   COMMIT_CACHE_CHANNEL 
 } from "@/features/github-integration/lib/commit-cache";
 import { useConfirm } from "@/hooks/use-confirm";
+import { IntegrationPanels } from "@/features/integrations/components/integration-panels";
+import {
+  useProjectIntegrations,
+} from "@/features/integrations/api/use-integrations";
 
 interface ProjectIntegrationsSettingsProps {
   projectId: string;
@@ -54,11 +63,20 @@ export const ProjectIntegrationsSettings = ({
   projectId,
   isAdmin,
 }: ProjectIntegrationsSettingsProps) => {
-  const [activeSubView, setActiveSubView] = useState<"list" | "github">("list");
+  const [activeSubView, setActiveSubView] = useState<
+    "list" | "github" | "slack" | "discord" | "mcp" | "gitlab" | "bitbucket"
+  >("list");
   
   const { data: repository, isLoading: isLoadingRepo } = useGetRepository(projectId);
+  const { data: integrationsData } = useProjectIntegrations(projectId);
   const { mutate: updateSettings, isPending: isUpdating } = useUpdateRepositorySettings();
   const { mutate: disconnectRepository, isPending: isDisconnecting } = useDisconnectRepository();
+
+  const connectedProviders = new Set(
+    (integrationsData?.data || [])
+      .filter((i) => i.enabled)
+      .map((i) => String(i.provider))
+  );
 
   const [ConfirmDialog, confirm] = useConfirm(
     "Disconnect Repository",
@@ -188,6 +206,23 @@ export const ProjectIntegrationsSettings = ({
     );
   }
 
+  if (
+    activeSubView === "slack" ||
+    activeSubView === "discord" ||
+    activeSubView === "mcp" ||
+    activeSubView === "gitlab" ||
+    activeSubView === "bitbucket"
+  ) {
+    return (
+      <IntegrationPanels
+        projectId={projectId}
+        isAdmin={isAdmin}
+        provider={activeSubView}
+        onBack={() => setActiveSubView("list")}
+      />
+    );
+  }
+
   if (activeSubView === "github") {
     return (
       <div className="space-y-6">
@@ -205,7 +240,7 @@ export const ProjectIntegrationsSettings = ({
           </Button>
           <div>
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Github className="size-5 animate-pulse" />
+              <FaGithub className="size-5" />
               GitHub Integration
             </h3>
             <p className="text-xs text-muted-foreground">
@@ -505,7 +540,7 @@ export const ProjectIntegrationsSettings = ({
           <CardHeader className="pb-3">
             <div className="flex justify-between items-start">
               <div className="size-10 rounded-lg bg-neutral-900 flex items-center justify-center text-white">
-                <Github className="size-5 animate-pulse" />
+                <FaGithub className="size-5" />
               </div>
               {repository ? (
                 repository.status === "authenticating" || repository.githubUrl === "pending" ? (
@@ -553,25 +588,168 @@ export const ProjectIntegrationsSettings = ({
           </CardContent>
         </Card>
 
-        {/* Slack (Coming Soon) */}
-        <Card className="opacity-60 bg-muted/10 flex flex-col justify-between border-dashed">
+        {/* Slack */}
+        <Card className="flex flex-col justify-between hover:border-pink-500/30 transition-all duration-200 group relative overflow-hidden bg-card/60 backdrop-blur-sm">
           <CardHeader className="pb-3">
             <div className="flex justify-between items-start">
               <div className="size-10 rounded-lg bg-pink-600/10 flex items-center justify-center text-pink-600">
-                <Slack className="size-5" />
+                <FaSlack className="size-5" />
               </div>
-              <span className="bg-muted text-muted-foreground text-[10px] font-medium px-2 py-0.5 rounded-full">
-                Coming Soon
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                connectedProviders.has("slack")
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {connectedProviders.has("slack") ? "Connected" : "Not connected"}
               </span>
             </div>
-            <CardTitle className="text-sm font-semibold mt-3 text-muted-foreground">Slack</CardTitle>
+            <CardTitle className="text-sm font-semibold mt-3">Slack</CardTitle>
             <CardDescription className="text-xs font-normal min-h-[48px]">
-              Receive project status notifications, ticket updates, and execute shortcuts directly from channels.
+              Receive work-item notifications, create issues with `/fairlx create`, and unfurl Fairlx links.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
-            <Button variant="outline" size="sm" className="w-full text-xs" disabled>
-              Unavailable
+            <Button
+              onClick={() => setActiveSubView("slack")}
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs font-medium mt-2"
+              disabled={!isAdmin}
+            >
+              Configure
+              <ChevronRight className="size-3.5 ml-1.5" />
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Discord */}
+        <Card className="flex flex-col justify-between hover:border-indigo-500/30 transition-all duration-200 group relative overflow-hidden bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-start">
+              <div className="size-10 rounded-lg bg-indigo-600/10 flex items-center justify-center text-indigo-600">
+                <FaDiscord className="size-5" />
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                connectedProviders.has("discord")
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {connectedProviders.has("discord") ? "Connected" : "Not connected"}
+              </span>
+            </div>
+            <CardTitle className="text-sm font-semibold mt-3">Discord</CardTitle>
+            <CardDescription className="text-xs font-normal min-h-[48px]">
+              Post work-item updates to a channel webhook and create items via Discord interactions.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button
+              onClick={() => setActiveSubView("discord")}
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs font-medium mt-2"
+              disabled={!isAdmin}
+            >
+              Configure
+              <ChevronRight className="size-3.5 ml-1.5" />
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* MCP / Agents */}
+        <Card className="flex flex-col justify-between hover:border-violet-500/30 transition-all duration-200 group relative overflow-hidden bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-start">
+              <div className="size-10 rounded-lg bg-violet-600/10 flex items-center justify-center text-violet-600">
+                <Bot className="size-5" />
+              </div>
+              <span className="bg-muted text-muted-foreground text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                MCP
+              </span>
+            </div>
+            <CardTitle className="text-sm font-semibold mt-3">Claude Code / Codex MCP</CardTitle>
+            <CardDescription className="text-xs font-normal min-h-[48px]">
+              Fairlx MCP server for agents, API tokens, and custom MCP server URLs for this project.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button
+              onClick={() => setActiveSubView("mcp")}
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs font-medium mt-2"
+              disabled={!isAdmin}
+            >
+              Configure
+              <ChevronRight className="size-3.5 ml-1.5" />
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* GitLab */}
+        <Card className="flex flex-col justify-between hover:border-orange-500/30 transition-all duration-200 group relative overflow-hidden bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-start">
+              <div className="size-10 rounded-lg bg-orange-600/10 flex items-center justify-center text-orange-600">
+                <FaGitlab className="size-5" />
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                connectedProviders.has("gitlab")
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {connectedProviders.has("gitlab") ? "Connected" : "Not connected"}
+              </span>
+            </div>
+            <CardTitle className="text-sm font-semibold mt-3">GitLab</CardTitle>
+            <CardDescription className="text-xs font-normal min-h-[48px]">
+              Link a GitLab project via personal access token for agent clone/push when GitHub is not used.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button
+              onClick={() => setActiveSubView("gitlab")}
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs font-medium mt-2"
+              disabled={!isAdmin}
+            >
+              Configure
+              <ChevronRight className="size-3.5 ml-1.5" />
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Bitbucket */}
+        <Card className="flex flex-col justify-between hover:border-sky-500/30 transition-all duration-200 group relative overflow-hidden bg-card/60 backdrop-blur-sm">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-start">
+              <div className="size-10 rounded-lg bg-sky-600/10 flex items-center justify-center text-sky-600">
+                <FaBitbucket className="size-5" />
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                connectedProviders.has("bitbucket")
+                  ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {connectedProviders.has("bitbucket") ? "Connected" : "Not connected"}
+              </span>
+            </div>
+            <CardTitle className="text-sm font-semibold mt-3">Bitbucket</CardTitle>
+            <CardDescription className="text-xs font-normal min-h-[48px]">
+              Link a Bitbucket Cloud repo via app password for agent clone/push as a GitHub/GitLab fallback.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button
+              onClick={() => setActiveSubView("bitbucket")}
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs font-medium mt-2"
+              disabled={!isAdmin}
+            >
+              Configure
+              <ChevronRight className="size-3.5 ml-1.5" />
             </Button>
           </CardContent>
         </Card>

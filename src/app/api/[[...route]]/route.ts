@@ -61,6 +61,7 @@ import mySpace from "@/features/my-space/server/route";
 import byob from "@/features/byob/server/route";
 // Bug Reports
 import bugReports from "@/features/bug-reports/api/route";
+import integrations from "@/features/integrations/server";
 // Global Traffic Metering - NOW WITH BATCHING
 // Events are collected in memory and flushed every 60s (1 write instead of ~3600/hr)
 import { batchedTrafficMeteringMiddleware } from "@/lib/traffic-metering-batched";
@@ -131,7 +132,9 @@ const routes = app
   // BYOB (Bring Your Own Backend)
   .route("/byob", byob)
   // Bug Reports
-  .route("/bug-reports", bugReports);
+  .route("/bug-reports", bugReports)
+  // Slack / Discord / MCP integrations
+  .route("/integrations", integrations);
 
 export const GET = handle(app);
 export const POST = handle(app);

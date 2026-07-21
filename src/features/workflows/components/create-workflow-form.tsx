@@ -4,6 +4,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { GitBranch } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 
@@ -28,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { createWorkflowSchema } from "../schemas";
 import { useCreateWorkflow } from "../api/use-create-workflow";
+import { getWorkflowEditorHref } from "../lib/workflow-routes";
 
 
 interface CreateWorkflowFormProps {
@@ -38,6 +40,7 @@ interface CreateWorkflowFormProps {
 }
 
 export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spaceId, projectId }: CreateWorkflowFormProps) => {
+  const router = useRouter();
   const hookWorkspaceId = useWorkspaceId();
   const workspaceId = propWorkspaceId || hookWorkspaceId;
   const { mutate, isPending } = useCreateWorkflow();
@@ -63,9 +66,19 @@ export const CreateWorkflowForm = ({ onCancel, workspaceId: propWorkspaceId, spa
         }
       },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
           form.reset();
           onCancel?.();
+          const created = data.data;
+          if (created?.$id) {
+            router.push(
+              getWorkflowEditorHref({
+                workspaceId,
+                workflowId: created.$id,
+                spaceId: created.spaceId || spaceId,
+              })
+            );
+          }
         },
       }
     );

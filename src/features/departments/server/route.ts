@@ -22,7 +22,11 @@ import {
     assignMemberToDepartmentSchema,
     addDepartmentPermissionSchema,
 } from "../schemas";
+import { invalidateCachePattern, CKPattern } from "@/lib/redis";
 
+async function invalidateOrgAccessCache(orgId: string) {
+    await invalidateCachePattern(CKPattern.orgPerms(orgId));
+}
 /**
  * Departments API Routes
  * 
@@ -249,8 +253,23 @@ const app = new Hono()
             )
         );
 
+        // Delete department permission grants (otherwise orphaned grants linger)
+        const { databases: adminDatabases } = await createAdminClient();
+        const deptPermissions = await adminDatabases.listDocuments<DepartmentPermission>(
+            DATABASE_ID,
+            DEPARTMENT_PERMISSIONS_ID,
+            [Query.equal("departmentId", departmentId), Query.limit(500)]
+        );
+        await Promise.all(
+            deptPermissions.documents.map((p) =>
+                adminDatabases.deleteDocument(DATABASE_ID, DEPARTMENT_PERMISSIONS_ID, p.$id)
+            )
+        );
+
         // Delete department
         await databases.deleteDocument(DATABASE_ID, DEPARTMENTS_ID, departmentId);
+
+        await invalidateOrgAccessCache(orgId);
 
         return c.json({ success: true });
     })
@@ -322,6 +341,8 @@ const app = new Hono()
                 }
             );
 
+            await invalidateOrgAccessCache(orgId);
+
             return c.json({ data: assignment }, 201);
         }
     )
@@ -361,6 +382,8 @@ const app = new Hono()
             ORG_MEMBER_DEPARTMENTS_ID,
             assignments.documents[0].$id
         );
+
+        await invalidateOrgAccessCache(orgId);
 
         return c.json({ success: true });
     })
@@ -511,6 +534,8 @@ const app = new Hono()
                 }
             );
 
+            await invalidateOrgAccessCache(orgId);
+
             return c.json({ data: permission }, 201);
         }
     )
@@ -553,6 +578,8 @@ const app = new Hono()
             DEPARTMENT_PERMISSIONS_ID,
             permissions.documents[0].$id
         );
+
+        await invalidateOrgAccessCache(orgId);
 
         return c.json({ success: true });
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, Github, FileText, Settings, Calendar, UserPlus } from "lucide-react";
+import { Layers, FileText, Settings, Calendar, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { format, isPast, differenceInDays } from "date-fns";
 
@@ -109,16 +109,6 @@ export const ProjectIdClient = () => {
             >
               <FileText className="size-4 sm:mr-2" />
               <span className="hidden sm:inline">Docs</span>
-            </button>
-          </Link>
-
-          <Link href={`/workspaces/${project.workspaceId}/projects/${project.$id}/github`} className="!text-sm">
-            <button
-              type="button"
-              className="inline-flex items-center rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
-            >
-              <Github className="size-4 sm:mr-2" />
-              <span className="hidden sm:inline">AI Github</span>
             </button>
           </Link>
 

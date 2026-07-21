@@ -29,14 +29,90 @@ import { connectGitHubRepoSchema } from "../schemas";
 import { GitHubRepository } from "../types";
 import { githubAPI, GitHubAPI } from "../lib/github-api";
 
+function getAppBaseUrl(): string | null {
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!raw || !raw.startsWith("http")) return null;
+  return raw.replace(/\/+$/, "");
+}
+
+async function persistWebhookConfig(
+  databases: Databases,
+  repoDocId: string,
+  webhookId: number | string,
+  webhookSecret: string
+) {
+  await databases.updateDocument(DATABASE_ID, GITHUB_REPOS_ID, repoDocId, {
+    webhookId: String(webhookId),
+    webhookSecret,
+  });
+}
+
+async function recreateWebhook(
+  api: GitHubAPI,
+  owner: string,
+  repo: string,
+  expectedUrl: string,
+  webhookSecret: string,
+  expectedEvents: string[],
+  existingHookId?: number | string | null
+) {
+  if (existingHookId) {
+    try {
+      await api.deleteWebhook(owner, repo, Number(existingHookId));
+    } catch (err) {
+      console.warn("[GitHub Webhook Verify] Failed to delete old webhook before recreate:", err);
+    }
+  }
+
+  // Prefer adopting an existing hook that already points at our URL
+  try {
+    const hooks = await api.listWebhooks(owner, repo);
+    const existing = hooks.find((h) => h.config.url === expectedUrl);
+    if (existing) {
+      try {
+        await api.updateWebhook(owner, repo, existing.id, expectedUrl, webhookSecret, expectedEvents);
+      } catch {
+        // If update fails, fall through to register a new one after deleting
+        await api.deleteWebhook(owner, repo, existing.id);
+        const hook = await api.registerWebhook(owner, repo, expectedUrl, webhookSecret, expectedEvents);
+        return hook;
+      }
+      return { id: existing.id, url: expectedUrl };
+    }
+  } catch (err) {
+    console.warn("[GitHub Webhook Verify] listWebhooks during recreate failed:", err);
+  }
+
+  return api.registerWebhook(owner, repo, expectedUrl, webhookSecret, expectedEvents);
+}
+
 async function verifyAndUpdateWebhookHelper(databases: Databases, repoConfig: GitHubRepository) {
   const { owner, repositoryName: repo, projectId } = repoConfig;
-  const expectedUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/github/webhooks/incoming/${projectId}`;
+  const baseUrl = getAppBaseUrl();
 
-  if (!process.env.NEXT_PUBLIC_APP_URL || !process.env.NEXT_PUBLIC_APP_URL.startsWith("http")) {
-    console.log("[GitHub Webhook Verify] Skipping verification: NEXT_PUBLIC_APP_URL is not set or invalid:", process.env.NEXT_PUBLIC_APP_URL);
+  if (!baseUrl) {
+    console.log(
+      "[GitHub Webhook Verify] Skipping verification: NEXT_PUBLIC_APP_URL is not set or invalid:",
+      process.env.NEXT_PUBLIC_APP_URL
+    );
     return;
   }
+
+  // GitHub rejects localhost payload URLs — skip rather than thrashing recreate
+  try {
+    const host = new URL(baseUrl).hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      console.log(
+        "[GitHub Webhook Verify] Skipping verification: payload URL host is localhost (not accepted by GitHub)."
+      );
+      return;
+    }
+  } catch {
+    console.log("[GitHub Webhook Verify] Skipping verification: invalid NEXT_PUBLIC_APP_URL");
+    return;
+  }
+
+  const expectedUrl = `${baseUrl}/api/github/webhooks/incoming/${projectId}`;
 
   let activeToken: string | undefined = undefined;
   if (repoConfig.accessToken) {
@@ -52,52 +128,73 @@ async function verifyAndUpdateWebhookHelper(databases: Databases, repoConfig: Gi
 
   try {
     const expectedEvents = ["push", "pull_request", "issues", "release"];
+    const generatedSecret = !repoConfig.webhookSecret;
     const webhookSecret = repoConfig.webhookSecret || ID.unique();
-    let needUpdate = false;
+    let needRecreate = false;
     const registeredHookId = repoConfig.webhookId;
 
     if (registeredHookId) {
-      // Check if it exists on GitHub
       const hooks = await api.listWebhooks(owner, repo);
-      const matchingHook = hooks.find(h => h.id === Number(registeredHookId));
+      const matchingHook = hooks.find((h) => h.id === Number(registeredHookId));
 
       if (matchingHook) {
         const hasCorrectUrl = matchingHook.config.url === expectedUrl;
-        const hasAllEvents = expectedEvents.every(e => matchingHook.events.includes(e));
+        const hasAllEvents = expectedEvents.every((e) => matchingHook.events.includes(e));
 
         if (!hasCorrectUrl || !hasAllEvents) {
-          console.log(`[GitHub Webhook Verify] Webhook url/events mismatch. Expected url: ${expectedUrl}, Got: ${matchingHook.config.url}. Expected events: ${expectedEvents}, Got: ${matchingHook.events}. Updating...`);
-          await api.updateWebhook(owner, repo, Number(registeredHookId), expectedUrl, webhookSecret, expectedEvents);
-          console.log("[GitHub Webhook Verify] Webhook updated successfully.");
+          console.log(
+            `[GitHub Webhook Verify] Webhook url/events mismatch. Expected url: ${expectedUrl}, Got: ${matchingHook.config.url}. Expected events: ${expectedEvents}, Got: ${matchingHook.events}. Updating...`
+          );
+          try {
+            await api.updateWebhook(
+              owner,
+              repo,
+              Number(registeredHookId),
+              expectedUrl,
+              webhookSecret,
+              expectedEvents
+            );
+            if (generatedSecret) {
+              await persistWebhookConfig(databases, repoConfig.$id, registeredHookId, webhookSecret);
+            }
+            console.log("[GitHub Webhook Verify] Webhook updated successfully.");
+          } catch (updateErr) {
+            console.warn(
+              "[GitHub Webhook Verify] Update failed, recreating webhook:",
+              updateErr instanceof Error ? updateErr.message : updateErr
+            );
+            needRecreate = true;
+          }
         } else {
           console.log("[GitHub Webhook Verify] Webhook is up to date.");
+          if (generatedSecret) {
+            await persistWebhookConfig(databases, repoConfig.$id, registeredHookId, webhookSecret);
+          }
         }
       } else {
-        // Registered hook ID exists in database but not on GitHub
-        needUpdate = true;
+        needRecreate = true;
       }
     } else {
-      // No hook ID registered in database
-      needUpdate = true;
+      needRecreate = true;
     }
 
-    if (needUpdate) {
-      console.log(`[GitHub Webhook Verify] Creating new webhook for ${owner}/${repo}...`);
-      const hook = await api.registerWebhook(owner, repo, expectedUrl, webhookSecret, expectedEvents);
-      
-      // Update database
-      await databases.updateDocument(
-        DATABASE_ID,
-        GITHUB_REPOS_ID,
-        repoConfig.$id,
-        {
-          webhookId: hook.id,
-          webhookSecret,
-        }
+    if (needRecreate) {
+      console.log(`[GitHub Webhook Verify] Creating/recreating webhook for ${owner}/${repo}...`);
+      const hook = await recreateWebhook(
+        api,
+        owner,
+        repo,
+        expectedUrl,
+        webhookSecret,
+        expectedEvents,
+        registeredHookId
       );
+
+      await persistWebhookConfig(databases, repoConfig.$id, hook.id, webhookSecret);
       console.log(`[GitHub Webhook Verify] Webhook registered successfully with ID ${hook.id}.`);
     }
   } catch (err) {
+    // Non-fatal: sync/history should continue even when GitHub rejects the payload URL
     console.error("[GitHub Webhook Verify] Error verifying/updating webhook:", err);
   }
 }

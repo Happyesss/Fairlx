@@ -656,7 +656,10 @@ export class GitHubAPI {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to update webhook: ${response.statusText}`);
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(
+        `Failed to update webhook: ${response.status} ${response.statusText} - ${JSON.stringify(errorBody)}`
+      );
     }
   }
 

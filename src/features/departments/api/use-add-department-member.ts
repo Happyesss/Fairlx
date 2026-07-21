@@ -34,6 +34,7 @@ export const useAddDepartmentMember = () => {
             toast.success("Member added to department");
             queryClient.invalidateQueries({ queryKey: ["department-members", orgId, departmentId] });
             queryClient.invalidateQueries({ queryKey: ["departments", orgId] });
+            queryClient.invalidateQueries({ queryKey: ["user-access"] });
         },
         onError: (error) => {
             toast.error(error.message);

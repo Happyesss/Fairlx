@@ -197,6 +197,14 @@ export const BUG_REPORTS_ID = process.env.NEXT_PUBLIC_APPWRITE_BUG_REPORTS_ID ||
 export const BUG_REPORTS_BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_BUG_REPORTS_BUCKET_ID || "bug_reports_bucket";
 
 // ===============================
+// Project Integrations (Slack / Discord / MCP)
+// ===============================
+export const PROJECT_INTEGRATIONS_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_PROJECT_INTEGRATIONS_ID || "project_integrations";
+export const MCP_API_TOKENS_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_MCP_API_TOKENS_ID || "mcp_api_tokens";
+
+// ===============================
 // Landing Page Supabase (GitHub Star Rewards)
 // MOVED TO config.server.ts for security
 // ===============================

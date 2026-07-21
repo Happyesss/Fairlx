@@ -203,23 +203,42 @@ export function groupItemsBySprintAndEpic(
 
       processedEpicIds.add(epicId);
 
-      // First try to find the epic in this sprint
-      let epicItem = epicsInThisSprint.find((item) => item.$id === epicId);
+      // Only render a full epic row when the epic itself belongs to this sprint
+      const epicInSprint = epicsInThisSprint.find((item) => item.$id === epicId);
 
-      // If epic is not in this sprint, try to find it in all workItems
-      if (!epicItem) {
-        epicItem = workItems.find(
-          (item) => item.$id === epicId && item.type === WorkItemType.EPIC
-        );
-      }
-
-      if (epicItem) {
+      if (epicInSprint) {
         epicGroups.push({
-          epic: workItemToTimelineItem(epicItem, 1, expandedItems, sprint),
+          epic: workItemToTimelineItem(epicInSprint, 1, expandedItems, sprint),
           tasks: tasks.map((task) => workItemToTimelineItem(task, 2, expandedItems, sprint)),
           isExpanded: expandedItems.has(epicId),
         });
+        return;
       }
+
+      // Cross-sprint / unscheduled epic: lightweight label only (no second epic bar)
+      const foreignEpic = workItems.find(
+        (item) => item.$id === epicId && item.type === WorkItemType.EPIC
+      );
+
+      const labelId = `epic-label-${epicId}-${sprint.$id}`;
+      epicGroups.push({
+        epic: {
+          id: labelId,
+          key: foreignEpic?.key || "",
+          title: foreignEpic?.title || "Epic",
+          type: WorkItemType.EPIC,
+          status: foreignEpic?.status || WorkItemStatus.TODO,
+          priority: foreignEpic?.priority || WorkItemPriority.MEDIUM,
+          assigneeIds: [],
+          progress: 0,
+          level: 1,
+          epicId,
+          isExpanded: expandedItems.has(labelId) || expandedItems.has(epicId),
+          isLabelOnly: true,
+        } as TimelineItem,
+        tasks: tasks.map((task) => workItemToTimelineItem(task, 2, expandedItems, sprint)),
+        isExpanded: expandedItems.has(labelId) || expandedItems.has(epicId),
+      });
     });
 
     // Then, add epics that are in this sprint but have no tasks (standalone epics)
@@ -365,10 +384,11 @@ export function flattenTimelineItems(groups: TimelineSprintGroup[]): TimelineIte
     if (!sprintGroup.isExpanded) return;
 
     sprintGroup.epics.forEach((epicGroup) => {
-      // Don't add virtual "No Epic" groups to the timeline
+      // Don't add virtual "No Epic" groups or cross-sprint epic labels to the Gantt bars
       const isVirtualGroup = epicGroup.epic.id.startsWith('no-epic-');
+      const isLabelOnly = epicGroup.epic.isLabelOnly || epicGroup.epic.id.startsWith('epic-label-');
       
-      if (!isVirtualGroup) {
+      if (!isVirtualGroup && !isLabelOnly) {
         flattened.push(epicGroup.epic);
       }
 

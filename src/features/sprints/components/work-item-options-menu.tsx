@@ -9,8 +9,10 @@ import {
   Layers,
   GitBranch,
   Hash,
+  Bot,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +35,7 @@ import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { usePermission } from "@/hooks/use-permission";
 import { PERMISSIONS } from "@/lib/permissions";
+import { StartWithAgentDialog } from "@/features/integrations/components/start-with-agent-dialog";
 
 const priorityConfig = {
   [WorkItemPriority.LOW]: {
@@ -72,6 +75,7 @@ export const WorkItemOptionsMenu = ({
   hideAssignAssignee,
   projectId,
 }: WorkItemOptionsMenuProps) => {
+  const [agentOpen, setAgentOpen] = useState(false);
   const [DeleteDialog, confirmDelete] = useConfirm(
     "Delete Work Item",
     `Are you sure you want to delete "${workItem.key}"? This action cannot be undone.`,
@@ -134,6 +138,12 @@ export const WorkItemOptionsMenu = ({
   return (
     <>
       <DeleteDialog />
+      <StartWithAgentDialog
+        open={agentOpen}
+        onOpenChange={setAgentOpen}
+        workItemId={workItem.$id}
+        projectId={workItem.projectId}
+      />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -152,6 +162,13 @@ export const WorkItemOptionsMenu = ({
           <DropdownMenuItem onClick={handleCopyKey} className="text-xs py-1.5 cursor-pointer">
             <Hash className="size-3.5 mr-2 text-muted-foreground" />
             Copy Key
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setAgentOpen(true)}
+            className="text-xs py-1.5 cursor-pointer"
+          >
+            <Bot className="size-3.5 mr-2 text-muted-foreground" />
+            Start with Claude
           </DropdownMenuItem>
           {canEditWorkItems && (
             <>

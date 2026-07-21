@@ -101,7 +101,7 @@ export const Sidebar = () => {
         {/* Show navigation if user has org/workspace OR if they're on a workspace URL */}
         {(hasOrg || hasWorkspace || showWorkspaceContent) && (
           <Navigation
-            allowedRouteKeys={isAccessLoading ? undefined : allowedRouteKeys}
+            allowedRouteKeys={allowedRouteKeys}
             hasWorkspaces={hasWorkspace}
             hasOrg={hasOrg}
           />

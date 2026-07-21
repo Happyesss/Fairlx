@@ -196,7 +196,7 @@ async function _resolveUserOrgAccessUncached(
             DEPARTMENT_PERMISSIONS_ID,
             [
                 Query.equal("departmentId", departmentIds),
-                Query.limit(100),
+                Query.limit(500),
             ]
         );
 
