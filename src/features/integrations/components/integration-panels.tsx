@@ -43,7 +43,11 @@ export function IntegrationPanels({
   const createToken = useCreateMcpToken();
   const deleteToken = useDeleteMcpToken();
 
-  const integrations = data?.data || [];
+  const rawIntegrations = data?.data;
+  const integrations = useMemo(
+    () => rawIntegrations || [],
+    [rawIntegrations]
+  );
   const slack = useMemo(
     () => integrations.find((i) => i.provider === "slack"),
     [integrations]

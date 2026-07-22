@@ -200,7 +200,7 @@ const app = new Hono()
         async (c) => {
             const { users, databases: adminDb } = await createAdminClient();
             const user = c.get("user");
-            const { projectId, teamId, workspaceId } = c.req.valid("query");
+            const { projectId, teamId } = c.req.valid("query");
 
             // Check if user has permission to view members
             // Use Admin DB for permission check to avoid catch-22
@@ -585,7 +585,7 @@ const app = new Hono()
         async (c) => {
             const { databases: adminDb } = await createAdminClient();
             const user = c.get("user");
-            const { projectId, workspaceId } = c.req.valid("query");
+            const { projectId } = c.req.valid("query");
 
             const auth = await requireProjectAuth(
                 adminDb,

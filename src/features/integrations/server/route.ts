@@ -27,7 +27,6 @@ import {
   generateMcpToken,
   getAppBaseUrl,
   getProjectIntegration,
-  hashMcpToken,
   listProjectIntegrations,
   parseCustomMcps,
   resolveProjectVcs,
@@ -669,7 +668,17 @@ const app = new Hono()
         String(workItem.title || workItem.name || "work-item")
       );
 
-      const vcs = await resolveProjectVcs(adminDb, projectId, repo || null);
+      const vcs = await resolveProjectVcs(
+        adminDb,
+        projectId,
+        repo
+          ? {
+              owner: String(repo.owner),
+              repositoryName: String(repo.repositoryName || repo.name || ""),
+              branch: repo.branch ? String(repo.branch) : undefined,
+            }
+          : null
+      );
       const github = vcs?.provider === "github" ? vcs : null;
 
       const providerLabel =

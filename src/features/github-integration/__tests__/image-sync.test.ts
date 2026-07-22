@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Storage } from 'node-appwrite';
 import { replaceGitHubImagesInMarkdown } from '../server/image-sync';
 
 // Mock node-appwrite and config
@@ -19,13 +20,13 @@ vi.mock('node-appwrite', () => ({
 }));
 
 describe('replaceGitHubImagesInMarkdown', () => {
-  let mockStorage: any;
+  let mockStorage: Storage;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockStorage = {
       createFile: vi.fn().mockResolvedValue({ $id: 'uploaded-file-id' }),
-    };
+    } as unknown as Storage;
 
     // Mock global fetch
     global.fetch = vi.fn().mockResolvedValue({
@@ -43,7 +44,7 @@ describe('replaceGitHubImagesInMarkdown', () => {
 
   it('should pass through normal markdown text without changes', async () => {
     const input = 'This is a normal paragraph with no images.';
-    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage as any);
+    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage);
     expect(output).toBe(input);
   });
 
@@ -53,7 +54,7 @@ describe('replaceGitHubImagesInMarkdown', () => {
     // Set NEXT_PUBLIC_APP_URL
     process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
 
-    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage as any);
+    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage);
 
     expect(global.fetch).toHaveBeenCalledWith(
       'https://github.com/user-attachments/assets/7c4f42f5-b286-4f4a-9ef8-0245a49c693a',
@@ -93,7 +94,7 @@ describe('replaceGitHubImagesInMarkdown', () => {
     const input = '![test](https://private-user-images.githubusercontent.com/123/asset.png)';
     process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
 
-    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage as any);
+    const output = await replaceGitHubImagesInMarkdown(input, 'token', mockStorage);
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
     // First call has token
