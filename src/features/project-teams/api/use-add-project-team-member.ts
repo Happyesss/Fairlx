@@ -31,6 +31,8 @@ export const useAddProjectTeamMember = ({ projectId }: UseAddProjectTeamMemberPr
             toast.success("Member added to team");
             queryClient.invalidateQueries({ queryKey: ["project-teams", projectId] });
             queryClient.invalidateQueries({ queryKey: ["project-team-members", variables.teamId] });
+            // Role + team add-on merge must refresh for the affected user
+            queryClient.invalidateQueries({ queryKey: ["project-permissions"] });
         },
         onError: (error) => {
             toast.error(error.message || "Failed to add member");
