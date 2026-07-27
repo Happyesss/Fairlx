@@ -14,10 +14,10 @@ import {
     PROJECTS_ID,
 } from "@/config";
 import {
-    getProjectPermissionResult,
-    canProject,
-} from "@/lib/project-rbac";
-import { PROJECT_PERMISSIONS } from "@/lib/project-permissions";
+    resolveUserProjectAccess,
+    ProjectPermissionKey,
+} from "@/lib/permissions/resolveUserProjectAccess";
+import { requireProjectAuth } from "@/lib/middleware/project-auth";
 import { ProjectMember, ProjectRole, PopulatedProjectMember, ProjectMemberStatus } from "../types";
 import { Project } from "@/features/projects/types";
 import {
@@ -52,13 +52,26 @@ const app = new Hono()
             const user = c.get("user");
             const { projectId } = c.req.valid("query");
 
-            const result = await getProjectPermissionResult(
+            const access = await resolveUserProjectAccess(
                 adminDb,
                 user.$id,
                 projectId
             );
 
-            return c.json({ data: result });
+            return c.json({
+                data: {
+                    projectId: access.projectId,
+                    userId: access.userId,
+                    permissions: access.permissions,
+                    roles: access.role
+                        ? [{ roleId: access.role, roleName: access.role, teamId: "", teamName: "" }]
+                        : [],
+                    isProjectAdmin: access.isAdmin,
+                    hasAccess: access.hasAccess,
+                    teams: access.teams,
+                    allowedRouteKeys: access.allowedRouteKeys,
+                },
+            });
         }
     )
 
@@ -187,20 +200,19 @@ const app = new Hono()
         async (c) => {
             const { users, databases: adminDb } = await createAdminClient();
             const user = c.get("user");
-            const { projectId, teamId, workspaceId } = c.req.valid("query");
+            const { projectId, teamId } = c.req.valid("query");
 
             // Check if user has permission to view members
             // Use Admin DB for permission check to avoid catch-22
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 adminDb,
                 user.$id,
                 projectId,
-                PROJECT_PERMISSIONS.PROJECT_VIEW,
-                { workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.VIEW_PROJECT
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized" }, 401);
+            if (!auth.success) {
+                return c.json({ error: auth.error }, auth.code);
             }
 
             // Build query
@@ -317,16 +329,15 @@ const app = new Hono()
             const data = c.req.valid("json");
 
             // Check permission to invite members
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 adminDb,
                 user.$id,
                 data.projectId,
-                PROJECT_PERMISSIONS.MEMBER_INVITE,
-                { workspaceId: data.workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.INVITE_MEMBERS
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized. You cannot invite members to this project." }, 403);
+            if (!auth.success) {
+                return c.json({ error: auth.error || "Unauthorized. You cannot invite members to this project." }, auth.code);
             }
 
             // Check if user is already a member of this project (and team if specified)
@@ -438,16 +449,15 @@ const app = new Hono()
             );
 
             // Check permission
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 adminDb,
                 user.$id,
                 membership.projectId,
-                PROJECT_PERMISSIONS.MEMBER_INVITE, // Same permission for role changes
-                { workspaceId: membership.workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.MANAGE_MEMBERS
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized" }, 403);
+            if (!auth.success) {
+                return c.json({ error: auth.error }, auth.code);
             }
 
             // If changing role, verify it exists
@@ -504,16 +514,15 @@ const app = new Hono()
             );
 
             // Check permission
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 adminDb,
                 user.$id,
                 membership.projectId,
-                PROJECT_PERMISSIONS.MEMBER_REMOVE,
-                { workspaceId: membership.workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.REMOVE_MEMBERS
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized" }, 403);
+            if (!auth.success) {
+                return c.json({ error: auth.error }, auth.code);
             }
 
             // Also remove user from any project team they're in
@@ -576,19 +585,17 @@ const app = new Hono()
         async (c) => {
             const { databases: adminDb } = await createAdminClient();
             const user = c.get("user");
-            const { projectId, workspaceId } = c.req.valid("query");
+            const { projectId } = c.req.valid("query");
 
-            // Check basic project access
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 adminDb,
                 user.$id,
                 projectId,
-                PROJECT_PERMISSIONS.PROJECT_VIEW,
-                { workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.VIEW_PROJECT
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized" }, 401);
+            if (!auth.success) {
+                return c.json({ error: auth.error }, auth.code);
             }
 
             const roles = await adminDb.listDocuments<ProjectRole>(
@@ -614,17 +621,15 @@ const app = new Hono()
             const user = c.get("user");
             const data = c.req.valid("json");
 
-            // Check permission to create roles
-            const hasPermission = await canProject(
+            const auth = await requireProjectAuth(
                 databases,
                 user.$id,
                 data.projectId,
-                PROJECT_PERMISSIONS.ROLE_CREATE,
-                { workspaceId: data.workspaceId, allowWorkspaceAdminOverride: true }
+                ProjectPermissionKey.CREATE_ROLES
             );
 
-            if (!hasPermission) {
-                return c.json({ error: "Unauthorized. Cannot create roles in this project." }, 403);
+            if (!auth.success) {
+                return c.json({ error: auth.error || "Unauthorized. Cannot create roles in this project." }, auth.code);
             }
 
             // Check for duplicate name

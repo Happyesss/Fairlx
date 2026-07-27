@@ -48,6 +48,8 @@ import { setupWallets } from './collections/wallets';
 import { setupWalletTransactions } from './collections/wallet-transactions';
 import { setupGithubRepositories } from './collections/github-repositories';
 import { setupCodeDocumentation } from './collections/code-documentation';
+import { setupProjectIntegrations } from './collections/project-integrations';
+import { setupMcpApiTokens } from './collections/mcp-api-tokens';
 import { setupProjectTeams } from './collections/project-teams';
 import { setupProjectTeamMembers } from './collections/project-team-members';
 import { setupProjectPermissions } from './collections/project-permissions';
@@ -123,6 +125,8 @@ const collectionSetups: Array<{
         { name: 'Wallet Transactions', setup: setupWalletTransactions },
         { name: 'GitHub Repositories', setup: setupGithubRepositories },
         { name: 'Code Documentation', setup: setupCodeDocumentation },
+        { name: 'Project Integrations', setup: setupProjectIntegrations },
+        { name: 'MCP API Tokens', setup: setupMcpApiTokens },
         { name: 'Project Teams', setup: setupProjectTeams },
         { name: 'Project Team Members', setup: setupProjectTeamMembers },
         { name: 'Project Permissions', setup: setupProjectPermissions },

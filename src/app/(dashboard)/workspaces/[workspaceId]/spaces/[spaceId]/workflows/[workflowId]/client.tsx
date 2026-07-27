@@ -96,7 +96,7 @@ const WorkflowEditor = () => {
   const router = useRouter();
   const params = useParams();
   const workflowId = params.workflowId as string;
-  const spaceId = params.spaceId as string;
+  const spaceId = params.spaceId as string | undefined;
   const workspaceId = useWorkspaceId();
   const { isAdmin } = useCurrentMember({ workspaceId });
 
@@ -108,6 +108,12 @@ const WorkflowEditor = () => {
   const { data: projectsData } = useGetProjects({ workspaceId });
 
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
+
+  // Prefer URL spaceId; fall back to workflow.spaceId for workspace-level editor routes
+  const effectiveSpaceId = spaceId || workflow?.spaceId || undefined;
+  const backHref = effectiveSpaceId
+    ? `/workspaces/${workspaceId}/spaces/${effectiveSpaceId}`
+    : `/workspaces/${workspaceId}`;
 
   // ── floating panel state ──────────────────────────────────────────────────
   // Panel is open by default; user can collapse it to a slim rail
@@ -143,8 +149,12 @@ const WorkflowEditor = () => {
 
   const projects = useMemo(() => {
     if (!projectsData?.documents) return [];
-    return projectsData.documents.filter((p) => p.spaceId === spaceId);
-  }, [projectsData, spaceId]);
+    if (!effectiveSpaceId) {
+      // Workspace-level workflow: show projects not bound to a different space workflow context
+      return projectsData.documents;
+    }
+    return projectsData.documents.filter((p) => p.spaceId === effectiveSpaceId);
+  }, [projectsData, effectiveSpaceId]);
 
   const connectedProjects = useMemo(
     () => projects.filter((p) => p.workflowId === workflowId),
@@ -445,7 +455,7 @@ const WorkflowEditor = () => {
     if (!ok) return;
     deleteWorkflow(
       { param: { workflowId } },
-      { onSuccess: () => router.push(`/workspaces/${workspaceId}/spaces/${spaceId}`) }
+      { onSuccess: () => router.push(backHref) }
     );
   };
 
@@ -602,9 +612,9 @@ const WorkflowEditor = () => {
 
   useEffect(() => {
     if (!workflowLoading && !workflow) {
-      router.push(`/workspaces/${workspaceId}/spaces/${spaceId}`);
+      router.push(backHref);
     }
-  }, [workflowLoading, workflow, router, workspaceId, spaceId]);
+  }, [workflowLoading, workflow, router, backHref]);
 
   if (workflowLoading) return <PageLoader />;
   if (!workflow) return <PageLoader />;
@@ -814,7 +824,7 @@ const WorkflowEditor = () => {
         <div className="flex items-center gap-1 ">
 
             {/* Back */}
-        <Link href={`/workspaces/${workspaceId}/spaces/${spaceId}`}>
+        <Link href={backHref}>
           <Button variant="ghost" size="icon" className="shrink-0">
             <ArrowLeft className="size-4" />
           </Button>
@@ -991,7 +1001,7 @@ className="
                   workflow={workflow as PopulatedWorkflow}
                   projects={projects}
                   workspaceId={workspaceId}
-                  spaceId={spaceId}
+                  spaceId={effectiveSpaceId}
                   isAdmin={isAdmin}
                   onConnectProject={() => setConnectProjectOpen(true)}
                   onDisconnectProject={handleDisconnectProject}

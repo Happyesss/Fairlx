@@ -88,11 +88,11 @@ export function useUserAccess() {
             AppRouteKey.WORKSPACE_SETTINGS,
         ];
 
-    // Get the allowed route keys from query data, or use loading defaults
-    // IMPORTANT: Also check if the array is empty - an empty array could indicate a failed/incomplete fetch
-    const resolvedRouteKeys = (query.data?.allowedRouteKeys && query.data.allowedRouteKeys.length > 0)
-        ? query.data.allowedRouteKeys
-        : (query.isLoading ? loadingDefaults : loadingDefaults);  // Use defaults if loading OR if data is empty
+    // Loading: optimistic defaults so nav isn't empty.
+    // Loaded (including empty []): use server truth — empty means no org route access.
+    const resolvedRouteKeys = query.isLoading
+        ? loadingDefaults
+        : (query.data?.allowedRouteKeys ?? []);
 
     return {
         allowedRouteKeys: resolvedRouteKeys,

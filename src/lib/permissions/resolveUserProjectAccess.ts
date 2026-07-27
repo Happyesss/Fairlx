@@ -43,21 +43,34 @@ export const ROLE_PERMISSIONS: Record<ProjectMemberRole, ProjectPermissionKey[]>
         ProjectPermissionKey.VIEW_DOCS,
         ProjectPermissionKey.VIEW_MEMBERS,
         ProjectPermissionKey.VIEW_TEAMS,
+        ProjectPermissionKey.VIEW_BOARD,
+        ProjectPermissionKey.VIEW_REPORTS,
         ProjectPermissionKey.CREATE_TASKS,
         ProjectPermissionKey.CREATE_SPRINTS,
         ProjectPermissionKey.CREATE_DOCS,
+        ProjectPermissionKey.CREATE_TEAMS,
+        ProjectPermissionKey.CREATE_COMMENTS,
+        ProjectPermissionKey.CREATE_ROLES,
         ProjectPermissionKey.EDIT_TASKS,
         ProjectPermissionKey.EDIT_SPRINTS,
         ProjectPermissionKey.EDIT_DOCS,
+        ProjectPermissionKey.EDIT_SETTINGS,
+        ProjectPermissionKey.UPDATE_BOARD,
+        ProjectPermissionKey.ASSIGN_TASKS,
         ProjectPermissionKey.DELETE_TASKS,
         ProjectPermissionKey.DELETE_SPRINTS,
         ProjectPermissionKey.DELETE_DOCS,
+        ProjectPermissionKey.DELETE_COMMENTS,
+        ProjectPermissionKey.DELETE_ROLES,
         ProjectPermissionKey.START_SPRINT,
         ProjectPermissionKey.COMPLETE_SPRINT,
         ProjectPermissionKey.MANAGE_MEMBERS,
         ProjectPermissionKey.MANAGE_TEAMS,
         ProjectPermissionKey.MANAGE_PERMISSIONS,
-        ProjectPermissionKey.EDIT_SETTINGS,
+        ProjectPermissionKey.MANAGE_SETTINGS,
+        ProjectPermissionKey.INVITE_MEMBERS,
+        ProjectPermissionKey.REMOVE_MEMBERS,
+        // DELETE_PROJECT is owner-only
     ],
     [ProjectMemberRole.MEMBER]: [
         ProjectPermissionKey.VIEW_PROJECT,
@@ -153,7 +166,9 @@ async function _resolveUserProjectAccessUncached(
         }
 
         // 1. Organization Access Override (Highest Priority)
-        // Org Owners, Admins, and Moderators get full access to EVERYTHING in the org
+        // GOVERNANCE: Only org OWNER bypasses project membership.
+        // ADMIN/MODERATOR/MEMBER must be project members (or workspace admins).
+        // Org-level UI access for non-owners comes from departments, not project RBAC.
         if (organizationId) {
             try {
                 const orgMembers = await databases.listDocuments(
@@ -170,9 +185,8 @@ async function _resolveUserProjectAccessUncached(
                     const orgMember = orgMembers.documents[0];
                     const orgRole = orgMember.role;
 
-                    // Check for privileged roles
                     const { OrganizationRole } = await import("@/features/organizations/types");
-                    if ([OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.MODERATOR].includes(orgRole)) {
+                    if (orgRole === OrganizationRole.OWNER) {
                         return {
                             projectId,
                             userId,
@@ -425,8 +439,8 @@ export function hasProjectPermission(
     access: ProjectAccessResult,
     permission: ProjectPermissionKey | string
 ): boolean {
-    // Owner or Admin always has access
-    if (access.isOwner || access.isAdmin) return true;
+    // Project OWNER always has full access; ADMIN uses ROLE_PERMISSIONS / grants
+    if (access.isOwner) return true;
 
     return access.permissions.includes(permission);
 }

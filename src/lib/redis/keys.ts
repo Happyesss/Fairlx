@@ -191,7 +191,8 @@ export const CK = {
 // =============================================================
 export const CKPattern = {
     /** When project members change → invalidate all permission caches for that project */
-    projectPerms: (projectId: string) => `perm:proj:${projectId}:*`,
+    // Must match CK.projectAccess: `perm:proj:v2:${projectId}:${userId}`
+    projectPerms: (projectId: string) => `perm:proj:v2:${projectId}:*`,
     /** When org members/roles change → invalidate all org permission caches */
     orgPerms: (orgId: string) => `perm:org:${orgId}:*`,
     /** When workspace members change */

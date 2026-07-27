@@ -43,6 +43,8 @@ export type TimelineItem = {
   childrenCount?: number;
   isExpanded?: boolean;
   level?: number; // Hierarchy depth
+  /** Grouping label only — not a scheduled epic bar in this sprint */
+  isLabelOnly?: boolean;
 };
 
 export type TimelineSprintGroup = {

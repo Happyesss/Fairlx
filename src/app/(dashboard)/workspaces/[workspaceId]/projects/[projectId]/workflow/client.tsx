@@ -32,6 +32,7 @@ import { useGetWorkflow } from "@/features/workflows/api/use-get-workflow";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useCreateWorkflowModal } from "@/features/workflows/hooks/use-create-workflow-modal";
 import { CreateWorkflowModal } from "@/features/workflows/components/create-workflow-modal";
+import { getWorkflowEditorHref } from "@/features/workflows/lib/workflow-routes";
 
 export const ProjectWorkflowClient = () => {
   const router = useRouter();
@@ -101,11 +102,13 @@ export const ProjectWorkflowClient = () => {
   };
 
   const handleEditWorkflow = (workflowId: string) => {
-    if (project.spaceId) {
-      router.push(`/workspaces/${workspaceId}/spaces/${project.spaceId}/workflows/${workflowId}`);
-    } else {
-      router.push(`/workspaces/${workspaceId}/workflows/${workflowId}`);
-    }
+    router.push(
+      getWorkflowEditorHref({
+        workspaceId,
+        workflowId,
+        spaceId: project.spaceId,
+      })
+    );
   };
 
   return (

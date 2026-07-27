@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrashIcon, Link, Copy } from "lucide-react";
+import { TrashIcon, Link, Copy, Bot } from "lucide-react";
 import { toast } from "sonner";
 import IconHelp from "@/components/icon-help";
 import { PageError } from "@/components/page-error";
@@ -28,9 +28,12 @@ import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useCreateTaskModal } from "@/features/tasks/hooks/use-create-task-modal";
 import { SubIssuesList } from "@/features/tasks/components/sub-issues-list";
+import { StartWithAgentDialog } from "@/features/integrations/components/start-with-agent-dialog";
+import { AgentBranchStatusChip } from "@/features/integrations/components/agent-branch-status-chip";
 
 export const TaskIdClient = () => {
   const [activeTab, setActiveTab] = useState<"activity" | "timelogs" | "github">("activity");
+  const [agentOpen, setAgentOpen] = useState(false);
   const taskId = useTaskId();
   const workspaceId = useWorkspaceId();
   const router = useRouter();
@@ -87,6 +90,14 @@ export const TaskIdClient = () => {
   return (
     <div className="flex flex-col sm:h-[91vh]">
       <ConfirmDialog />
+      {data.projectId && (
+        <StartWithAgentDialog
+          open={agentOpen}
+          onOpenChange={setAgentOpen}
+          workItemId={data.$id}
+          projectId={data.projectId}
+        />
+      )}
 
       {/* Modal-like Content */}
       <div className="flex flex-col flex-1 sm:flex-row sm:overflow-hidden bg-background">
@@ -227,6 +238,15 @@ export const TaskIdClient = () => {
                 <h2 className="font-medium text-sm text-foreground">Properties</h2>
 
                 <div className="flex items-center ">
+                  <IconHelp content="Start with Claude / Codex" side="bottom">
+                    <button
+                      className="hover:bg-[#cfcfcf89] p-1.5 rounded-sm"
+                      onClick={() => setAgentOpen(true)}
+                    >
+                      <Bot size={17} strokeWidth={1.5} color="#696969" />
+                    </button>
+                  </IconHelp>
+
                   <IconHelp content="Copy task URL" side="bottom">
                     <button
                       className="hover:bg-[#cfcfcf89] p-1.5 rounded-sm"
@@ -285,6 +305,12 @@ export const TaskIdClient = () => {
             </div>
 
             {/* Task Overview in sidebar */}
+            <div className="px-3 pt-3">
+              <AgentBranchStatusChip
+                taskKey={data.key}
+                taskTitle={data.name || data.title}
+              />
+            </div>
             <TaskDetailsSidebar task={data} workspaceId={workspaceId} canEdit={canEditTasks} />
 
             {/* Attachments */}

@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 
 import { useGetWorkflows } from "../api/use-get-workflows";
 import { useCreateWorkflowModal } from "../hooks/use-create-workflow-modal";
+import { Workflow } from "../types";
+import { getWorkflowEditorHref } from "../lib/workflow-routes";
 
 interface WorkflowsListProps {
   spaceId?: string;
@@ -26,19 +28,19 @@ export const WorkflowsList = ({ spaceId, projectId }: WorkflowsListProps) => {
 
   const workflows = data?.documents ?? [];
 
-  const handleWorkflowClick = (workflowId: string) => {
-    if (spaceId) {
-      router.push(`/workspaces/${workspaceId}/spaces/${spaceId}/workflows/${workflowId}`);
-    } else if (projectId) {
-      router.push(`/workspaces/${workspaceId}/projects/${projectId}/workflows/${workflowId}`);
-    } else {
-      router.push(`/workspaces/${workspaceId}/workflows/${workflowId}`);
-    }
+  const handleWorkflowClick = (workflow: Workflow) => {
+    router.push(
+      getWorkflowEditorHref({
+        workspaceId,
+        workflowId: workflow.$id,
+        spaceId: workflow.spaceId || spaceId,
+      })
+    );
   };
 
-  const handleSettingsClick = (e: React.MouseEvent, workflowId: string) => {
+  const handleSettingsClick = (e: React.MouseEvent, workflow: Workflow) => {
     e.stopPropagation();
-    handleWorkflowClick(workflowId);
+    handleWorkflowClick(workflow);
   };
 
   if (isLoading) {
@@ -86,7 +88,7 @@ export const WorkflowsList = ({ spaceId, projectId }: WorkflowsListProps) => {
             {workflows.map((workflow) => (
               <div
                 key={workflow.$id}
-                onClick={() => handleWorkflowClick(workflow.$id)}
+                onClick={() => handleWorkflowClick(workflow)}
                 className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-3">
@@ -118,7 +120,7 @@ export const WorkflowsList = ({ spaceId, projectId }: WorkflowsListProps) => {
                   <Button 
                     variant="ghost" 
                     size="icon"
-                    onClick={(e) => handleSettingsClick(e, workflow.$id)}
+                    onClick={(e) => handleSettingsClick(e, workflow)}
                   >
                     <Settings className="size-4" />
                   </Button>

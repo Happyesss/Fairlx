@@ -185,12 +185,13 @@ export async function getProjectPermissionResult(
                     );
                     if (orgMembers.total > 0) {
                         const orgRole = orgMembers.documents[0].role;
-                        if (["OWNER", "ADMIN", "MODERATOR"].includes(orgRole)) {
+                        // Only OWNER bypasses project membership (department-driven model)
+                        if (orgRole === "OWNER") {
                             return {
                                 projectId,
                                 userId,
                                 permissions: Object.values(PROJECT_PERMISSIONS),
-                                roles: [{ roleId: "org-admin", roleName: `Org ${orgRole}`, teamId: "", teamName: "" }],
+                                roles: [{ roleId: "org-owner", roleName: "Org OWNER", teamId: "", teamName: "" }],
                                 isProjectAdmin: true,
                             };
                         }

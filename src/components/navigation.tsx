@@ -169,14 +169,12 @@ const NavigationInner = ({
 
   // MEMOIZED: Filter routes based on allowed route keys (STRICT MODE - no fallback)
   const visibleRoutes = useMemo(() => routes.filter((route: RouteConfig) => {
-    // STRICT: Route must be in allowedRouteKeys to be visible
-    // Empty or undefined allowedRouteKeys = no permission-gated routes
-    if (allowedRouteKeys && allowedRouteKeys.length > 0) {
+    // When server returned access (including empty []), enforce allowlist strictly.
+    // undefined = still resolving — hide workspace-scoped routes as a safe fallback.
+    if (allowedRouteKeys !== undefined) {
       if (!allowedRouteKeys.includes(route.routeKey)) return false;
-    } else {
-      // No permissions provided - only show org route if user has org
-      // This is the minimal fallback for initial load states
-      if (route.workspaceScoped) return false;
+    } else if (route.workspaceScoped) {
+      return false;
     }
 
     // Workspace-scoped routes require workspace context (from URL or lifecycle)
