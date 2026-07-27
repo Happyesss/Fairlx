@@ -33,6 +33,23 @@ import {
     hasProjectPermission,
 } from "@/lib/permissions/resolveUserProjectAccess";
 import { ProjectPermissionKey } from "@/lib/permissions/types";
+import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
+
+/** Bust project access cache so team add-on permissions apply immediately */
+async function invalidateProjectTeamAccessCache(
+    projectId: string,
+    userIds: string[] = []
+): Promise<void> {
+    await invalidateCachePattern(CKPattern.projectPerms(projectId));
+    if (userIds.length > 0) {
+        await Promise.all(
+            userIds.map((userId) => invalidateCache(CK.projectAccess(userId, projectId)))
+        );
+        await Promise.all(
+            userIds.map((userId) => invalidateCachePattern(CKPattern.allUserPerms(userId)))
+        );
+    }
+}
 
 /**
  * Project Teams API
@@ -340,6 +357,12 @@ const app = new Hono()
             // Delete team
             await adminDb.deleteDocument(DATABASE_ID, PROJECT_TEAMS_ID, teamId);
 
+            // Team ACL changed for all former members — bust access cache
+            await invalidateProjectTeamAccessCache(
+                team.projectId,
+                members.documents.map((m) => m.userId)
+            );
+
             return c.json({ success: true });
         } catch {
             return c.json({ error: "Team not found" }, 404);
@@ -500,6 +523,9 @@ const app = new Hono()
                     }
                 );
 
+                // Team add-on permissions must apply immediately for this user
+                await invalidateProjectTeamAccessCache(team.projectId, [data.userId]);
+
                 return c.json({ data: member }, 201);
             } catch {
                 return c.json({ error: "Team not found" }, 404);
@@ -548,6 +574,9 @@ const app = new Hono()
                 PROJECT_TEAM_MEMBERS_ID,
                 memberships.documents[0].$id
             );
+
+            // Drop team add-on permissions for this user immediately
+            await invalidateProjectTeamAccessCache(team.projectId, [targetUserId]);
 
             return c.json({ success: true });
         } catch {
@@ -651,6 +680,17 @@ const app = new Hono()
                             }
                         )
                     )
+                );
+
+                // All team members' effective permissions may have changed
+                const teamMembers = await adminDb.listDocuments<ProjectTeamMember>(
+                    DATABASE_ID,
+                    PROJECT_TEAM_MEMBERS_ID,
+                    [Query.equal("teamId", teamId), Query.limit(100)]
+                );
+                await invalidateProjectTeamAccessCache(
+                    team.projectId,
+                    teamMembers.documents.map((m) => m.userId)
                 );
 
                 return c.json({ data: created.map(p => p.permissionKey) });

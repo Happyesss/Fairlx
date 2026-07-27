@@ -104,7 +104,9 @@ export const ROLE_PERMISSIONS: Record<ProjectMemberRole, ProjectPermissionKey[]>
  * RULES:
  * 1. User MUST be a project member (status = ACTIVE) to have ANY access
  * 2. Role determines base permissions (OWNER > ADMIN > MEMBER > VIEWER)
- * 3. Team permissions are MERGED with role permissions
+ * 3. Team permissions are an ADD-ON: union(role, team, direct). Teams grant
+ *    extra powers but never revoke role defaults (e.g. MEMBER + Leads with
+ *    delete-sprint → can delete; ADMIN + restrictive team → still admin powers)
  * 4. Owner/Admin roles grant elevated permissions
  * 
  * INVARIANTS:
@@ -344,12 +346,14 @@ async function _resolveUserProjectAccessUncached(
         let teamPermissions: string[] = [];
 
         if (teamIds.length > 0) {
+            // Limit must cover all ProjectPermissionKey values (default Appwrite limit is 25)
             const permissions = await databases.listDocuments<ProjectPermission>(
                 DATABASE_ID,
                 PROJECT_PERMISSIONS_ID,
                 [
                     Query.equal("projectId", projectId),
                     Query.equal("assignedToTeamId", teamIds),
+                    Query.limit(100),
                 ]
             );
             teamPermissions = permissions.documents.map((p) => p.permissionKey);
@@ -362,6 +366,7 @@ async function _resolveUserProjectAccessUncached(
             [
                 Query.equal("projectId", projectId),
                 Query.equal("assignedToUserId", userId),
+                Query.limit(100),
             ]
         );
         const directPermissionKeys = directPermissions.documents.map((p) => p.permissionKey);

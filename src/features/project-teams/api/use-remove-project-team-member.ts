@@ -26,6 +26,8 @@ export const useRemoveProjectTeamMember = ({ projectId }: UseRemoveProjectTeamMe
             toast.success("Member removed from team");
             queryClient.invalidateQueries({ queryKey: ["project-teams", projectId] });
             queryClient.invalidateQueries({ queryKey: ["project-team-members", variables.teamId] });
+            // Drop team add-on permissions from the UI immediately
+            queryClient.invalidateQueries({ queryKey: ["project-permissions"] });
         },
         onError: () => {
             toast.error("Failed to remove member");

@@ -24,8 +24,8 @@ interface UseProjectPermissionsProps {
  * }
  * ```
  * 
- * Permissions are resolved from project_members → project_roles.
- * If user is in multiple teams, permissions are merged (union).
+ * Permissions = union of role defaults + team add-ons + direct grants.
+ * Teams only add powers; they never revoke role defaults.
  */
 export const useProjectPermissions = ({ projectId, workspaceId }: UseProjectPermissionsProps) => {
     const { data, isLoading, error } = useQuery<ProjectPermissionResult | null>({

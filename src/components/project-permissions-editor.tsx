@@ -52,7 +52,8 @@ const PERMISSION_GROUPS = [
             { key: ProjectPermissionKey.CREATE_SPRINTS, label: "Create Sprints" },
             { key: ProjectPermissionKey.EDIT_SPRINTS, label: "Edit Sprints" },
             { key: ProjectPermissionKey.DELETE_SPRINTS, label: "Delete Sprints" },
-            { key: ProjectPermissionKey.START_SPRINT, label: "Start/Complete Sprint" },
+            { key: ProjectPermissionKey.START_SPRINT, label: "Start Sprint" },
+            { key: ProjectPermissionKey.COMPLETE_SPRINT, label: "Complete Sprint" },
         ],
     },
     {

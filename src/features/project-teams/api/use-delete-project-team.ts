@@ -28,6 +28,7 @@ export const useDeleteProjectTeam = ({ projectId }: UseDeleteProjectTeamProps) =
         onSuccess: () => {
             toast.success("Team deleted successfully");
             queryClient.invalidateQueries({ queryKey: ["project-teams", projectId] });
+            queryClient.invalidateQueries({ queryKey: ["project-permissions"] });
         },
         onError: () => {
             toast.error("Failed to delete team");
