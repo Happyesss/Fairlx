@@ -204,7 +204,7 @@ jobs:
       - name: Transfer files to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ vars.AZURE_HOST }}
+          host: ${{ secrets.AZURE_HOST || vars.AZURE_HOST }}
           username: fairlx
           key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
           port: 22
@@ -216,7 +216,7 @@ jobs:
       - name: Deploy to Azure Cloud VM
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ vars.AZURE_HOST }}
+          host: ${{ secrets.AZURE_HOST || vars.AZURE_HOST }}
           username: fairlx
           key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
           port: 22
