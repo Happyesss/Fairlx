@@ -5,6 +5,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   // Set the output file tracing root to the current project directory
   // This silences the warning about multiple lockfiles
   outputFileTracingRoot: __dirname,
