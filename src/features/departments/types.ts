@@ -33,8 +33,8 @@ export type Department = Models.Document & {
     description?: string;
     /** Color for UI display (hex) */
     color?: string;
-    /** User who created the department */
-    createdBy: string;
+    /** User who created the department (not stored on the Appwrite collection) */
+    createdBy?: string;
 };
 
 /**

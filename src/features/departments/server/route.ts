@@ -119,34 +119,38 @@ const app = new Hono()
                 return c.json({ error: "Forbidden - requires department management permission" }, 403);
             }
 
-            // Check for duplicate name
-            const existing = await databases.listDocuments(
-                DATABASE_ID,
-                DEPARTMENTS_ID,
-                [
-                    Query.equal("organizationId", orgId),
-                    Query.equal("name", name),
-                ]
-            );
+            try {
+                // Check for duplicate name
+                const existing = await databases.listDocuments(
+                    DATABASE_ID,
+                    DEPARTMENTS_ID,
+                    [
+                        Query.equal("organizationId", orgId),
+                        Query.equal("name", name),
+                    ]
+                );
 
-            if (existing.total > 0) {
-                return c.json({ error: "Department with this name already exists" }, 400);
-            }
-
-            const department = await databases.createDocument<Department>(
-                DATABASE_ID,
-                DEPARTMENTS_ID,
-                ID.unique(),
-                {
-                    organizationId: orgId,
-                    name,
-                    description: description || null,
-                    color: color || "#4F46E5",
-                    createdBy: user.$id,
+                if (existing.total > 0) {
+                    return c.json({ error: "Department with this name already exists" }, 400);
                 }
-            );
 
-            return c.json({ data: department }, 201);
+                const department = await databases.createDocument<Department>(
+                    DATABASE_ID,
+                    DEPARTMENTS_ID,
+                    ID.unique(),
+                    {
+                        organizationId: orgId,
+                        name,
+                        ...(description ? { description } : {}),
+                        color: color || "#4F46E5",
+                    }
+                );
+
+                return c.json({ data: department }, 201);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to create department";
+                return c.json({ error: message }, 500);
+            }
         }
     )
 

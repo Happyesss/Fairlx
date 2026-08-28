@@ -23,8 +23,8 @@ export const useRemoveDepartmentPermission = () => {
             });
 
             if (!response.ok) {
-                const error = await response.json() as { error?: string };
-                throw new Error(error.error || "Failed to remove permission");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to remove permission");
             }
 
             return await response.json();

@@ -6,6 +6,7 @@ import { OrganizationRole } from "@/features/organizations/types";
 import { AppRouteKey } from "./appRouteKeys";
 import { getPathsForRouteKeys } from "./permissionRouteMap";
 import { resolveUserOrgAccess, UserOrgAccessResult } from "./resolveUserOrgAccess";
+import { resolveUserWorkspaceAccess } from "./resolveUserWorkspaceAccess";
 
 /**
  * Resolve User Access (Refactored for Department-Driven Model)
@@ -71,27 +72,32 @@ const ALWAYS_ACCESSIBLE_ROUTES: AppRouteKey[] = [
 ];
 
 /**
- * Route keys that are accessible to any org member with department access
- * 
- * NOTE: Changed from "any org member" to "org member with departments"
- * Members without departments cannot see workspaces list.
+ * Route keys accessible to any org member (including members with no departments).
+ * Organization admin pages stay gated by department permissions separately.
  */
 const ORG_MEMBER_BASE_ROUTES: AppRouteKey[] = [
     AppRouteKey.WORKSPACES,
 ];
 
 /**
- * Route keys accessible for workspace members
+ * Core workspace pages visible to all org/workspace members.
+ * Settings is admin-only and is not included here.
  */
-const WORKSPACE_MEMBER_ROUTES: AppRouteKey[] = [
+const WORKSPACE_CORE_ROUTES: AppRouteKey[] = [
     AppRouteKey.WORKSPACE_HOME,
     AppRouteKey.WORKSPACE_TASKS,
     AppRouteKey.WORKSPACE_TEAMS,
     AppRouteKey.WORKSPACE_PROGRAMS,
     AppRouteKey.WORKSPACE_TIMELINE,
-    AppRouteKey.WORKSPACE_SETTINGS,
     AppRouteKey.WORKSPACE_SPACES,
     AppRouteKey.WORKSPACE_PROJECTS,
+];
+
+/**
+ * Workspace admin routes (Settings). Visible to org OWNER or workspace OWNER/ADMIN.
+ */
+const WORKSPACE_ADMIN_ROUTES: AppRouteKey[] = [
+    AppRouteKey.WORKSPACE_SETTINGS,
 ];
 
 // ============================================================================
@@ -156,17 +162,27 @@ export async function resolveUserAccess(
             ...ALWAYS_ACCESSIBLE_ROUTES,
         ];
 
-        // Only add org-member routes if user has department access (or is OWNER)
-        if (orgAccess.hasDepartmentAccess) {
+        // Any org member gets workspace list + core pages (Home, My Spaces, Programs, Timeline).
+        // Settings and Organization stay hidden unless the user has admin/department access.
+        if (orgAccess.orgMemberId) {
             allRouteKeys.push(...ORG_MEMBER_BASE_ROUTES);
+            allRouteKeys.push(...WORKSPACE_CORE_ROUTES);
+        }
+
+        // Org-level permission routes (Organization, billing, members, etc.)
+        // require department access (OWNER is treated as having department access).
+        if (orgAccess.hasDepartmentAccess) {
             allRouteKeys.push(...orgAccess.allowedRouteKeys);
         }
 
-        // Add workspace routes if workspace context exists
-        // OR if user is an org member (they should always see workspace navigation
-        // when they have access to any workspace, even without explicit workspaceId)
-        if (workspaceId || orgAccess.hasDepartmentAccess || orgAccess.isOwner) {
-            allRouteKeys.push(...WORKSPACE_MEMBER_ROUTES);
+        // Workspace Settings: org OWNER, or workspace OWNER/ADMIN (canDelete).
+        if (orgAccess.isOwner) {
+            allRouteKeys.push(...WORKSPACE_ADMIN_ROUTES);
+        } else if (workspaceId) {
+            const wsAccess = await resolveUserWorkspaceAccess(databases, userId, workspaceId);
+            if (wsAccess.canDelete) {
+                allRouteKeys.push(...WORKSPACE_ADMIN_ROUTES);
+            }
         }
 
         // De-duplicate
@@ -219,9 +235,9 @@ export function resolvePersonalUserAccess(workspaceId?: string): UserAccess {
         ...ALWAYS_ACCESSIBLE_ROUTES,
         AppRouteKey.WORKSPACES,
         AppRouteKey.WORKSPACE_CREATE,
-        // Always include workspace member routes for personal accounts
-        // The UI will handle showing/hiding based on actual workspace context
-        ...WORKSPACE_MEMBER_ROUTES,
+        // Personal accounts own their workspace, so they get core pages + Settings
+        ...WORKSPACE_CORE_ROUTES,
+        ...WORKSPACE_ADMIN_ROUTES,
     ];
 
     return {

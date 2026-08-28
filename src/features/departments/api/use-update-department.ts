@@ -21,8 +21,8 @@ export const useUpdateDepartment = ({ orgId }: UseUpdateDepartmentProps) => {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error((error as { error?: string }).error || "Failed to update department");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to update department");
             }
 
             return await response.json();

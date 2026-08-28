@@ -21,8 +21,8 @@ export const useCreateDepartment = ({ orgId }: UseCreateDepartmentProps) => {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error((error as { error?: string }).error || "Failed to create department");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to create department");
             }
 
             return await response.json();
