@@ -9,11 +9,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { UsageSummary } from "../types";
-import {
-    USAGE_RATE_TRAFFIC_GB,
-    USAGE_RATE_STORAGE_GB_MONTH,
-    USAGE_RATE_COMPUTE_UNIT,
-} from "@/config";
+import { formatUsdAsDisplayCurrency, getUsageRatesUsd } from "@/lib/usage-cost";
 
 interface CostSummaryProps {
     summary: UsageSummary | null;
@@ -30,16 +26,10 @@ export function CostSummary({
     currency = "USD",
     exchangeRate = 1,
 }: CostSummaryProps) {
-    // Convert USD to display currency and format
-    const formatCurrency = (amountUsd: number) => {
-        const converted = amountUsd * exchangeRate;
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency,
-            minimumFractionDigits: 2,
-            maximumFractionDigits: converted < 0.1 && converted > 0 ? 6 : 2,
-        }).format(converted);
-    };
+    const formatCurrency = (amountUsd: number) =>
+        formatUsdAsDisplayCurrency(amountUsd, currency, exchangeRate);
+
+    const rates = summary?.rates ?? getUsageRatesUsd();
 
     const formatBytes = (bytes: number) => {
         if (!bytes || bytes === 0) return "0 B";
@@ -75,7 +65,7 @@ export function CostSummary({
                     <div>
                         <CardTitle>Cost Breakdown</CardTitle>
                         <CardDescription>
-                            Estimated costs based on current rates
+                            Billed in USD. Visibility currency is display-only.
                         </CardDescription>
                     </div>
                 </div>
@@ -92,7 +82,7 @@ export function CostSummary({
                                         <Info className="h-3 w-3" />
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p>Rates are configured via environment variables</p>
+                                        <p>Usage is billed in USD. Visibility currency converts for display only.</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
@@ -100,15 +90,15 @@ export function CostSummary({
                         <div className="grid grid-cols-3 gap-2 text-xs">
                             <div>
                                 <p className="text-muted-foreground">Traffic</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}/GB</p>
+                                <p className="font-mono">{formatCurrency(rates.trafficPerGBUsd)}/GB</p>
                             </div>
                             <div>
                                 <p className="text-muted-foreground">Storage</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}/GB-mo</p>
+                                <p className="font-mono">{formatCurrency(rates.storagePerGBMonthUsd)}/GB-mo</p>
                             </div>
                             <div>
                                 <p className="text-muted-foreground">Compute</p>
-                                <p className="font-mono">{formatCurrency(USAGE_RATE_COMPUTE_UNIT / 100)}/unit</p>
+                                <p className="font-mono">{formatCurrency(rates.computePerUnitUsd)}/unit</p>
                             </div>
                         </div>
                     </div>
@@ -120,7 +110,7 @@ export function CostSummary({
                                 <p className="font-medium">Traffic</p>
                                 <p className="text-sm text-muted-foreground">
                                     {formatBytes(summary?.trafficTotalBytes || 0)} ×{" "}
-                                    {formatCurrency(USAGE_RATE_TRAFFIC_GB / 100)}/GB
+                                    {formatCurrency(rates.trafficPerGBUsd)}/GB
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -133,7 +123,7 @@ export function CostSummary({
                                 <p className="font-medium">Storage</p>
                                 <p className="text-sm text-muted-foreground">
                                     {formatBytes(summary?.storageAvgBytes || 0)}-mo ×{" "}
-                                    {formatCurrency(USAGE_RATE_STORAGE_GB_MONTH / 100)}/GB
+                                    {formatCurrency(rates.storagePerGBMonthUsd)}/GB
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -146,7 +136,7 @@ export function CostSummary({
                                 <p className="font-medium">Compute (Jobs)</p>
                                 <p className="text-sm text-muted-foreground">
                                     {summary?.computeTotalUnits.toLocaleString() || "0"} units ×{" "}
-                                    {formatCurrency(USAGE_RATE_COMPUTE_UNIT / 100)}
+                                    {formatCurrency(rates.computePerUnitUsd)}
                                 </p>
                             </div>
                             <span className="font-mono font-medium">
@@ -174,7 +164,7 @@ export function CostSummary({
                                 </span>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                                For period: {summary?.period || "Current"}
+                                For period: {summary?.period || "Current"}. Billed in USD.
                             </p>
                         </div>
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import {
@@ -185,38 +185,8 @@ export function UsageDashboardClient() {
 
     const events = dashboardData?.data?.events?.documents || [];
     const totalEvents = dashboardData?.data?.events?.total || 0;
-    const rawSummary = (dashboardData?.data?.summary || null) as UsageSummary | null;
+    const summary = (dashboardData?.data?.summary || null) as UsageSummary | null;
     const alerts = dashboardData?.data?.alerts?.documents || [];
-
-    // REFINED SUMMARY: Correct cumulative storage balance
-    const summary = useMemo(() => {
-        if (!rawSummary) return null;
-        
-        // Calculate the cumulative ending balance for storage from daily deltas
-        // This ensures "Storage Used" shows current utilization, not just period net change
-        let cumulativeBytes = 0;
-        rawSummary.dailyUsage.forEach(day => {
-            cumulativeBytes = Math.max(0, cumulativeBytes + Number(day.storage || 0));
-        });
-        
-        // Recalculate storage cost based on the ending balance
-        const storageRate = 2.0; // cents/GB-mo
-        const currentStorageGB = cumulativeBytes / (1024 * 1024 * 1024);
-        const storageCost = (currentStorageGB * storageRate) / 100;
-        
-        const newEstimatedCost = {
-            ...rawSummary.estimatedCost,
-            storage: Number(storageCost.toFixed(6)),
-            total: Number((rawSummary.estimatedCost.total - rawSummary.estimatedCost.storage + storageCost).toFixed(6))
-        };
-        
-        return {
-            ...rawSummary,
-            storageAvgBytes: cumulativeBytes,
-            storageAvgGB: cumulativeBytes / (1024 * 1024 * 1024),
-            estimatedCost: newEstimatedCost
-        };
-    }, [rawSummary]);
 
     // Loading state
     if (isMemberLoading || isOrgPermissionLoading) {
@@ -415,6 +385,8 @@ export function UsageDashboardClient() {
                                 summary={summary}
                                 workspaces={workspacesData?.documents?.map((w) => ({ $id: w.$id, name: w.name })) || []}
                                 isLoading={isEventsLoading || isSummaryLoading}
+                                currency={currency}
+                                exchangeRate={rate}
                             />
                         )}
                     </div>
