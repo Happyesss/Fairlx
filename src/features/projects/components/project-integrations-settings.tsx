@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { 
   MessageSquare, 
   GitCommit, 
@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { DottedSeparator } from "@/components/dotted-separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   useGetRepository, 
   useUpdateRepositorySettings, 
@@ -36,18 +35,7 @@ import {
 } from "@/features/github-integration/api/use-github";
 import { 
   ConnectRepository,
-  CodebaseQA,
-  CommitHistory 
 } from "@/features/github-integration/components";
-import { 
-  getCommitsCount, 
-  readLegacyCommits, 
-  saveCommitsToCache, 
-  clearLegacyCommits, 
-  notifyCommitsUpdated,
-  readLegacyCommitsCount,
-  COMMIT_CACHE_CHANNEL 
-} from "@/features/github-integration/lib/commit-cache";
 import { useConfirm } from "@/hooks/use-confirm";
 import { IntegrationPanels } from "@/features/integrations/components/integration-panels";
 import {
@@ -91,9 +79,6 @@ export const ProjectIntegrationsSettings = ({
   const [allowPrMerge, setAllowPrMerge] = useState(true);
   const [createTasksFromIssues, setCreateTasksFromIssues] = useState(false);
 
-  // Commits count state for Codebase Q&A
-  const [commitsCount, setCommitsCount] = useState(0);
-
   // Sync state with fetched repository settings
   useEffect(() => {
     if (repository) {
@@ -104,61 +89,6 @@ export const ProjectIntegrationsSettings = ({
       setCreateTasksFromIssues(!!repository.createTasksFromIssues);
     }
   }, [repository]);
-
-  // Load commits count for Q&A function
-  const loadCommitsCount = useCallback(async () => {
-    try {
-      const count = await getCommitsCount(projectId);
-      if (count > 0) {
-        setCommitsCount(count);
-        return;
-      }
-
-      const legacyCommits = readLegacyCommits(projectId);
-      if (legacyCommits.length > 0) {
-        setCommitsCount(legacyCommits.length);
-        await saveCommitsToCache(projectId, legacyCommits);
-        clearLegacyCommits(projectId);
-        notifyCommitsUpdated(projectId);
-        return;
-      }
-
-      const legacyCount = readLegacyCommitsCount(projectId);
-      setCommitsCount(legacyCount);
-    } catch {
-      setCommitsCount(0);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    loadCommitsCount();
-  }, [loadCommitsCount]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleCommitsUpdate = (event: Event) => {
-      const projectDetail = (event as CustomEvent<{ projectId?: string }>).detail?.projectId;
-      if (projectDetail && projectDetail !== projectId) return;
-      loadCommitsCount();
-    };
-
-    window.addEventListener("commitsUpdated", handleCommitsUpdate);
-
-    let channel: BroadcastChannel | null = null;
-    if ("BroadcastChannel" in window) {
-      channel = new BroadcastChannel(COMMIT_CACHE_CHANNEL);
-      channel.addEventListener("message", (event: MessageEvent<{ projectId?: string }>) => {
-        if (event.data?.projectId && event.data.projectId !== projectId) return;
-        loadCommitsCount();
-      });
-    }
-
-    return () => {
-      window.removeEventListener("commitsUpdated", handleCommitsUpdate);
-      channel?.close();
-    };
-  }, [loadCommitsCount, projectId]);
 
   const hasChanges = repository && (
     autoFetchCommits !== (repository.autoFetchCommits !== false) ||
@@ -252,258 +182,207 @@ export const ProjectIntegrationsSettings = ({
         <DottedSeparator className="my-1" />
 
         {repository ? (
-          <Tabs defaultValue="settings" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 max-w-md mb-6 bg-muted/80 p-1 rounded-xl">
-              <TabsTrigger value="settings" className="text-xs font-semibold data-[state=active]:bg-background transition-all">
-                Settings
-              </TabsTrigger>
-              <TabsTrigger value="qa" className="text-xs font-semibold data-[state=active]:bg-background transition-all">
-                Codebase Q&A
-              </TabsTrigger>
-              <TabsTrigger value="commits" className="text-xs font-semibold data-[state=active]:bg-background transition-all">
-                Commit Insights
-              </TabsTrigger>
-            </TabsList>
-
-            {/* TAB 1: Settings */}
-            <TabsContent value="settings" className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-3">
-                {/* Repo Status Card */}
-                <Card className="md:col-span-1 h-fit bg-card/50 backdrop-blur-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold">Connection Details</CardTitle>
-                    <CardDescription className="text-xs">Active repository connection</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="rounded-lg bg-muted/50 p-3.5 space-y-2 border">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-medium">Repository</span>
-                        <span className="font-semibold text-foreground break-all text-right max-w-[150px]">
-                          {repository.owner}/{repository.repositoryName}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-medium">Branch</span>
-                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground">
-                          {repository.branch}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-muted-foreground font-medium">Status</span>
-                        <span className="flex items-center gap-1 font-semibold text-green-600 dark:text-green-400">
-                          <CheckCircle2 className="size-3.5" />
-                          Connected
-                        </span>
-                      </div>
+          <div className="space-y-6">
+            <div className="grid gap-6 md:grid-cols-3">
+              {/* Repo Status Card */}
+              <Card className="md:col-span-1 h-fit bg-card/50 backdrop-blur-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold">Connection Details</CardTitle>
+                  <CardDescription className="text-xs">Active repository connection</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg bg-muted/50 p-3.5 space-y-2 border">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground font-medium">Repository</span>
+                      <span className="font-semibold text-foreground break-all text-right max-w-[150px]">
+                        {repository.owner}/{repository.repositoryName}
+                      </span>
                     </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground font-medium">Branch</span>
+                      <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-foreground">
+                        {repository.branch}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-muted-foreground font-medium">Status</span>
+                      <span className="flex items-center gap-1 font-semibold text-green-600 dark:text-green-400">
+                        <CheckCircle2 className="size-3.5" />
+                        Connected
+                      </span>
+                    </div>
+                  </div>
 
-                    <div className="flex flex-col gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        asChild 
-                        className="w-full text-xs font-medium"
+                  <div className="flex flex-col gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      asChild 
+                      className="w-full text-xs font-medium"
+                    >
+                      <a 
+                        href={repository.githubUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1.5"
                       >
-                        <a 
-                          href={repository.githubUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-1.5"
-                        >
-                          View on GitHub
-                          <ExternalLink className="size-3" />
-                        </a>
-                      </Button>
-
-                      {isAdmin && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={handleDisconnect}
-                          disabled={isDisconnecting}
-                          className="w-full text-xs font-medium"
-                        >
-                          {isDisconnecting ? (
-                            <Loader2 className="size-3.5 mr-2 animate-spin" />
-                          ) : (
-                            "Disconnect Repository"
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Options Settings Card */}
-                <Card className="md:col-span-2 bg-card/50 backdrop-blur-sm">
-                  <CardHeader className="pb-3 border-b">
-                    <CardTitle className="text-base font-semibold">Integration Options</CardTitle>
-                    <CardDescription className="text-xs">
-                      Customize the behavior of the GitHub integration for this project.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6 space-y-6">
-                    
-                    {/* 1. Comments */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <MessageSquare className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-semibold">Sync Comments</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-normal max-w-lg">
-                          Sync comments made on commits and PRs directly to connected work items.
-                        </p>
-                      </div>
-                      <Switch 
-                        checked={syncComments}
-                        onCheckedChange={setSyncComments}
-                        disabled={!isAdmin || isUpdating}
-                      />
-                    </div>
-
-                    <DottedSeparator />
-
-                    {/* 2. Connecting the commits */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <GitCommit className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-semibold">Connect Commits to Tasks</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-normal max-w-lg">
-                          Automatically link commits mentioning task keys (e.g. PRJ-123) to their corresponding backlog tasks.
-                        </p>
-                      </div>
-                      <Switch 
-                        checked={linkCommitsToTasks}
-                        onCheckedChange={setLinkCommitsToTasks}
-                        disabled={!isAdmin || isUpdating}
-                      />
-                    </div>
-
-                    <DottedSeparator />
-
-                    {/* 3. Merging the PR from this application only */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <GitPullRequest className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-semibold">Allow PR Merging</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-normal max-w-lg">
-                          Allow authorized project members to merge GitHub pull requests directly from Fairlx.
-                        </p>
-                      </div>
-                      <Switch 
-                        checked={allowPrMerge}
-                        onCheckedChange={setAllowPrMerge}
-                        disabled={!isAdmin || isUpdating}
-                      />
-                    </div>
-
-                    <DottedSeparator />
-
-                    {/* 4. Auto-fetching the commits */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-semibold">Auto-Fetch Commits</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-normal max-w-lg">
-                          Automatically scan the linked branch for new commits periodically and generate AI summaries.
-                        </p>
-                      </div>
-                      <Switch 
-                        checked={autoFetchCommits}
-                        onCheckedChange={setAutoFetchCommits}
-                        disabled={!isAdmin || isUpdating}
-                      />
-                    </div>
-
-                    <DottedSeparator />
-
-                    {/* 5. Auto-create work items from Issues */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-semibold flex items-center gap-1.5">
-                            Sync GitHub Issues
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-normal max-w-lg">
-                          Automatically create a new work item in the backlog with type <code className="bg-muted px-1 rounded text-[11px] font-mono text-red-500 font-semibold">issue</code> whenever a new issue is opened in the GitHub repository.
-                        </p>
-                      </div>
-                      <Switch 
-                        checked={createTasksFromIssues}
-                        onCheckedChange={setCreateTasksFromIssues}
-                        disabled={!isAdmin || isUpdating}
-                      />
-                    </div>
+                        View on GitHub
+                        <ExternalLink className="size-3" />
+                      </a>
+                    </Button>
 
                     {isAdmin && (
-                      <div className="pt-4 flex justify-end">
-                        <Button
-                          onClick={handleSaveSettings}
-                          disabled={!hasChanges || isUpdating}
-                          size="sm"
-                          className="px-6 text-xs font-semibold"
-                        >
-                          {isUpdating ? (
-                            <>
-                              <Loader2 className="size-3 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            "Save Settings"
-                          )}
-                        </Button>
-                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleDisconnect}
+                        disabled={isDisconnecting}
+                        className="w-full text-xs font-medium"
+                      >
+                        {isDisconnecting ? (
+                          <Loader2 className="size-3.5 mr-2 animate-spin" />
+                        ) : (
+                          "Disconnect Repository"
+                        )}
+                      </Button>
                     )}
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            {/* TAB 2: Codebase Q&A */}
-            <TabsContent value="qa" className="space-y-4 outline-none">
-              <Card className="border border-border/80 shadow-md">
-                <CardHeader className="pb-3 border-b">
-                  <div className="flex items-center gap-2 text-primary">
-                    <Bot className="size-5" />
-                    <CardTitle className="text-base">Codebase Assistant</CardTitle>
                   </div>
-                  <CardDescription className="text-xs">
-                    Ask questions in plain English about repository structure, functions, and logic.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <CodebaseQA projectId={projectId} commitsCount={commitsCount} />
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* TAB 3: Commit Insights */}
-            <TabsContent value="commits" className="space-y-4 outline-none">
-              <Card className="border border-border/80 shadow-md">
+              {/* Options Settings Card */}
+              <Card className="md:col-span-2 bg-card/50 backdrop-blur-sm">
                 <CardHeader className="pb-3 border-b">
-                  <div className="flex items-center gap-2 text-primary">
-                    <GitCommit className="size-5" />
-                    <CardTitle className="text-base">Commit History & Insights</CardTitle>
-                  </div>
+                  <CardTitle className="text-base font-semibold">Integration Options</CardTitle>
                   <CardDescription className="text-xs">
-                    View active branches commits and trigger AI summary analysis.
+                    Customize the behavior of the GitHub integration for this project.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="pt-6">
-                  <CommitHistory projectId={projectId} />
+                <CardContent className="pt-6 space-y-6">
+                  
+                  {/* 1. Comments */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">Sync Comments</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-normal max-w-lg">
+                        Sync comments made on commits and PRs directly to connected work items.
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={syncComments}
+                      onCheckedChange={setSyncComments}
+                      disabled={!isAdmin || isUpdating}
+                    />
+                  </div>
+
+                  <DottedSeparator />
+
+                  {/* 2. Connecting the commits */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <GitCommit className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">Connect Commits to Tasks</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-normal max-w-lg">
+                        Automatically link commits mentioning task keys (e.g. PRJ-123) to their corresponding backlog tasks.
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={linkCommitsToTasks}
+                      onCheckedChange={setLinkCommitsToTasks}
+                      disabled={!isAdmin || isUpdating}
+                    />
+                  </div>
+
+                  <DottedSeparator />
+
+                  {/* 3. Merging the PR from this application only */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <GitPullRequest className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">Allow PR Merging</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-normal max-w-lg">
+                        Allow authorized project members to merge GitHub pull requests directly from Fairlx.
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={allowPrMerge}
+                      onCheckedChange={setAllowPrMerge}
+                      disabled={!isAdmin || isUpdating}
+                    />
+                  </div>
+
+                  <DottedSeparator />
+
+                  {/* 4. Auto-fetching the commits */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">Auto-Fetch Commits</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-normal max-w-lg">
+                        Automatically scan the linked branch for new commits periodically.
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={autoFetchCommits}
+                      onCheckedChange={setAutoFetchCommits}
+                      disabled={!isAdmin || isUpdating}
+                    />
+                  </div>
+
+                  <DottedSeparator />
+
+                  {/* 5. Auto-create work items from Issues */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="size-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold flex items-center gap-1.5">
+                          Sync GitHub Issues
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-normal max-w-lg">
+                        Automatically create a new work item in the backlog with type <code className="bg-muted px-1 rounded text-[11px] font-mono text-red-500 font-semibold">issue</code> whenever a new issue is opened in the GitHub repository.
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={createTasksFromIssues}
+                      onCheckedChange={setCreateTasksFromIssues}
+                      disabled={!isAdmin || isUpdating}
+                    />
+                  </div>
+
+                  {isAdmin && (
+                    <div className="pt-4 flex justify-end">
+                      <Button
+                        onClick={handleSaveSettings}
+                        disabled={!hasChanges || isUpdating}
+                        size="sm"
+                        className="px-6 text-xs font-semibold"
+                      >
+                        {isUpdating ? (
+                          <>
+                            <Loader2 className="size-3 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Settings"
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         ) : (
           <Card>
             <CardContent className="pt-6 text-center py-12">

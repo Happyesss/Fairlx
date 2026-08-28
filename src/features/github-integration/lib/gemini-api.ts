@@ -42,27 +42,6 @@ export class GeminiAPI {
     return aiService.refineDocumentation(currentDocumentation, prompt, files);
   }
 
-  async answerQuestion(
-    question: string,
-    codebaseContext: { 
-      files: Array<{ path: string; content: string; summary?: string }>; 
-      documentation?: string;
-      commits?: Array<{
-        hash: string;
-        message: string;
-        author: string;
-        date: string;
-        url: string;
-      }>;
-    }
-  ): Promise<AIServiceResponse> {
-    return aiService.answerQuestion(question, codebaseContext);
-  }
-
-  async summarizeCommit(commitDiff: string, commitMessage: string): Promise<AIServiceResponse> {
-    return aiService.summarizeCommit(commitDiff, commitMessage);
-  }
-
   /**
    * Generate FAQ — aggregates token usage across all FAQ calls.
    * Returns the FAQ Record + combined token usage from all individual calls.
