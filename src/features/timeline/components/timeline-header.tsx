@@ -1,5 +1,8 @@
-import React from "react";
-import { Search, ChevronDown, Download, ChevronRight, Plus } from "lucide-react";
+"use client";
+
+import React, { useState } from "react";
+import { Search, ChevronDown, Download, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +21,7 @@ import {
 import { TimelineFilters, TimelineZoomLevel, TimelineItem } from "../types";
 import { WorkItemType, WorkItemStatus } from "@/features/sprints/types";
 import { format } from "date-fns";
+import { downloadTimelinePdf, downloadTimelinePng, getTimelineExportFilename } from "../lib/export-timeline";
 
 interface TimelineHeaderProps {
   filters: TimelineFilters;
@@ -48,6 +52,8 @@ export function TimelineHeader({
   allItems = [],
   onCreateEpic,
 }: TimelineHeaderProps) {
+  const [isExporting, setIsExporting] = useState(false);
+
   const handleExportCSV = () => {
     if (allItems.length === 0) {
       alert("No data to export");
@@ -79,19 +85,49 @@ export function TimelineHeader({
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `timeline_export_${format(new Date(), "yyyy-MM-dd_HH-mm")}.csv`);
+    link.setAttribute("download", getTimelineExportFilename("csv"));
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleExportPNG = () => {
-    alert("PNG export coming soon! This will capture the timeline as an image.");
+  const handleExportPNG = async () => {
+    if (isExporting) return;
+    if (allItems.length === 0) {
+      toast.error("No data to export");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await downloadTimelinePng(allItems, zoomLevel);
+      toast.success("Timeline exported as PNG");
+    } catch (error) {
+      console.error("PNG export failed", error);
+      toast.error(error instanceof Error ? error.message : "Failed to export PNG");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const handleExportPDF = () => {
-    alert("PDF export coming soon! This will generate a PDF report.");
+  const handleExportPDF = async () => {
+    if (isExporting) return;
+    if (allItems.length === 0) {
+      toast.error("No data to export");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await downloadTimelinePdf(allItems, zoomLevel);
+      toast.success("Timeline exported as PDF");
+    } catch (error) {
+      console.error("PDF export failed", error);
+      toast.error(error instanceof Error ? error.message : "Failed to export PDF");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -139,19 +175,23 @@ export function TimelineHeader({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export
+              <Button variant="outline" size="sm" disabled={isExporting}>
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {isExporting ? "Exporting..." : "Export"}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleExportPNG}>
+              <DropdownMenuItem onClick={handleExportPNG} disabled={isExporting}>
                 Export as PNG
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPDF}>
+              <DropdownMenuItem onClick={handleExportPDF} disabled={isExporting}>
                 Export as PDF
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportCSV}>
+              <DropdownMenuItem onClick={handleExportCSV} disabled={isExporting}>
                 Export as CSV
               </DropdownMenuItem>
             </DropdownMenuContent>

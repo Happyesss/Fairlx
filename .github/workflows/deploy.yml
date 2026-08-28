@@ -1,4 +1,4 @@
-name: Deploy to Digital Ocean
+name: Deploy to Azure Cloud VM
 
 on:
   push:
@@ -190,6 +190,12 @@ jobs:
           PERSONAL_TRIAL_CREDIT_DAYS: ${{ vars.PERSONAL_TRIAL_CREDIT_DAYS }}
         run: npm run build
 
+      - name: Prepare standalone build
+        run: |
+          cp -r public .next/standalone/
+          cp -r .next/static .next/standalone/.next/static
+          cp ecosystem.config.js .next/standalone/
+
       - name: Clean up before transfer
         run: |
           # Remove .git (not needed on server, causes permission errors)
@@ -198,32 +204,29 @@ jobs:
       - name: Transfer files to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ vars.DO_HOST }}
-          username: root
-          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.AZURE_HOST || vars.AZURE_HOST }}
+          username: fairlx
+          key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
           port: 22
-          source: "."
-          target: "/var/www/fairlx"
+          source: ".next/standalone/**"
+          target: "/home/fairlx/myapp"
+          strip_components: 2
           overwrite: true
 
-      - name: Deploy to Digital Ocean
+      - name: Deploy to Azure Cloud VM
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ vars.DO_HOST }}
-          username: root
-          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.AZURE_HOST || vars.AZURE_HOST }}
+          username: fairlx
+          key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
           port: 22
           timeout: 30m
           command_timeout: 30m
           script: |
             set -e
-            cd /var/www/fairlx
+            cd /home/fairlx/myapp
 
             # ── 1. Write .env.local ──
-            cat > .env.local << 'ENVEOF'
-            NODE_ENV=production
-            ENVEOF
-            # Use tee to append secrets (heredoc above is just the header)
             cat > .env.local << EOF
             NODE_ENV=production
             NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
@@ -361,17 +364,13 @@ jobs:
             EOF
             chmod 600 .env.local
 
-            # ── 2. Install dependencies ──
-            npm install --prefer-offline --no-audit --no-fund
-
-            # ── 3. Verify Redis ──
+            # ── 2. Verify Redis ──
             redis-cli -a "${{ secrets.REDIS_PASSWORD }}" PING || echo 'WARNING: Redis not responding'
 
-            # ── 4. Graceful PM2 restart (runs as root via sudo) ──
+            # ── 3. Graceful PM2 restart ──
             # ecosystem.config.js is already transferred via SCP with the code.
-            # It uses the Next.js binary directly to avoid child-process issues.
-            sudo pm2 reload fairlx --update-env 2>/dev/null \
-              || sudo pm2 start /var/www/fairlx/ecosystem.config.js
+            pm2 reload fairlx --update-env 2>/dev/null \
+              || pm2 start /home/fairlx/myapp/ecosystem.config.js
 
             # Wait for Next.js to be ready
             echo "Waiting for app to start..."
@@ -380,13 +379,18 @@ jobs:
                 echo "✅ App is live on port 3000"
                 break
               fi
+              if [ "$i" -eq 30 ]; then
+                echo "❌ App failed to start within 60s"
+                pm2 logs --lines 50 --nostream
+                exit 1
+              fi
               sleep 2
             done
 
-            # ── 5. Save PM2 state (survives reboot) ──
-            sudo pm2 save
+            # ── 4. Save PM2 state (survives reboot) ──
+            pm2 save
 
-            # ── 6. Show status ──
-            sudo pm2 list
+            # ── 5. Show status ──
+            pm2 list
 
             echo "✅ Deployment completed successfully!"

@@ -79,13 +79,14 @@ export function useUserAccess() {
     const loadingDefaults: AppRouteKey[] = orgRole === "OWNER"
         ? [...getOrgRouteKeys(), ...getWorkspaceIndependentRouteKeys()]
         : [
-            // Provide basic workspace navigation as fallback during loading
+            // Core pages only — Settings is admin-only and must not flash for members
             AppRouteKey.WORKSPACE_HOME,
             AppRouteKey.WORKSPACE_TASKS,
             AppRouteKey.WORKSPACE_TEAMS,
             AppRouteKey.WORKSPACE_PROGRAMS,
             AppRouteKey.WORKSPACE_TIMELINE,
-            AppRouteKey.WORKSPACE_SETTINGS,
+            AppRouteKey.WORKSPACE_SPACES,
+            AppRouteKey.WORKSPACE_PROJECTS,
         ];
 
     // Loading: optimistic defaults so nav isn't empty.

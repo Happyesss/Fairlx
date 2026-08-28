@@ -33,8 +33,8 @@ export type Department = Models.Document & {
     description?: string;
     /** Color for UI display (hex) */
     color?: string;
-    /** User who created the department */
-    createdBy: string;
+    /** User who created the department (not stored on the Appwrite collection) */
+    createdBy?: string;
 };
 
 /**
@@ -43,33 +43,41 @@ export type Department = Models.Document & {
  * Allows org members to belong to multiple departments
  */
 export type OrgMemberDepartment = Models.Document & {
-    /** Reference to org_members.$id */
-    orgMemberId: string;
+    /** Organization this assignment belongs to */
+    organizationId: string;
+    /** Reference to org_members.$id (live Appwrite attribute) */
+    memberId: string;
     /** Reference to departments.$id */
     departmentId: string;
+    /** API alias for memberId */
+    orgMemberId?: string;
 };
 
 /**
  * DepartmentPermission - Permission owned by a department
- * 
+ *
+ * Live Appwrite stores a JSON array blob in `permissions`.
+ * API responses expand that blob into `permissionKey` documents for the UI.
+ *
  * RULES:
  * - Departments OWN permissions (not users directly)
  * - Users in a department inherit all its permissions
  * - Permissions are UNIONed across all departments a user belongs to
  * - No permission exists without a department owner
- * 
- * AUDIT:
- * - Tracks who granted and when for compliance
  */
 export type DepartmentPermission = Models.Document & {
+    /** Organization this grant belongs to */
+    organizationId: string;
     /** Reference to departments.$id */
     departmentId: string;
-    /** Permission key from OrgPermissionKey enum */
-    permissionKey: string;
-    /** User ID who granted this permission */
-    grantedBy: string;
-    /** Timestamp when granted */
-    grantedAt: string;
+    /** JSON array (or comma-separated / single key) of OrgPermissionKey values */
+    permissions: string;
+    /** Expanded key for API/UI consumers */
+    permissionKey?: string;
+    /** User ID who granted this permission (not stored on the live collection) */
+    grantedBy?: string;
+    /** Timestamp when granted (not stored on the live collection) */
+    grantedAt?: string;
 };
 
 // ===============================

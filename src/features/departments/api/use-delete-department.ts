@@ -19,8 +19,8 @@ export const useDeleteDepartment = ({ orgId }: UseDeleteDepartmentProps) => {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error((error as { error?: string }).error || "Failed to delete department");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to delete department");
             }
 
             return await response.json();

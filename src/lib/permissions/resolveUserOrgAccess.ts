@@ -10,6 +10,7 @@ import {
 import { createAdminClient } from "@/lib/appwrite";
 import { OrganizationRole, OrgMemberStatus, OrganizationMember } from "@/features/organizations/types";
 import { OrgMemberDepartment, DepartmentPermission } from "@/features/departments/types";
+import { parseDepartmentPermissionKeys } from "@/features/departments/lib/collection-schema";
 import { OrgPermissionKey } from "@/features/org-permissions/types";
 import { AppRouteKey } from "./appRouteKeys";
 import { getRouteKeysForPermissions, getPathsForRouteKeys, getAllRouteKeys } from "./permissionRouteMap";
@@ -162,7 +163,7 @@ async function _resolveUserOrgAccessUncached(
         const departmentAssignments = await databases.listDocuments<OrgMemberDepartment>(
             DATABASE_ID,
             ORG_MEMBER_DEPARTMENTS_ID,
-            [Query.equal("orgMemberId", member.$id)]
+            [Query.equal("memberId", member.$id)]
         );
 
         const departmentIds = departmentAssignments.documents.map((d) => d.departmentId);
@@ -200,10 +201,12 @@ async function _resolveUserOrgAccessUncached(
             ]
         );
 
-        // UNION all permissions
+        // UNION all permissions from department blobs
         const permissionSet = new Set<OrgPermissionKey>();
         for (const dp of departmentPermissions.documents) {
-            permissionSet.add(dp.permissionKey as OrgPermissionKey);
+            for (const key of parseDepartmentPermissionKeys(dp)) {
+                permissionSet.add(key as OrgPermissionKey);
+            }
         }
         const permissions = Array.from(permissionSet);
 

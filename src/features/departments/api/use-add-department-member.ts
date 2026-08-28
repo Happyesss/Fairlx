@@ -24,8 +24,8 @@ export const useAddDepartmentMember = () => {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error((error as { error?: string }).error || "Failed to add member");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to add member");
             }
 
             return await response.json();

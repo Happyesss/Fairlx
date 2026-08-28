@@ -17,6 +17,11 @@ import { OrganizationMember } from "@/features/organizations/types";
 import { OrgPermissionKey } from "@/features/org-permissions/types";
 import { Department, OrgMemberDepartment, DepartmentPermission, PopulatedDepartment } from "../types";
 import {
+    getAssignmentMemberId,
+    parseDepartmentPermissionKeys,
+    serializeDepartmentPermissionKeys,
+} from "../lib/collection-schema";
+import {
     createDepartmentSchema,
     updateDepartmentSchema,
     assignMemberToDepartmentSchema,
@@ -119,34 +124,38 @@ const app = new Hono()
                 return c.json({ error: "Forbidden - requires department management permission" }, 403);
             }
 
-            // Check for duplicate name
-            const existing = await databases.listDocuments(
-                DATABASE_ID,
-                DEPARTMENTS_ID,
-                [
-                    Query.equal("organizationId", orgId),
-                    Query.equal("name", name),
-                ]
-            );
+            try {
+                // Check for duplicate name
+                const existing = await databases.listDocuments(
+                    DATABASE_ID,
+                    DEPARTMENTS_ID,
+                    [
+                        Query.equal("organizationId", orgId),
+                        Query.equal("name", name),
+                    ]
+                );
 
-            if (existing.total > 0) {
-                return c.json({ error: "Department with this name already exists" }, 400);
-            }
-
-            const department = await databases.createDocument<Department>(
-                DATABASE_ID,
-                DEPARTMENTS_ID,
-                ID.unique(),
-                {
-                    organizationId: orgId,
-                    name,
-                    description: description || null,
-                    color: color || "#4F46E5",
-                    createdBy: user.$id,
+                if (existing.total > 0) {
+                    return c.json({ error: "Department with this name already exists" }, 400);
                 }
-            );
 
-            return c.json({ data: department }, 201);
+                const department = await databases.createDocument<Department>(
+                    DATABASE_ID,
+                    DEPARTMENTS_ID,
+                    ID.unique(),
+                    {
+                        organizationId: orgId,
+                        name,
+                        ...(description ? { description } : {}),
+                        color: color || "#4F46E5",
+                    }
+                );
+
+                return c.json({ data: department }, 201);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to create department";
+                return c.json({ error: message }, 500);
+            }
         }
     )
 
@@ -317,33 +326,39 @@ const app = new Hono()
                 return c.json({ error: "Member not found in this organization" }, 404);
             }
 
-            // Check if already assigned
-            const existing = await databases.listDocuments(
-                DATABASE_ID,
-                ORG_MEMBER_DEPARTMENTS_ID,
-                [
-                    Query.equal("orgMemberId", orgMemberId),
-                    Query.equal("departmentId", departmentId),
-                ]
-            );
+            try {
+                // Check if already assigned
+                const existing = await databases.listDocuments(
+                    DATABASE_ID,
+                    ORG_MEMBER_DEPARTMENTS_ID,
+                    [
+                        Query.equal("memberId", orgMemberId),
+                        Query.equal("departmentId", departmentId),
+                    ]
+                );
 
-            if (existing.total > 0) {
-                return c.json({ error: "Member is already in this department" }, 400);
-            }
-
-            const assignment = await databases.createDocument<OrgMemberDepartment>(
-                DATABASE_ID,
-                ORG_MEMBER_DEPARTMENTS_ID,
-                ID.unique(),
-                {
-                    orgMemberId,
-                    departmentId,
+                if (existing.total > 0) {
+                    return c.json({ error: "Member is already in this department" }, 400);
                 }
-            );
 
-            await invalidateOrgAccessCache(orgId);
+                const assignment = await databases.createDocument<OrgMemberDepartment>(
+                    DATABASE_ID,
+                    ORG_MEMBER_DEPARTMENTS_ID,
+                    ID.unique(),
+                    {
+                        organizationId: orgId,
+                        memberId: orgMemberId,
+                        departmentId,
+                    }
+                );
 
-            return c.json({ data: assignment }, 201);
+                await invalidateOrgAccessCache(orgId);
+
+                return c.json({ data: assignment }, 201);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to add member";
+                return c.json({ error: message }, 500);
+            }
         }
     )
 
@@ -363,29 +378,33 @@ const app = new Hono()
             return c.json({ error: "Forbidden - requires department management permission" }, 403);
         }
 
-        // Find and delete the assignment
-        const assignments = await databases.listDocuments<OrgMemberDepartment>(
-            DATABASE_ID,
-            ORG_MEMBER_DEPARTMENTS_ID,
-            [
-                Query.equal("orgMemberId", orgMemberId),
-                Query.equal("departmentId", departmentId),
-            ]
-        );
+        try {
+            const assignments = await databases.listDocuments<OrgMemberDepartment>(
+                DATABASE_ID,
+                ORG_MEMBER_DEPARTMENTS_ID,
+                [
+                    Query.equal("memberId", orgMemberId),
+                    Query.equal("departmentId", departmentId),
+                ]
+            );
 
-        if (assignments.total === 0) {
-            return c.json({ error: "Member is not in this department" }, 404);
+            if (assignments.total === 0) {
+                return c.json({ error: "Member is not in this department" }, 404);
+            }
+
+            await databases.deleteDocument(
+                DATABASE_ID,
+                ORG_MEMBER_DEPARTMENTS_ID,
+                assignments.documents[0].$id
+            );
+
+            await invalidateOrgAccessCache(orgId);
+
+            return c.json({ success: true });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to remove member";
+            return c.json({ error: message }, 500);
         }
-
-        await databases.deleteDocument(
-            DATABASE_ID,
-            ORG_MEMBER_DEPARTMENTS_ID,
-            assignments.documents[0].$id
-        );
-
-        await invalidateOrgAccessCache(orgId);
-
-        return c.json({ success: true });
     })
 
     /**
@@ -404,26 +423,36 @@ const app = new Hono()
             return c.json({ error: "Unauthorized" }, 401);
         }
 
-        // Get department assignments
-        const assignments = await databases.listDocuments<OrgMemberDepartment>(
-            DATABASE_ID,
-            ORG_MEMBER_DEPARTMENTS_ID,
-            [Query.equal("departmentId", departmentId)]
-        );
+        try {
+            const assignments = await databases.listDocuments<OrgMemberDepartment>(
+                DATABASE_ID,
+                ORG_MEMBER_DEPARTMENTS_ID,
+                [Query.equal("departmentId", departmentId)]
+            );
 
-        if (assignments.total === 0) {
-            return c.json({ data: { documents: [], total: 0 } });
+            if (assignments.total === 0) {
+                return c.json({ data: { documents: [], total: 0 } });
+            }
+
+            const orgMemberIds = assignments.documents
+                .map((a) => getAssignmentMemberId(a))
+                .filter(Boolean);
+
+            if (orgMemberIds.length === 0) {
+                return c.json({ data: { documents: [], total: 0 } });
+            }
+
+            const members = await databases.listDocuments<OrganizationMember>(
+                DATABASE_ID,
+                ORGANIZATION_MEMBERS_ID,
+                [Query.equal("$id", orgMemberIds)]
+            );
+
+            return c.json({ data: members });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to fetch members";
+            return c.json({ error: message }, 500);
         }
-
-        // Get member details
-        const orgMemberIds = assignments.documents.map((a) => a.orgMemberId);
-        const members = await databases.listDocuments<OrganizationMember>(
-            DATABASE_ID,
-            ORGANIZATION_MEMBERS_ID,
-            [Query.contains("$id", orgMemberIds)]
-        );
-
-        return c.json({ data: members });
     })
 
     // ============================================================================
@@ -457,19 +486,26 @@ const app = new Hono()
             return c.json({ error: "Department not found in this organization" }, 404);
         }
 
-        // Get department permissions using admin client
-        // (department_permissions collection may have restricted access)
-        const { databases: adminDatabases } = await createAdminClient();
-        const permissions = await adminDatabases.listDocuments<DepartmentPermission>(
-            DATABASE_ID,
-            DEPARTMENT_PERMISSIONS_ID,
-            [
-                Query.equal("departmentId", departmentId),
-                Query.orderAsc("permissionKey"),
-            ]
-        );
+        try {
+            const { databases: adminDatabases } = await createAdminClient();
+            const permissions = await adminDatabases.listDocuments<DepartmentPermission>(
+                DATABASE_ID,
+                DEPARTMENT_PERMISSIONS_ID,
+                [Query.equal("departmentId", departmentId)]
+            );
 
-        return c.json({ data: permissions });
+            const documents = permissions.documents.flatMap((doc) =>
+                parseDepartmentPermissionKeys(doc).map((permissionKey) => ({
+                    ...doc,
+                    permissionKey,
+                }))
+            );
+
+            return c.json({ data: { documents, total: documents.length } });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to fetch permissions";
+            return c.json({ error: message }, 500);
+        }
     })
 
     /**
@@ -504,39 +540,57 @@ const app = new Hono()
                 return c.json({ error: "Department not found in this organization" }, 404);
             }
 
-            // Use admin client for department_permissions collection
-            const { databases: adminDatabases } = await createAdminClient();
+            try {
+                // Use admin client for department_permissions collection
+                const { databases: adminDatabases } = await createAdminClient();
 
-            // Check if permission already exists
-            const existing = await adminDatabases.listDocuments(
-                DATABASE_ID,
-                DEPARTMENT_PERMISSIONS_ID,
-                [
-                    Query.equal("departmentId", departmentId),
-                    Query.equal("permissionKey", permissionKey),
-                ]
-            );
+                const existing = await adminDatabases.listDocuments<DepartmentPermission>(
+                    DATABASE_ID,
+                    DEPARTMENT_PERMISSIONS_ID,
+                    [Query.equal("departmentId", departmentId)]
+                );
 
-            if (existing.total > 0) {
-                return c.json({ error: "Permission already assigned to this department" }, 400);
-            }
+                const allKeys = existing.documents.flatMap((doc) =>
+                    parseDepartmentPermissionKeys(doc)
+                );
 
-            // Create the permission assignment
-            const permission = await adminDatabases.createDocument<DepartmentPermission>(
-                DATABASE_ID,
-                DEPARTMENT_PERMISSIONS_ID,
-                ID.unique(),
-                {
-                    departmentId,
-                    permissionKey,
-                    grantedBy: user.$id,
-                    grantedAt: new Date().toISOString(),
+                if (allKeys.includes(permissionKey)) {
+                    return c.json({ error: "Permission already assigned to this department" }, 400);
                 }
-            );
 
-            await invalidateOrgAccessCache(orgId);
+                let permission: DepartmentPermission;
 
-            return c.json({ data: permission }, 201);
+                if (existing.total > 0) {
+                    const primary = existing.documents[0];
+                    const keys = parseDepartmentPermissionKeys(primary);
+                    permission = await adminDatabases.updateDocument<DepartmentPermission>(
+                        DATABASE_ID,
+                        DEPARTMENT_PERMISSIONS_ID,
+                        primary.$id,
+                        {
+                            permissions: serializeDepartmentPermissionKeys([...keys, permissionKey]),
+                        }
+                    );
+                } else {
+                    permission = await adminDatabases.createDocument<DepartmentPermission>(
+                        DATABASE_ID,
+                        DEPARTMENT_PERMISSIONS_ID,
+                        ID.unique(),
+                        {
+                            organizationId: orgId,
+                            departmentId,
+                            permissions: serializeDepartmentPermissionKeys([permissionKey]),
+                        }
+                    );
+                }
+
+                await invalidateOrgAccessCache(orgId);
+
+                return c.json({ data: { ...permission, permissionKey } }, 201);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to add permission";
+                return c.json({ error: message }, 500);
+            }
         }
     )
 
@@ -556,32 +610,51 @@ const app = new Hono()
             return c.json({ error: "Forbidden - requires department management permission" }, 403);
         }
 
-        // Use admin client for department_permissions collection
-        const { databases: adminDatabases } = await createAdminClient();
+        try {
+            const { databases: adminDatabases } = await createAdminClient();
 
-        // Find and delete the permission
-        const permissions = await adminDatabases.listDocuments<DepartmentPermission>(
-            DATABASE_ID,
-            DEPARTMENT_PERMISSIONS_ID,
-            [
-                Query.equal("departmentId", departmentId),
-                Query.equal("permissionKey", permKey),
-            ]
-        );
+            const permissions = await adminDatabases.listDocuments<DepartmentPermission>(
+                DATABASE_ID,
+                DEPARTMENT_PERMISSIONS_ID,
+                [Query.equal("departmentId", departmentId)]
+            );
 
-        if (permissions.total === 0) {
-            return c.json({ error: "Permission not found on this department" }, 404);
+            let found = false;
+            for (const doc of permissions.documents) {
+                const keys = parseDepartmentPermissionKeys(doc);
+                if (!keys.includes(permKey)) {
+                    continue;
+                }
+
+                found = true;
+                const remaining = keys.filter((key) => key !== permKey);
+                if (remaining.length === 0) {
+                    await adminDatabases.deleteDocument(
+                        DATABASE_ID,
+                        DEPARTMENT_PERMISSIONS_ID,
+                        doc.$id
+                    );
+                } else {
+                    await adminDatabases.updateDocument(
+                        DATABASE_ID,
+                        DEPARTMENT_PERMISSIONS_ID,
+                        doc.$id,
+                        { permissions: serializeDepartmentPermissionKeys(remaining) }
+                    );
+                }
+            }
+
+            if (!found) {
+                return c.json({ error: "Permission not found on this department" }, 404);
+            }
+
+            await invalidateOrgAccessCache(orgId);
+
+            return c.json({ success: true });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to remove permission";
+            return c.json({ error: message }, 500);
         }
-
-        await adminDatabases.deleteDocument(
-            DATABASE_ID,
-            DEPARTMENT_PERMISSIONS_ID,
-            permissions.documents[0].$id
-        );
-
-        await invalidateOrgAccessCache(orgId);
-
-        return c.json({ success: true });
     });
 
 export default app;

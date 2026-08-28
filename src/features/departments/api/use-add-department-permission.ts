@@ -24,8 +24,8 @@ export const useAddDepartmentPermission = () => {
             });
 
             if (!response.ok) {
-                const error = await response.json() as { error?: string };
-                throw new Error(error.error || "Failed to add permission");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to add permission");
             }
 
             return await response.json();

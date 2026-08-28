@@ -49,9 +49,10 @@ const app = new Hono()
                 workspaceId
             );
 
-            // If user has no access (not a member), return empty access
-            // This prevents info leakage about org existence
-            if (!access.isOwner && !access.hasDepartmentAccess) {
+            // If user is not an org member at all, return empty access.
+            // Members without departments still get core workspace pages from resolveUserAccess.
+            // This prevents info leakage about org existence for non-members.
+            if (!access.orgMemberId && !access.isOwner) {
                 return c.json({
                     allowedRouteKeys: [],
                     permissions: [],

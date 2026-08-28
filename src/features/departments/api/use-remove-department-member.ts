@@ -23,8 +23,8 @@ export const useRemoveDepartmentMember = () => {
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error((error as { error?: string }).error || "Failed to remove member");
+                const error = await response.json().catch(() => ({})) as { error?: string };
+                throw new Error(error.error || response.statusText || "Failed to remove member");
             }
 
             return await response.json();
