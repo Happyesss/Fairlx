@@ -23,6 +23,7 @@ import { getMember } from "@/features/members/utils";
 import { MemberRole } from "@/features/members/types";
 import { OrganizationRole, OrgMemberStatus } from "@/features/organizations/types";
 import { OrgPermissionKey } from "@/features/org-permissions/types";
+import { parseDepartmentPermissionKeys } from "@/features/departments/lib/collection-schema";
 
 import {
     createUsageEventSchema,
@@ -126,7 +127,7 @@ async function checkOrgAdminAccess(
         const deptAssignments = await databases.listDocuments(
             DATABASE_ID,
             ORG_MEMBER_DEPARTMENTS_ID,
-            [Query.equal("orgMemberId", member.$id)]
+            [Query.equal("memberId", member.$id)]
         );
 
         if (deptAssignments.total === 0) {
@@ -144,12 +145,13 @@ async function checkOrgAdminAccess(
             DEPARTMENT_PERMISSIONS_ID,
             [
                 Query.equal("departmentId", departmentIds),
-                Query.equal("permissionKey", OrgPermissionKey.BILLING_VIEW),
-                Query.limit(1),
+                Query.limit(100),
             ]
         );
 
-        const hasAccess = billingPermissions.total > 0;
+        const hasAccess = billingPermissions.documents.some((doc) =>
+            parseDepartmentPermissionKeys(doc).includes(OrgPermissionKey.BILLING_VIEW)
+        );
         setCache(hasAccess);
         return hasAccess;
     } catch {
