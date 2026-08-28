@@ -3,8 +3,6 @@ export const GITHUB_API_BASE = "https://api.github.com";
 export const GITHUB_INTEGRATION_QUERY_KEYS = {
   repository: (projectId: string) => ["github-repo", projectId],
   documentation: (projectId: string) => ["github-docs", projectId],
-  commits: (projectId: string) => ["github-commits", projectId],
-  questions: (projectId: string) => ["github-questions", projectId],
   events: (projectId: string) => ["github-events", projectId],
 };
 

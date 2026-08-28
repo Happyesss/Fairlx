@@ -14,21 +14,6 @@ export const generateDocumentationSchema = z.object({
   projectId: z.string(),
 });
 
-export const askQuestionSchema = z.object({
-  projectId: z.string(),
-  question: z.string().min(10, "Question must be at least 10 characters"),
-});
-
-export const syncCommitsSchema = z.object({
-  projectId: z.string(),
-  limit: z.number().optional().default(15),
-});
-
-export const summarizeCommitSchema = z.object({
-  projectId: z.string(),
-  commitHash: z.string(),
-});
-
 export const refineDocumentationSchema = z.object({
   projectId: z.string(),
   prompt: z.string().min(3, "Prompt must be at least 3 characters"),
