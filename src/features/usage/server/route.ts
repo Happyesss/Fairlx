@@ -23,6 +23,7 @@ import { getMember } from "@/features/members/utils";
 import { MemberRole } from "@/features/members/types";
 import { OrganizationRole, OrgMemberStatus } from "@/features/organizations/types";
 import { OrgPermissionKey } from "@/features/org-permissions/types";
+import { DepartmentPermission } from "@/features/departments/types";
 import { parseDepartmentPermissionKeys } from "@/features/departments/lib/collection-schema";
 
 import {
@@ -139,8 +140,7 @@ async function checkOrgAdminAccess(
 
         // Check if any department has BILLING_VIEW permission
         const { databases: adminDb } = await createAdminClient();
-
-        const billingPermissions = await adminDb.listDocuments(
+        const billingPermissions = await adminDb.listDocuments<DepartmentPermission>(
             DATABASE_ID,
             DEPARTMENT_PERMISSIONS_ID,
             [

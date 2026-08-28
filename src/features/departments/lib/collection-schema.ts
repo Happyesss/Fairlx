@@ -14,15 +14,18 @@ export function getAssignmentMemberId(assignment: {
     return assignment.memberId || assignment.orgMemberId || "";
 }
 
-export function parseDepartmentPermissionKeys(doc: {
-    permissionKey?: string;
-    permissions?: unknown;
-}): string[] {
-    if (typeof doc.permissionKey === "string" && doc.permissionKey.length > 0) {
-        return [doc.permissionKey];
+export function parseDepartmentPermissionKeys(doc: unknown): string[] {
+    if (!doc || typeof doc !== "object") {
+        return [];
     }
 
-    const raw = doc.permissions;
+    const record = doc as { permissionKey?: unknown; permissions?: unknown };
+
+    if (typeof record.permissionKey === "string" && record.permissionKey.length > 0) {
+        return [record.permissionKey];
+    }
+
+    const raw = record.permissions;
     if (Array.isArray(raw)) {
         return raw.filter((key): key is string => typeof key === "string" && key.length > 0);
     }

@@ -31,6 +31,19 @@ describe("parseDepartmentPermissionKeys", () => {
         expect(parseDepartmentPermissionKeys({ permissions: "BILLING_VIEW, MEMBERS_VIEW" }))
             .toEqual(["BILLING_VIEW", "MEMBERS_VIEW"]);
     });
+
+    it("reads Appwrite documents that only share $id fields", () => {
+        expect(parseDepartmentPermissionKeys({
+            $id: "perm_1",
+            $collectionId: "department_permissions",
+            permissions: JSON.stringify(["BILLING_VIEW"]),
+        })).toEqual(["BILLING_VIEW"]);
+    });
+
+    it("returns an empty list for non-objects", () => {
+        expect(parseDepartmentPermissionKeys(null)).toEqual([]);
+        expect(parseDepartmentPermissionKeys(undefined)).toEqual([]);
+    });
 });
 
 describe("serializeDepartmentPermissionKeys", () => {
