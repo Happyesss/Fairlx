@@ -94,11 +94,21 @@ const MemberProfileDialog = dynamic(() => import("@/features/organizations/compo
 });
 
 
-export const OrganizationSettingsClient = () => {
+interface OrganizationSettingsClientProps {
+    defaultTab?: string;
+    showAllInvoices?: boolean;
+}
+
+export const OrganizationSettingsClient = ({
+    defaultTab = "general",
+    showAllInvoices = false,
+}: OrganizationSettingsClientProps = {}) => {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { isOrg, primaryOrganizationId } = useAccountType();
-    const [activeTab, setActiveTab] = useState("general");
+    const [activeTab, setActiveTab] = useState(
+        defaultTab === "invoices" ? "billing" : defaultTab
+    );
 
     // Fetch organization data
     const {
@@ -1220,6 +1230,7 @@ export const OrganizationSettingsClient = () => {
                         <OrganizationBillingSettings
                             organizationId={primaryOrganizationId || ""}
                             organizationName={organization?.name || ""}
+                            showAllInvoices={showAllInvoices}
                         />
                     </Suspense>
                 </TabsContent>

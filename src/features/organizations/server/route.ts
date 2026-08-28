@@ -1557,7 +1557,11 @@ const app = new Hono()
                 limit,
                 offset,
             });
-        } catch {
+        } catch (error) {
+            console.error("[org-audit] Failed to fetch organization audit logs", {
+                orgId,
+                error: error instanceof Error ? error.message : error,
+            });
             return c.json({ error: "Failed to fetch audit logs" }, 500);
         }
     });

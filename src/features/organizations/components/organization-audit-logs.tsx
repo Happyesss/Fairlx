@@ -225,7 +225,9 @@ export function OrganizationAuditLogs({ organizationId }: OrganizationAuditLogsP
                                     </div>
                                     <div className="w-32 shrink-0 flex items-center gap-1.5 text-xs text-muted-foreground">
                                         <User className="h-3 w-3 shrink-0" />
-                                        <span className="truncate font-mono">{log.actorUserId.slice(0, 10)}...</span>
+                                        <span className="truncate font-mono">
+                                            {log.actorUserId ? `${log.actorUserId.slice(0, 10)}...` : "Unknown"}
+                                        </span>
                                     </div>
                                     <div className="w-32 shrink-0 text-right">
                                         <p className="text-xs font-medium">

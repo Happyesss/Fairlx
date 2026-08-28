@@ -1,5 +1,10 @@
-import { ID, Databases, Models } from "node-appwrite";
+import { ID, Databases, Models, Query } from "node-appwrite";
 import { DATABASE_ID, ORGANIZATION_AUDIT_LOGS_ID } from "@/config";
+import {
+    buildOrgAuditLogDocument,
+    normalizeOrgAuditLog,
+    pickLiveOrgAuditLogDocument,
+} from "./lib/audit-log-schema";
 
 let hasWarnedConfig = false;
 
@@ -148,24 +153,40 @@ export async function logOrgAudit({
             return null;
         }
 
-        const log = await databases.createDocument(
-            DATABASE_ID,
-            ORGANIZATION_AUDIT_LOGS_ID,
-            ID.unique(),
-            {
-                organizationId,
-                actorUserId,
-                actionType,
-                metadata: JSON.stringify(metadata),
-                // Use epoch milliseconds as string (Appwrite attribute is string <=18 chars)
-                timestamp: String(Date.now()),
-                ipAddress: ipAddress || null,
-                userAgent: userAgent || null,
-            }
-        );
-        return log as unknown as OrgAuditLog;
-    } catch {
+        const payload = buildOrgAuditLogDocument({
+            organizationId,
+            actorUserId,
+            actionType,
+            metadata,
+            ipAddress,
+            userAgent,
+        });
+
+        try {
+            const log = await databases.createDocument(
+                DATABASE_ID,
+                ORGANIZATION_AUDIT_LOGS_ID,
+                ID.unique(),
+                payload
+            );
+            return (normalizeOrgAuditLog(log) ?? log) as unknown as OrgAuditLog;
+        } catch {
+            // Live collection is workspace-style and rejects unknown app-schema attributes.
+            const log = await databases.createDocument(
+                DATABASE_ID,
+                ORGANIZATION_AUDIT_LOGS_ID,
+                ID.unique(),
+                pickLiveOrgAuditLogDocument(payload)
+            );
+            return (normalizeOrgAuditLog(log) ?? log) as unknown as OrgAuditLog;
+        }
+    } catch (error) {
         // CRITICAL: Never throw from audit logging
+        console.error("[org-audit] Failed to write audit log", {
+            organizationId,
+            actionType,
+            error: error instanceof Error ? error.message : error,
+        });
         return null;
     }
 }
@@ -192,8 +213,6 @@ export async function getOrgAuditLogs({
     limit?: number;
     offset?: number;
 }): Promise<{ logs: OrgAuditLog[]; total: number }> {
-    const { Query } = await import("node-appwrite");
-
     // Safety check: if audit log collection is not configured, return empty
     if (!ORGANIZATION_AUDIT_LOGS_ID) {
         if (!hasWarnedConfig) {
@@ -202,31 +221,75 @@ export async function getOrgAuditLogs({
         return { logs: [], total: 0 };
     }
 
+    const mapLogs = (documents: Models.Document[]): OrgAuditLog[] =>
+        documents
+            .map((doc) => normalizeOrgAuditLog(doc))
+            .filter((log): log is NonNullable<ReturnType<typeof normalizeOrgAuditLog>> => log !== null) as OrgAuditLog[];
+
+    const run = (queries: string[]) =>
+        databases.listDocuments(DATABASE_ID, ORGANIZATION_AUDIT_LOGS_ID, queries);
+
+    const orgQuery = Query.equal("organizationId", organizationId);
     const queries = [
-        Query.equal("organizationId", organizationId),
-        Query.orderDesc("timestamp"),
+        orgQuery,
+        Query.orderDesc("$createdAt"),
         Query.limit(limit),
         Query.offset(offset),
     ];
 
+    // Live collection uses `action`, not `actionType`. `$createdAt` is always indexed.
     if (actionType) {
-        queries.push(Query.equal("actionType", actionType));
+        queries.push(Query.equal("action", actionType));
     }
     if (startDate) {
-        queries.push(Query.greaterThanEqual("timestamp", startDate));
+        queries.push(Query.greaterThanEqual("$createdAt", startDate));
     }
     if (endDate) {
-        queries.push(Query.lessThanEqual("timestamp", endDate));
+        queries.push(Query.lessThanEqual("$createdAt", endDate));
     }
 
-    const result = await databases.listDocuments(
-        DATABASE_ID,
-        ORGANIZATION_AUDIT_LOGS_ID,
-        queries
-    );
+    try {
+        const result = await run(queries);
+        return {
+            logs: mapLogs(result.documents),
+            total: result.total,
+        };
+    } catch (primaryError) {
+        console.error("[org-audit] Primary audit query failed, retrying with in-memory filters", {
+            organizationId,
+            error: primaryError instanceof Error ? primaryError.message : primaryError,
+        });
+    }
+
+    const scanLimit = Math.min(Math.max(limit + offset, limit), 500);
+    const result = await run([
+        orgQuery,
+        Query.orderDesc("$createdAt"),
+        Query.limit(scanLimit),
+        Query.offset(0),
+    ]);
+
+    let logs = mapLogs(result.documents);
+    if (actionType) {
+        logs = logs.filter((log) => log.actionType === actionType);
+    }
+    if (startDate) {
+        const startMs = Date.parse(startDate);
+        logs = logs.filter((log) => {
+            const ts = Date.parse(log.timestamp);
+            return Number.isNaN(ts) || Number.isNaN(startMs) || ts >= startMs;
+        });
+    }
+    if (endDate) {
+        const endMs = Date.parse(endDate);
+        logs = logs.filter((log) => {
+            const ts = Date.parse(log.timestamp);
+            return Number.isNaN(ts) || Number.isNaN(endMs) || ts <= endMs;
+        });
+    }
 
     return {
-        logs: result.documents as OrgAuditLog[],
-        total: result.total,
+        logs: logs.slice(offset, offset + limit),
+        total: logs.length,
     };
 }
