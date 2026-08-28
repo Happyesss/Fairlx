@@ -31,28 +31,6 @@ export type CodeDocumentation = Models.Document & {
   mermaidDiagram?: string;
 };
 
-export type CommitSummary = Models.Document & {
-  projectId: string;
-  commitHash: string;
-  commitMessage: string;
-  author: string;
-  authorAvatar?: string;
-  timestamp: string;
-  summary: string;
-  filesChanged: number;
-  additions: number;
-  deletions: number;
-};
-
-export type CodebaseQuestion = Models.Document & {
-  projectId: string;
-  userId: string;
-  question: string;
-  answer: string;
-  timestamp: string;
-  upvotes: number;
-};
-
 export type FileAnalysis = {
   path: string;
   summary: string;

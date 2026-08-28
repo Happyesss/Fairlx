@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useCallback } from "react";
-import { Github, BookOpen, MessageSquare, GitCommit, Loader2, ExternalLink, Settings, FileText } from "lucide-react";
+import { Github, BookOpen, GitBranch, GitPullRequest, Loader2, ExternalLink, Settings, FileText, CheckCircle2, ArrowRight } from "lucide-react";
 
 import { PageLoader } from "@/components/page-loader";
 import { useProjectId } from "@/features/projects/hooks/use-project-id";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
@@ -19,19 +19,8 @@ import {
 
 import {
   ConnectRepository,
-  CodebaseQA,
-  CommitHistory
 } from "@/features/github-integration/components";
 import { useGetRepository } from "@/features/github-integration";
-import {
-  getCommitsCount,
-  saveCommitsToCache,
-  readLegacyCommits,
-  readLegacyCommitsCount,
-  clearLegacyCommits,
-  notifyCommitsUpdated,
-  COMMIT_CACHE_CHANNEL,
-} from "@/features/github-integration/lib/commit-cache";
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 
@@ -41,77 +30,10 @@ export const GitHubIntegrationClient = () => {
   const { data: repository, isLoading } = useGetRepository(projectId);
   const { isProjectAdmin } = useProjectPermissions({ projectId, workspaceId });
   const canManageGithub = isProjectAdmin;
-  const [commitsCount, setCommitsCount] = useState(0);
+
   const documentationPath = workspaceId
     ? `/workspaces/${workspaceId}/projects/${projectId}/github/documentation`
     : "#";
-
-  const loadCommitsCount = useCallback(async () => {
-    try {
-      const count = await getCommitsCount(projectId);
-      if (count > 0) {
-        setCommitsCount(count);
-        // console.log(`[CommitsCount] Updated to ${count}`);
-        return;
-      }
-
-      const legacyCommits = readLegacyCommits(projectId);
-      if (legacyCommits.length > 0) {
-        setCommitsCount(legacyCommits.length);
-        await saveCommitsToCache(projectId, legacyCommits);
-        clearLegacyCommits(projectId);
-        notifyCommitsUpdated(projectId);
-        // console.log(`[CommitsCount] Migrated ${legacyCommits.length} legacy commits`);
-        return;
-      }
-
-      const legacyCount = readLegacyCommitsCount(projectId);
-      setCommitsCount(legacyCount);
-      // console.log(`[CommitsCount] Loaded legacy count ${legacyCount}`);
-    } catch {
-      setCommitsCount(0);
-    }
-  }, [projectId]);
-
-  // Load commits count on mount and when project changes
-  useEffect(() => {
-    loadCommitsCount();
-  }, [loadCommitsCount]);
-
-  // Listen for commits updates
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const handleCommitsUpdate = (event: Event) => {
-      const projectDetail = (event as CustomEvent<{ projectId?: string }>).detail?.projectId;
-      if (projectDetail && projectDetail !== projectId) {
-        return;
-      }
-
-      loadCommitsCount();
-    };
-
-    window.addEventListener('commitsUpdated', handleCommitsUpdate);
-
-    let channel: BroadcastChannel | null = null;
-    if ("BroadcastChannel" in window) {
-      channel = new BroadcastChannel(COMMIT_CACHE_CHANNEL);
-      channel.addEventListener('message', (event: MessageEvent<{ projectId?: string }>) => {
-        if (event.data?.projectId && event.data.projectId !== projectId) {
-          return;
-        }
-
-        loadCommitsCount();
-      });
-    }
-
-    return () => {
-      window.removeEventListener('commitsUpdated', handleCommitsUpdate);
-      channel?.close();
-    };
-  }, [loadCommitsCount, projectId]);
 
   if (isLoading) {
     return <PageLoader />;
@@ -121,14 +43,6 @@ export const GitHubIntegrationClient = () => {
   if (!repository) {
     return (
       <div className="flex flex-col gap-y-6 max-w-7xl mx-auto">
-        {/* Back Button */}
-        {/* <div className="flex items-center gap-4">
-          <Link href={`/workspaces/${workspaceId}/projects/${projectId}`}>
-            <Button variant="ghost" size="icon" className="size-9">
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link>
-        </div> */}
         {/* Header Section */}
         <div className="text-center space-y-3 pt-4">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-green-500/10 mb-4">
@@ -138,51 +52,22 @@ export const GitHubIntegrationClient = () => {
             GitHub Integration
           </h1>
           <p className="text-base text-muted-foreground max-w-2xl mx-auto">
-            Connect your GitHub repository to unlock AI-powered code insights
+            Connect your GitHub repository to generate automated documentation and synchronize issues and commits with your tasks
           </p>
         </div>
 
-        {/* Main Connection Flow - n8n Style - Horizontal */}
+        {/* Main Connection Flow */}
         <div className="relative py-8">
-          {/* Horizontal Connection Lines */}
           <div className="hidden lg:block">
-            {/* Line from GitHub to Connect */}
-            <div className="absolute top-1/2 left-[20%] w-[13%] h-0.5 bg-gradient-to-r from-blue-500/50 to-purple-500/50 -translate-y-1/2" />
-            {/* Line from Connect to AI Processing */}
-            <div className="absolute top-1/2 left-[47%] w-[13%] h-0.5 bg-gradient-to-r from-purple-500/50 to-purple-500/50 -translate-y-1/2" />
-            {/* Line from AI Processing to Insights */}
-            <div className="absolute top-1/2 left-[73%] w-[13%] h-0.5 bg-gradient-to-r from-purple-500/50 to-green-500/50 -translate-y-1/2" />
+            {/* Horizontal Connection Lines */}
+            <div className="absolute top-1/2 left-[28%] w-[18%] h-0.5 bg-gradient-to-r from-blue-500/50 to-purple-500/50 -translate-y-1/2" />
+            <div className="absolute top-1/2 left-[54%] w-[18%] h-0.5 bg-gradient-to-r from-purple-500/50 to-emerald-500/50 -translate-y-1/2" />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8 items-center">
-            {/* Step 1: GitHub Source */}
-            <div className="relative flex justify-center lg:justify-end">
-              <div className="group relative w-full max-w-sm">
-                <div className="absolute -inset-1  rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-300" />
-                <Card className="relative border-2 border-border hover:border-border/80 transition-all duration-300 shadow-lg hover:shadow-xl">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center">
-                        <Github className="h-6 w-6 text-foreground" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">GitHub</CardTitle>
-                        <p className="text-xs text-muted-foreground">Source</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      Connect your repository to start
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-
-            {/* Connect Button Node */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-center">
+            {/* Step 1: Connect Repository */}
             <div className="relative flex justify-center">
-              <div className="relative z-20">
+              <div className="relative z-20 w-full max-w-sm">
                 <Card className="border-dashed border-2 border-primary/50 bg-gradient-to-br from-background to-primary/5 shadow-xl hover:shadow-2xl hover:border-primary transition-all duration-300">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base text-center">Connect</CardTitle>
@@ -194,27 +79,21 @@ export const GitHubIntegrationClient = () => {
                     <ConnectRepository projectId={projectId} canManage={canManageGithub} />
                   </CardContent>
                 </Card>
-                {/* Connection node indicator */}
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-background border-2 border-primary rounded-full flex items-center justify-center shadow-lg">
-                  <div className="w-4 h-4 bg-primary rounded-full animate-pulse" />
-                </div>
               </div>
             </div>
 
-            {/* Step 2: AI Processing */}
+            {/* Step 2: Auto Documentation */}
             <div className="relative flex justify-center">
               <div className="group relative w-full max-w-sm">
-                <div className="absolute -inset-1  rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-300" />
                 <Card className="relative border-2 border-indigo-500/20 hover:border-indigo-500/40 transition-all duration-300 shadow-lg hover:shadow-xl">
                   <CardHeader className="pb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-indigo-500/20 to-indigo-500/0 animate-shimmer" />
-                        <BookOpen className="h-6 w-6 text-indigo-500 relative z-10" />
+                      <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+                        <BookOpen className="h-6 w-6 text-indigo-500" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg">AI Process</CardTitle>
-                        <p className="text-xs text-muted-foreground">Transform</p>
+                        <CardTitle className="text-lg">Auto Docs</CardTitle>
+                        <p className="text-xs text-muted-foreground">AI Powered</p>
                       </div>
                     </div>
                   </CardHeader>
@@ -222,11 +101,11 @@ export const GitHubIntegrationClient = () => {
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                        <span>Code Analysis</span>
+                        <span>Architecture Manuals</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                        <span>Documentation</span>
+                        <span>API Specifications</span>
                       </div>
                     </div>
                   </CardContent>
@@ -234,31 +113,30 @@ export const GitHubIntegrationClient = () => {
               </div>
             </div>
 
-            {/* Step 3: Insights Output */}
-            <div className="relative flex justify-center lg:justify-start">
+            {/* Step 3: Task Synchronization */}
+            <div className="relative flex justify-center">
               <div className="group relative w-full max-w-sm">
-                <div className="absolute -inset-1  rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-300" />
-                <Card className="relative border-2 border-green-500/20 hover:border-green-500/40 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Card className="relative border-2 border-emerald-500/20 hover:border-emerald-500/40 transition-all duration-300 shadow-lg hover:shadow-xl">
                   <CardHeader className="pb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
-                        <MessageSquare className="h-6 w-6 text-green-500" />
+                      <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                        <GitPullRequest className="h-6 w-6 text-emerald-500" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg">Insights</CardTitle>
-                        <p className="text-xs text-muted-foreground">Output</p>
+                        <CardTitle className="text-lg">Task Sync</CardTitle>
+                        <p className="text-xs text-muted-foreground">Automated</p>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                        <span>Documentation</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Commits & PRs Linking</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                        <span>Q&A</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>GitHub Issues to Backlog</span>
                       </div>
                     </div>
                   </CardContent>
@@ -282,7 +160,7 @@ export const GitHubIntegrationClient = () => {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Automatically generate comprehensive documentation from your codebase using AI
+                Automatically generate comprehensive documentation and architecture manuals from your codebase using AI
               </p>
             </CardContent>
           </Card>
@@ -292,31 +170,31 @@ export const GitHubIntegrationClient = () => {
             <CardHeader>
               <div className="relative">
                 <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
-                  <MessageSquare className="h-6 w-6 text-emerald-600" />
+                  <GitPullRequest className="h-6 w-6 text-emerald-600" />
                 </div>
-                <CardTitle className="text-lg">Ask Questions</CardTitle>
+                <CardTitle className="text-lg">Task & Issue Sync</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Ask natural language questions about your codebase and get instant answers
+                Link GitHub commits, PRs, and issues seamlessly to tasks in your workspace backlog
               </p>
             </CardContent>
           </Card>
 
-          <Card className="group relative overflow-hidden border-2 hover:border-amber-500/50 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Card className="group relative overflow-hidden border-2 hover:border-indigo-500/50 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <CardHeader>
               <div className="relative">
-                <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
-                  <GitCommit className="h-6 w-6 text-amber-600" />
+                <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300">
+                  <GitBranch className="h-6 w-6 text-indigo-600" />
                 </div>
-                <CardTitle className="text-lg">Commit Insights</CardTitle>
+                <CardTitle className="text-lg">Branch & Release Tracking</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Get AI-generated summaries of commits to understand changes quickly
+                Monitor development branches and tag releases to track deployment milestones
               </p>
             </CardContent>
           </Card>
@@ -330,11 +208,6 @@ export const GitHubIntegrationClient = () => {
     <div className="flex flex-col gap-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-4">
-          {/* <Link href={`/workspaces/${workspaceId}/projects/${projectId}`}>
-            <Button variant="ghost" size="icon" className="size-9">
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link> */}
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
               GitHub Integration
@@ -346,7 +219,6 @@ export const GitHubIntegrationClient = () => {
                 <span className="text-xs">•</span>
                 <span className="text-sm">Branch: {repository.branch}</span>
                 <span className="text-xs">•</span>
-
               </div>
               <a
                 href={repository.githubUrl}
@@ -385,15 +257,13 @@ export const GitHubIntegrationClient = () => {
 
             <SheetContent className="w-full sm:max-w-md p-0">
               <SheetHeader className="pb-0 p-6 border-b">
-                <SheetTitle className="text-lg font-semibold ">
+                <SheetTitle className="text-lg font-semibold">
                   Repository Details
                 </SheetTitle>
-                <SheetDescription className="text-sm font-normal  text-muted-foreground">
+                <SheetDescription className="text-sm font-normal text-muted-foreground">
                   View and manage repository connection
                 </SheetDescription>
               </SheetHeader>
-
-
 
               <div className="space-y-6 p-6">
                 <div className="space-y-5">
@@ -437,10 +307,8 @@ export const GitHubIntegrationClient = () => {
                     <p className="text-sm text-muted-foreground capitalize">{repository.status}</p>
                   </div>
                 </div>
-
-
               </div>
-              <div className="pt-6 px-6 border-t ">
+              <div className="pt-6 px-6 border-t">
                 <ConnectRepository projectId={projectId} isUpdate canManage={canManageGithub} />
               </div>
             </SheetContent>
@@ -455,9 +323,73 @@ export const GitHubIntegrationClient = () => {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <CodebaseQA projectId={projectId} commitsCount={commitsCount} />
-        <CommitHistory projectId={projectId} />
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Auto Documentation Card */}
+        <Card className="border border-border/80 shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
+                <BookOpen className="size-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Auto Documentation</CardTitle>
+                <CardDescription className="text-xs">
+                  AI-generated technical documentation & architecture manuals
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Analyze your repository structure, technologies, and interfaces to produce comprehensive markdown documentation with export capabilities.
+            </p>
+            <Button size="sm" className="w-full sm:w-auto" asChild>
+              <Link href={documentationPath} className="flex items-center gap-2">
+                <FileText className="size-4" />
+                View & Generate Documentation
+                <ArrowRight className="size-3.5 ml-1" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Repository Status & Connection Card */}
+        <Card className="border border-border/80 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-green-500/10 text-green-600">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Connection Status</CardTitle>
+                <CardDescription className="text-xs">
+                  Active synchronization details
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-muted/50 border space-y-1">
+                <span className="text-muted-foreground">Repository</span>
+                <p className="font-semibold truncate">{repository.owner}/{repository.repositoryName}</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-muted/50 border space-y-1">
+                <span className="text-muted-foreground">Active Branch</span>
+                <p className="font-mono font-semibold truncate">{repository.branch}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <Badge variant="outline" className="text-green-600 border-green-500/30 bg-green-500/10 gap-1.5 py-1">
+                <span className="size-1.5 rounded-full bg-green-500 animate-pulse" />
+                Connected
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Synced {new Date(repository.lastSyncedAt).toLocaleDateString()}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
