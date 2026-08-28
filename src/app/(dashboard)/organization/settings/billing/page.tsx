@@ -4,15 +4,13 @@ import { OrganizationSettingsClient } from "@/app/(dashboard)/workspaces/[worksp
 import { resolveOrgSettingsTab } from "@/features/organizations/lib/org-settings-tab";
 
 /**
- * Dashboard-level Organization Settings Page
- * 
- * This route is accessible at /organization (not workspace-scoped)
- * Allows ORG account owners/admins to manage organization settings
- * even when ZERO workspaces exist.
- * 
- * Organization is the control plane - it should never depend on workspace existence.
+ * Organization billing settings
+ *
+ * Accessible at /organization/settings/billing
+ * Used by invoice "View All", suspension recovery, and billing banners.
+ * Organization is the control plane — this must work with zero workspaces.
  */
-export default async function OrganizationPage({
+export default async function OrganizationBillingSettingsPage({
     searchParams,
 }: {
     searchParams: Promise<{ tab?: string }>;
@@ -23,15 +21,14 @@ export default async function OrganizationPage({
         redirect("/sign-in");
     }
 
-    // Check if this is an ORG account
     const prefs = user.prefs || {};
     if (prefs.accountType !== "ORG") {
-        // PERSONAL accounts don't have organization settings
         redirect("/");
     }
 
     const params = await searchParams;
     const { tab, showAllInvoices } = resolveOrgSettingsTab({
+        pathname: "/organization/settings/billing",
         searchTab: params.tab,
     });
 

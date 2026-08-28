@@ -18,6 +18,11 @@ import { useGetOrganization } from "../api/use-get-organization";
 import { useGetOrgMembers } from "../api/use-get-org-members";
 import { useUpdateOrganization } from "../api/use-update-organization";
 import { useGetInvoices } from "@/features/usage/api";
+import {
+    ORG_INVOICE_FULL_LIMIT,
+    ORG_INVOICE_PREVIEW_LIMIT,
+    ORG_INVOICES_VIEW_ALL_HREF,
+} from "@/features/organizations/lib/org-settings-tab";
 
 import {
     useGetBillingAccount,
@@ -35,18 +40,20 @@ import { client } from "@/lib/rpc";
 interface OrganizationBillingSettingsProps {
     organizationId: string;
     organizationName: string;
+    showAllInvoices?: boolean;
 }
 
-export function OrganizationBillingSettings({
+export const OrganizationBillingSettings = ({
     organizationId,
     organizationName,
-}: OrganizationBillingSettingsProps) {
+    showAllInvoices = false,
+}: OrganizationBillingSettingsProps) => {
     const { data: organization, isLoading: isOrgLoading } = useGetOrganization({ orgId: organizationId });
     const queryClient = useQueryClient();
     const { data: membersDoc } = useGetOrgMembers({ organizationId });
     const { data: invoicesDoc, isLoading: isInvoicesLoading } = useGetInvoices({
         organizationId,
-        limit: 10
+        limit: showAllInvoices ? ORG_INVOICE_FULL_LIMIT : ORG_INVOICE_PREVIEW_LIMIT,
     });
     const { mutate: updateOrganization } = useUpdateOrganization();
 
@@ -85,6 +92,14 @@ export function OrganizationBillingSettings({
     const ownerEmail = membersDoc?.documents.find(m => m.role === "OWNER")?.email;
     const billingAccount = billingAccountData?.data;
     const invoices = invoicesDoc?.documents || [];
+    const invoiceTotal = invoicesDoc?.total ?? invoices.length;
+
+    useEffect(() => {
+        if (!showAllInvoices || isInvoicesLoading) return;
+        const invoicesSection = document.getElementById("organization-invoices");
+        invoicesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [showAllInvoices, isInvoicesLoading]);
+
     const isLoading = isOrgLoading || isBillingLoading;
     const walletBalance = billingAccountData?.walletBalance ?? 0;
     const walletCurrency = billingAccountData?.walletCurrency ?? "USD";
@@ -459,18 +474,26 @@ export function OrganizationBillingSettings({
                 </section>
 
                 {/* ── Invoice History ── */}
-                <section>
+                <section id="organization-invoices" className="scroll-mt-6">
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h2 className="text-[18px] font-semibold">Invoices</h2>
-                            <p className="text-xs text-muted-foreground mt-0.5">View and download past invoices</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                {showAllInvoices
+                                    ? invoiceTotal > 0
+                                        ? `Showing ${invoices.length} of ${invoiceTotal} invoices`
+                                        : "View and download past invoices"
+                                    : "View and download past invoices"}
+                            </p>
                         </div>
-                        <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
-                            <Link href="/organization/settings/billing?tab=invoices">
-                                View All
-                                <ExternalLink className="h-3 w-3" />
-                            </Link>
-                        </Button>
+                        {!showAllInvoices && (
+                            <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                                <Link href={ORG_INVOICES_VIEW_ALL_HREF}>
+                                    View All
+                                    <ExternalLink className="h-3 w-3" />
+                                </Link>
+                            </Button>
+                        )}
                     </div>
 
                     {isInvoicesLoading ? (
