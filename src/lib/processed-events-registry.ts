@@ -36,7 +36,7 @@ const usesDedicatedCollection = (): boolean => {
 /**
  * Event types for idempotency tracking
  */
-export type ProcessedEventType = "usage" | "invoice" | "webhook" | "wallet" | "github_rewards";
+export type ProcessedEventType = "usage" | "invoice" | "webhook" | "wallet" | "github_rewards" | "mcp_tool";
 
 /**
  * Processed event record

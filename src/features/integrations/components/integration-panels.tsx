@@ -20,6 +20,7 @@ import {
   useUpsertIntegration,
 } from "../api/use-integrations";
 import { parseVcsConfig, serializeVcsConfig } from "../lib/vcs-config";
+import { McpPlatformGuide } from "./mcp-platform-guide";
 
 interface IntegrationPanelsProps {
   projectId: string;
@@ -567,7 +568,7 @@ export function IntegrationPanels({
             <Bot className="size-4" /> Fairlx MCP + Custom servers
           </CardTitle>
           <CardDescription>
-            Issue MCP API tokens for Claude Code / Codex. Optionally store additional MCP URLs.
+            Issue MCP API tokens for Claude Code / Codex. Write and delete tools follow your project role. Optionally store additional MCP URLs.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -575,8 +576,8 @@ export function IntegrationPanels({
             <p className="font-medium text-sm">Fairlx MCP endpoint</p>
             <code className="break-all">
               {typeof window !== "undefined"
-                ? `${window.location.origin}/api/integrations/mcp/rpc`
-                : "/api/integrations/mcp/rpc"}
+                ? `${window.location.origin}/api/mcp`
+                : "/api/mcp"}
             </code>
           </div>
 
@@ -648,6 +649,13 @@ export function IntegrationPanels({
               ))}
             </ul>
           </div>
+
+          {/* Step-by-Step Platform Guides */}
+          <McpPlatformGuide
+            mcpUrl={typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp"}
+            token={newToken}
+            scope="project"
+          />
 
           <div className="space-y-2">
             <Label>Custom MCP servers (JSON)</Label>

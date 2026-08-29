@@ -2,8 +2,9 @@
 
 import { z } from "zod";
 import Image from "next/image";
-import { ImageIcon, Settings, Trash2, Upload } from "lucide-react";
-import { useRef } from "react";
+import { ImageIcon, Settings, Trash2, Upload, Puzzle } from "lucide-react";
+import { useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
@@ -11,6 +12,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Form,
   FormControl,
@@ -26,6 +33,7 @@ import { Workspace } from "../types";
 import { useUpdateWorkspace } from "../api/use-update-workspace";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDeleteWorkspace } from "../api/use-delete-workspace";
+import { WorkspaceMcpPanel } from "@/features/integrations/components/workspace-mcp-panel";
 
 
 interface EditWorkspaceFormProps {
@@ -37,6 +45,10 @@ export const EditWorkspaceForm = ({
   onCancel,
   initialValues,
 }: EditWorkspaceFormProps) => {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") || "general";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
   const { mutate, isPending } = useUpdateWorkspace();
   const { mutate: deleteWorkspace, isPending: isDeletingWorkspace } =
     useDeleteWorkspace();
@@ -95,7 +107,7 @@ export const EditWorkspaceForm = ({
 
 
   return (
-    <div className="w-full  space-y-8">
+    <div className="w-full space-y-6">
       <DeleteDialog />
 
       {/* Page Header */}
@@ -106,12 +118,36 @@ export const EditWorkspaceForm = ({
         <div>
           <h1 className="text-2xl font-semibold">Workspace Settings</h1>
           <p className="text-sm text-muted-foreground">
-            Manage your workspace identity and configuration
+            Manage your workspace identity, configuration, and integrations
           </p>
         </div>
       </div>
 
       <Separator />
+
+      {/* Settings Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
+        <div className="overflow-x-auto -mx-1 px-1 pb-1">
+          <TabsList className="relative flex w-fit gap-1 rounded-xl border border-border bg-muted/20 p-1 h-auto">
+            <TabsTrigger
+              value="general"
+              className="relative rounded-lg px-4 py-1.5 text-sm font-medium gap-2 transition-all duration-200 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+            >
+              <Settings className="size-4" />
+              General
+            </TabsTrigger>
+            <TabsTrigger
+              value="integrations"
+              className="relative rounded-lg px-4 py-1.5 text-sm font-medium gap-2 transition-all duration-200 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+            >
+              <Puzzle className="size-4" />
+              Integrations
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* General Tab */}
+        <TabsContent value="general" className="space-y-6 mt-0">
 
       {/* General Settings Card */}
       <Card className="border border-border shadow-none">
@@ -292,6 +328,13 @@ export const EditWorkspaceForm = ({
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* Integrations Tab */}
+        <TabsContent value="integrations" className="space-y-6 mt-0">
+          <WorkspaceMcpPanel workspaceId={initialValues.$id} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

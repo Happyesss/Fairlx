@@ -1,3 +1,4 @@
+// Prototype JSON-RPC at /api/integrations/mcp/rpc. Production MCP is POST /api/mcp.
 import { Hono } from "hono";
 import { ID, Query } from "node-appwrite";
 import { createAdminClient } from "@/lib/appwrite";
@@ -22,7 +23,7 @@ type JsonRpcRequest = {
 
 async function authenticateMcp(
   authHeader: string | undefined
-): Promise<{ projectId: string; workspaceId: string; tokenId: string } | null> {
+): Promise<{ projectId?: string; workspaceId: string; tokenId: string } | null> {
   if (!authHeader?.startsWith("Bearer ")) return null;
   const plaintext = authHeader.slice(7).trim();
   if (!plaintext) return null;
@@ -46,7 +47,7 @@ async function authenticateMcp(
       .catch(() => undefined);
 
     return {
-      projectId: token.projectId,
+      projectId: token.projectId || undefined,
       workspaceId: token.workspaceId,
       tokenId: token.$id,
     };
@@ -130,14 +131,16 @@ const TOOLS = [
 async function callTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: { projectId: string; workspaceId: string }
+  ctx: { projectId?: string; workspaceId: string }
 ) {
   const { databases } = await createAdminClient();
+  const projectId = ctx.projectId ?? (typeof args.projectId === "string" ? args.projectId : "");
+  if (!projectId) throw new Error("projectId is required (use a project-scoped token or pass projectId)");
 
   switch (name) {
     case "list_work_items": {
       const queries = [
-        Query.equal("projectId", ctx.projectId),
+        Query.equal("projectId", projectId),
         Query.limit(Math.min(Number(args.limit) || 50, 100)),
         Query.orderDesc("$createdAt"),
       ];
@@ -159,18 +162,18 @@ async function callTool(
         WORK_ITEMS_ID,
         String(args.workItemId)
       );
-      if (item.projectId !== ctx.projectId) throw new Error("Work item not in project");
+      if (item.projectId !== projectId) throw new Error("Work item not in project");
       return item;
     }
     case "create_work_item": {
       const existing = await databases.listDocuments(DATABASE_ID, WORK_ITEMS_ID, [
-        Query.equal("projectId", ctx.projectId),
+        Query.equal("projectId", projectId),
         Query.limit(1),
       ]);
       const key = `AI-${(existing.total || 0) + 1}`;
       const doc = await databases.createDocument(DATABASE_ID, WORK_ITEMS_ID, ID.unique(), {
         workspaceId: ctx.workspaceId,
-        projectId: ctx.projectId,
+        projectId: projectId,
         title: String(args.title),
         description: args.description ? String(args.description) : null,
         key,
@@ -185,7 +188,7 @@ async function callTool(
     case "update_work_item": {
       const id = String(args.workItemId);
       const item = await databases.getDocument(DATABASE_ID, WORK_ITEMS_ID, id);
-      if (item.projectId !== ctx.projectId) throw new Error("Work item not in project");
+      if (item.projectId !== projectId) throw new Error("Work item not in project");
       const updates: Record<string, unknown> = {};
       if (args.title !== undefined) updates.title = args.title;
       if (args.description !== undefined) updates.description = args.description;
@@ -197,7 +200,7 @@ async function callTool(
     case "add_comment": {
       const workItemId = String(args.workItemId);
       const item = await databases.getDocument(DATABASE_ID, WORK_ITEMS_ID, workItemId);
-      if (item.projectId !== ctx.projectId) throw new Error("Work item not in project");
+      if (item.projectId !== projectId) throw new Error("Work item not in project");
       const comment = await databases.createDocument(DATABASE_ID, COMMENTS_ID, ID.unique(), {
         workspaceId: ctx.workspaceId,
         taskId: workItemId,
@@ -208,7 +211,7 @@ async function callTool(
     }
     case "list_sprints": {
       const result = await databases.listDocuments(DATABASE_ID, SPRINTS_ID, [
-        Query.equal("projectId", ctx.projectId),
+        Query.equal("projectId", projectId),
         Query.limit(Math.min(Number(args.limit) || 50, 100)),
         Query.orderDesc("$createdAt"),
       ]);

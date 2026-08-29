@@ -1,0 +1,16 @@
+{
+  "name": "@fairlx/mcp-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fairlx MCP server — Streamable HTTP + local stdio proxy",
+  "bin": {
+    "fairlx-mcp": "./src/cli/stdio.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli/stdio.ts"
+  }
+}
