@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { ID, Query, Databases, Storage as AppwriteStorage } from "node-appwrite";
+import { ID, Query, Storage as AppwriteStorage } from "node-appwrite";
 
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
@@ -23,7 +23,6 @@ import { Member } from "@/features/members/types";
 import { projectDocsAI } from "../lib/project-docs-ai";
 import { ProjectDocument } from "../types";
 import { WorkItem, WorkItemStatus, WorkItemPriority, WorkItemType } from "@/features/sprints/types";
-import { Project } from "@/features/projects/types";
 import {
   ProjectAIContext,
   DocumentContext,
@@ -33,60 +32,7 @@ import {
   AITaskData,
   AITaskResponse,
 } from "../types/ai-context";
-
-
-// Generate unique work item key
-async function generateWorkItemKey(
-  databases: Databases,
-  projectId: string
-): Promise<string> {
-  const project = await databases.getDocument(
-    DATABASE_ID,
-    PROJECTS_ID,
-    projectId
-  ) as Project;
-
-  // Get project prefix (first 3-4 letters of project name in uppercase)
-  const prefix = project.name
-    .replace(/[^a-zA-Z]/g, "")
-    .substring(0, 4)
-    .toUpperCase() || "PROJ";
-
-  // Get all work items for this project to find the highest key number
-  const workItems = await databases.listDocuments(
-    DATABASE_ID,
-    WORK_ITEMS_ID,
-    [
-      Query.equal("projectId", projectId),
-      Query.orderDesc("$createdAt"),
-      Query.limit(100), // Get more items to find the highest number
-    ]
-  );
-
-  // Extract key numbers and find the highest one
-  let highestNumber = 0;
-  const keyPattern = new RegExp(`^${prefix}-(\\d+)$`);
-
-  for (const item of workItems.documents as unknown as WorkItem[]) {
-    if (item.key) {
-      const match = item.key.match(keyPattern);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > highestNumber) {
-          highestNumber = num;
-        }
-      }
-    }
-  }
-
-  // If no items found, also check the total count as a fallback
-  if (highestNumber === 0) {
-    highestNumber = workItems.total;
-  }
-
-  const nextNumber = highestNumber + 1;
-  return `${prefix}-${nextNumber}`;
-}
+import { generateWorkItemKey } from "@/features/sprints/lib/generate-work-item-key";
 
 // Schema for asking questions
 const askProjectQuestionSchema = z.object({

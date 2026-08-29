@@ -43,71 +43,7 @@ import {
   WorkItemPriority,
   PopulatedWorkItem,
 } from "../types";
-
-
-// Generate unique work item key
-async function generateWorkItemKey(
-  databases: Awaited<ReturnType<typeof createAdminClient>>["databases"],
-  projectId: string
-): Promise<string> {
-  const project = await databases.getDocument(
-    DATABASE_ID,
-    PROJECTS_ID,
-    projectId
-  ) as Project;
-
-  // Get project prefix (first 3-4 letters of project name in uppercase)
-  const prefix = project.name
-    .replace(/[^a-zA-Z]/g, "")
-    .substring(0, 4)
-    .toUpperCase() || "PROJ";
-
-  // Get all work items for this project to find the highest key number
-  let workItems;
-  try {
-    workItems = await databases.listDocuments<WorkItem>(
-      DATABASE_ID,
-      WORK_ITEMS_ID,
-      [
-        Query.equal("projectId", projectId),
-        Query.orderDesc("$createdAt"),
-        Query.limit(100), // Get more items to find the highest number
-      ]
-    );
-  } catch {
-    // Fallback if index on projectId, $createdAt doesn't exist
-    workItems = await databases.listDocuments<WorkItem>(
-      DATABASE_ID,
-      WORK_ITEMS_ID,
-      [
-        Query.equal("projectId", projectId),
-        Query.limit(100),
-      ]
-    );
-  }
-
-  // Extract key numbers and find the highest one
-  let highestNumber = 0;
-  const keyPattern = new RegExp(`^${prefix}-(\\d+)$`);
-
-  for (const item of workItems.documents) {
-    const match = item.key.match(keyPattern);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (num > highestNumber) {
-        highestNumber = num;
-      }
-    }
-  }
-
-  // If no items found, also check the total count as a fallback
-  if (highestNumber === 0) {
-    highestNumber = workItems.total;
-  }
-
-  const nextNumber = highestNumber + 1;
-  return `${prefix}-${nextNumber}`;
-}
+import { generateWorkItemKey } from "../lib/generate-work-item-key";
 
 /**
  * Resolve status ID or key to a human-readable name.

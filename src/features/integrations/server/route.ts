@@ -9,6 +9,7 @@ import {
   DATABASE_ID,
   PROJECT_INTEGRATIONS_ID,
   MCP_API_TOKENS_ID,
+  MEMBERS_ID,
   PROJECTS_ID,
   WORK_ITEMS_ID,
   GITHUB_REPOS_ID,
@@ -525,30 +526,90 @@ const app = new Hono()
 
   /**
    * MCP API tokens
+   * When projectId is given, lists project-scoped tokens (requires project EDIT_SETTINGS).
+   * When projectId is omitted but workspaceId is given, lists all workspace tokens
+   * (both workspace-scoped and project-scoped) — requires workspace admin role.
    */
   .get(
     "/mcp/tokens",
     sessionMiddleware,
-    zValidator("query", z.object({ projectId: z.string() })),
+    zValidator(
+      "query",
+      z.object({
+        projectId: z.string().optional(),
+        workspaceId: z.string().optional(),
+      })
+    ),
     async (c) => {
       const databases = c.get("databases");
       const user = c.get("user");
-      const { projectId } = c.req.valid("query");
-
-      const auth = await requireProjectAuth(
-        databases,
-        user.$id,
-        projectId,
-        ProjectPermissionKey.EDIT_SETTINGS
-      );
-      if (!auth.success) return c.json({ error: auth.error }, auth.code);
+      const { projectId, workspaceId } = c.req.valid("query");
 
       const { databases: adminDb } = await createAdminClient();
+
+      // Project-scoped listing (original behavior)
+      if (projectId) {
+        const auth = await requireProjectAuth(
+          databases,
+          user.$id,
+          projectId,
+          ProjectPermissionKey.EDIT_SETTINGS
+        );
+        if (!auth.success) return c.json({ error: auth.error }, auth.code);
+
+        try {
+          const tokens = await adminDb.listDocuments<McpApiToken>(
+            DATABASE_ID,
+            MCP_API_TOKENS_ID,
+            [Query.equal("projectId", projectId), Query.limit(50)]
+          );
+          return c.json({
+            data: tokens.documents.map((t) => ({
+              $id: t.$id,
+              name: t.name,
+              tokenPrefix: t.tokenPrefix,
+              createdBy: t.createdBy,
+              lastUsedAt: t.lastUsedAt,
+              $createdAt: t.$createdAt,
+              projectId: t.projectId ?? null,
+              scope: t.projectId ? "project" : "workspace",
+            })),
+          });
+        } catch {
+          return c.json({ data: [] });
+        }
+      }
+
+      // Workspace-level listing
+      if (!workspaceId) {
+        return c.json({ error: "projectId or workspaceId is required" }, 400);
+      }
+
+      // Verify user is workspace admin/owner
+      const members = await adminDb.listDocuments(DATABASE_ID, MEMBERS_ID, [
+        Query.equal("userId", user.$id),
+        Query.equal("workspaceId", workspaceId),
+        Query.limit(1),
+      ]);
+      const member = members.documents[0];
+      if (!member) {
+        return c.json({ error: "Not a workspace member" }, 403);
+      }
+      const role = String(member.role ?? "");
+      const isWsAdmin =
+        role === "OWNER" || role === "ADMIN" || role === "WS_ADMIN";
+      if (!isWsAdmin) {
+        return c.json(
+          { error: "Workspace admin role required to manage MCP tokens" },
+          403
+        );
+      }
+
       try {
         const tokens = await adminDb.listDocuments<McpApiToken>(
           DATABASE_ID,
           MCP_API_TOKENS_ID,
-          [Query.equal("projectId", projectId), Query.limit(50)]
+          [Query.equal("workspaceId", workspaceId), Query.limit(100)]
         );
         return c.json({
           data: tokens.documents.map((t) => ({
@@ -558,6 +619,8 @@ const app = new Hono()
             createdBy: t.createdBy,
             lastUsedAt: t.lastUsedAt,
             $createdAt: t.$createdAt,
+            projectId: t.projectId ?? null,
+            scope: t.projectId ? "project" : "workspace",
           })),
         });
       } catch {
@@ -571,28 +634,71 @@ const app = new Hono()
     const user = c.get("user");
     const data = c.req.valid("json");
 
-    const auth = await requireProjectAuth(
-      adminDb,
-      user.$id,
-      data.projectId,
-      ProjectPermissionKey.EDIT_SETTINGS
-    );
-    if (!auth.success) return c.json({ error: auth.error }, auth.code);
+    // Authorize: project-scoped or workspace-scoped
+    if (data.projectId) {
+      const auth = await requireProjectAuth(
+        adminDb,
+        user.$id,
+        data.projectId,
+        ProjectPermissionKey.EDIT_SETTINGS
+      );
+      if (!auth.success) return c.json({ error: auth.error }, auth.code);
+    } else {
+      // Workspace-scoped token — require workspace admin/owner
+      const members = await adminDb.listDocuments(DATABASE_ID, MEMBERS_ID, [
+        Query.equal("userId", user.$id),
+        Query.equal("workspaceId", data.workspaceId),
+        Query.limit(1),
+      ]);
+      const member = members.documents[0];
+      if (!member) {
+        return c.json({ error: "Not a workspace member" }, 403);
+      }
+      const role = String(member.role ?? "");
+      const isWsAdmin =
+        role === "OWNER" || role === "ADMIN" || role === "WS_ADMIN";
+      if (!isWsAdmin) {
+        return c.json(
+          { error: "Workspace admin role required to create workspace-scoped MCP tokens" },
+          403
+        );
+      }
+    }
 
     const generated = generateMcpToken();
-    const doc = await adminDb.createDocument<McpApiToken>(
-      DATABASE_ID,
-      MCP_API_TOKENS_ID,
-      ID.unique(),
-      {
-        projectId: data.projectId,
-        workspaceId: data.workspaceId,
-        name: data.name,
-        tokenHash: generated.hash,
-        tokenPrefix: generated.prefix,
-        createdBy: user.$id,
-      }
-    );
+    const baseFields: Record<string, unknown> = {
+      workspaceId: data.workspaceId,
+      name: data.name,
+      tokenHash: generated.hash,
+      tokenPrefix: generated.prefix,
+      createdBy: user.$id,
+      projectId: data.projectId || "",
+    };
+    const extendedFields = {
+      ...baseFields,
+      isRevoked: false,
+      ...(data.organizationId ? { organizationId: data.organizationId } : {}),
+      ...(data.scopes && data.scopes.length > 0 ? { scopes: data.scopes } : {}),
+      ...(data.expiresAt ? { expiresAt: data.expiresAt } : {}),
+    };
+
+    let doc: McpApiToken;
+    try {
+      doc = await adminDb.createDocument<McpApiToken>(
+        DATABASE_ID,
+        MCP_API_TOKENS_ID,
+        ID.unique(),
+        extendedFields
+      );
+    } catch {
+      // Fallback if organizationId/scopes/expiresAt/isRevoked are not yet on the collection.
+      doc = await adminDb.createDocument<McpApiToken>(
+        DATABASE_ID,
+        MCP_API_TOKENS_ID,
+        ID.unique(),
+        baseFields
+      );
+    }
 
     return c.json(
       {
@@ -602,6 +708,7 @@ const app = new Hono()
           tokenPrefix: doc.tokenPrefix,
           /** Shown once */
           token: generated.plaintext,
+          scope: data.projectId ? "project" : "workspace",
         },
       },
       201
@@ -614,13 +721,37 @@ const app = new Hono()
     const id = c.req.param("id");
 
     const doc = await adminDb.getDocument<McpApiToken>(DATABASE_ID, MCP_API_TOKENS_ID, id);
-    const auth = await requireProjectAuth(
-      adminDb,
-      user.$id,
-      doc.projectId,
-      ProjectPermissionKey.EDIT_SETTINGS
-    );
-    if (!auth.success) return c.json({ error: auth.error }, auth.code);
+
+    if (doc.projectId) {
+      // Project-scoped token — require project EDIT_SETTINGS
+      const auth = await requireProjectAuth(
+        adminDb,
+        user.$id,
+        doc.projectId,
+        ProjectPermissionKey.EDIT_SETTINGS
+      );
+      if (!auth.success) return c.json({ error: auth.error }, auth.code);
+    } else {
+      // Workspace-scoped token — require workspace admin/owner
+      const members = await adminDb.listDocuments(DATABASE_ID, MEMBERS_ID, [
+        Query.equal("userId", user.$id),
+        Query.equal("workspaceId", doc.workspaceId),
+        Query.limit(1),
+      ]);
+      const member = members.documents[0];
+      if (!member) {
+        return c.json({ error: "Not a workspace member" }, 403);
+      }
+      const role = String(member.role ?? "");
+      const isWsAdmin =
+        role === "OWNER" || role === "ADMIN" || role === "WS_ADMIN";
+      if (!isWsAdmin) {
+        return c.json(
+          { error: "Workspace admin role required to delete workspace-scoped MCP tokens" },
+          403
+        );
+      }
+    }
 
     await adminDb.deleteDocument(DATABASE_ID, MCP_API_TOKENS_ID, id);
     return c.json({ success: true });
@@ -662,7 +793,7 @@ const app = new Hono()
       const customMcps = parseCustomMcps(mcpCustom);
 
       const base = getAppBaseUrl();
-      const mcpUrl = `${base}/api/integrations/mcp/rpc`;
+      const mcpUrl = `${base}/api/mcp`;
       const branch = suggestedBranchName(
         String(workItem.key || workItemId.slice(0, 8)),
         String(workItem.title || workItem.name || "work-item")

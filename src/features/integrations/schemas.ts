@@ -14,9 +14,12 @@ export const upsertIntegrationSchema = z.object({
 });
 
 export const createMcpTokenSchema = z.object({
-  projectId: z.string().min(1),
+  projectId: z.string().min(1).optional(),
   workspaceId: z.string().min(1),
   name: z.string().min(1).max(100),
+  organizationId: z.string().min(1).optional(),
+  scopes: z.array(z.string().min(1)).max(32).optional(),
+  expiresAt: z.string().datetime().optional(),
 });
 
 export const agentContextSchema = z.object({

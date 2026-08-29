@@ -116,11 +116,11 @@ export function hashMcpToken(plaintext: string): string {
 }
 
 export function generateMcpToken(): { plaintext: string; hash: string; prefix: string } {
-  const plaintext = `flx_${randomBytes(24).toString("hex")}`;
+  const plaintext = `flx_live_sec_${randomBytes(32).toString("hex")}`;
   return {
     plaintext,
     hash: hashMcpToken(plaintext),
-    prefix: plaintext.slice(0, 10),
+    prefix: plaintext.slice(0, 16),
   };
 }
 

@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@fairlx/mcp-server": ["./packages/fairlx-mcp/src/index.ts"]
     }
   },
   "include": [

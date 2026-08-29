@@ -28,7 +28,8 @@ export type ProjectIntegration = Models.Document & {
 };
 
 export type McpApiToken = Models.Document & {
-  projectId: string;
+  /** When set, token is project-scoped. When absent, token is workspace-scoped. */
+  projectId?: string | null;
   workspaceId: string;
   name: string;
   /** Hashed token (sha256 hex) — plaintext shown once on create */
@@ -36,6 +37,10 @@ export type McpApiToken = Models.Document & {
   tokenPrefix: string;
   createdBy: string;
   lastUsedAt?: string | null;
+  organizationId?: string | null;
+  scopes?: string[] | null;
+  expiresAt?: string | null;
+  isRevoked?: boolean | null;
 };
 
 export type CustomMcpServerConfig = {

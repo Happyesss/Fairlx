@@ -1,0 +1,218 @@
+import { ID, Query } from "node-appwrite";
+import type { McpCollections, McpRedis, McpRuntime, McpTokenRecord } from "@fairlx/mcp-server";
+import {
+  CUSTOM_FIELDS_ID,
+  DATABASE_ID,
+  COMMENTS_ID,
+  GITHUB_REPOS_ID,
+  MCP_API_TOKENS_ID,
+  MEMBERS_ID,
+  ORGANIZATION_AUDIT_LOGS_ID,
+  PROJECT_DOCS_ID,
+  PROJECT_MEMBERS_ID,
+  PROJECT_TEAM_MEMBERS_ID,
+  PROJECT_WEBHOOKS_ID,
+  PROJECTS_ID,
+  SPRINTS_ID,
+  TIME_LOGS_ID,
+  WORK_ITEM_LINKS_ID,
+  WORK_ITEMS_ID,
+  WORKFLOW_STATUSES_ID,
+  WORKFLOW_TRANSITIONS_ID,
+  WORKFLOWS_ID,
+  WORKSPACES_ID,
+} from "@/config";
+import { hashMcpToken } from "@/features/integrations/lib/helpers";
+import {
+  buildOrgAuditLogDocument,
+  pickLiveOrgAuditLogDocument,
+} from "@/features/organizations/lib/audit-log-schema";
+import { generateWorkItemKey } from "@/features/sprints/lib/generate-work-item-key";
+import { validateStatusTransition } from "@/features/workflows/lib/validate-status-transition";
+import { createAdminClient } from "@/lib/appwrite";
+import {
+  resolveUserProjectAccess as resolveAccess,
+} from "@/lib/permissions/resolveUserProjectAccess";
+import {
+  acquireProcessingLock,
+  isEventProcessed,
+  markEventProcessed,
+} from "@/lib/processed-events-registry";
+import { getRedisClient } from "@/lib/redis/client";
+import { createAppwriteStore } from "./appwrite-store";
+import { verifyMcpJwt } from "./jwt";
+
+const COLLECTIONS: McpCollections = {
+  database: DATABASE_ID,
+  workspaces: WORKSPACES_ID,
+  projects: PROJECTS_ID,
+  workItems: WORK_ITEMS_ID,
+  sprints: SPRINTS_ID,
+  comments: COMMENTS_ID,
+  timeLogs: TIME_LOGS_ID,
+  projectDocs: PROJECT_DOCS_ID,
+  workItemLinks: WORK_ITEM_LINKS_ID,
+  workflows: WORKFLOWS_ID,
+  workflowStatuses: WORKFLOW_STATUSES_ID,
+  workflowTransitions: WORKFLOW_TRANSITIONS_ID,
+  members: MEMBERS_ID,
+  projectMembers: PROJECT_MEMBERS_ID,
+  projectTeamMembers: PROJECT_TEAM_MEMBERS_ID,
+  projectWebhooks: PROJECT_WEBHOOKS_ID,
+  githubRepos: GITHUB_REPOS_ID,
+  organizationAuditLogs: ORGANIZATION_AUDIT_LOGS_ID,
+  customFields: CUSTOM_FIELDS_ID,
+  mcpApiTokens: MCP_API_TOKENS_ID,
+};
+
+const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;
+
+function wrapRedis(client: NonNullable<ReturnType<typeof getRedisClient>>): McpRedis {
+  return {
+    get: (key) => client.get(key),
+    set: async (key, value, ttlSeconds) => {
+      if (typeof ttlSeconds === "number") {
+        await client.set(key, value, "EX", ttlSeconds);
+        return;
+      }
+      await client.set(key, value);
+    },
+    del: async (key) => {
+      await client.del(key);
+    },
+    incr: (key) => client.incr(key),
+    expire: async (key, ttlSeconds) => {
+      await client.expire(key, ttlSeconds);
+    },
+  };
+}
+
+function toTokenRecord(doc: Record<string, unknown>): McpTokenRecord {
+  return {
+    $id: String(doc.$id),
+    projectId: doc.projectId ? String(doc.projectId) : undefined,
+    workspaceId: String(doc.workspaceId ?? ""),
+    createdBy: String(doc.createdBy ?? ""),
+    name: typeof doc.name === "string" ? doc.name : undefined,
+    organizationId: typeof doc.organizationId === "string" ? doc.organizationId : undefined,
+    scopes: Array.isArray(doc.scopes)
+      ? (doc.scopes as string[])
+      : typeof doc.scopes === "string"
+        ? doc.scopes
+        : undefined,
+    expiresAt: typeof doc.expiresAt === "string" ? doc.expiresAt : undefined,
+    isRevoked: Boolean(doc.isRevoked),
+    tokenHash: typeof doc.tokenHash === "string" ? doc.tokenHash : undefined,
+  };
+}
+
+export async function createMcpRuntime(): Promise<McpRuntime> {
+  const { databases } = await createAdminClient();
+  const redisClient = getRedisClient();
+  const redis = redisClient ? wrapRedis(redisClient) : null;
+  const store = createAppwriteStore(databases, DATABASE_ID);
+
+  return {
+    collections: COLLECTIONS,
+    store,
+    redis,
+    resolveUserProjectAccess: async (userId, projectId) => {
+      const access = await resolveAccess(databases, userId, projectId);
+      return {
+        hasAccess: access.hasAccess,
+        isOwner: access.isOwner,
+        isAdmin: access.isAdmin,
+        permissions: access.permissions,
+        role: access.role ?? undefined,
+      };
+    },
+    hasProjectPermission: (access, permission) =>
+      access.isOwner || access.permissions.includes(permission),
+    generateWorkItemKey: (projectId) => generateWorkItemKey(databases, projectId),
+    validateStatusTransition: async (args) => {
+      if (!args.workflowId) {
+        return { allowed: true };
+      }
+      return validateStatusTransition(
+        databases,
+        args.workflowId,
+        args.fromStatus,
+        args.toStatus,
+        args.userId,
+        args.projectId,
+        args.memberRole ?? ""
+      );
+    },
+    hashMcpToken,
+    lookupTokenByHash: async (hash) => {
+      const result = await databases.listDocuments(DATABASE_ID, MCP_API_TOKENS_ID, [
+        Query.equal("tokenHash", hash),
+        Query.limit(1),
+      ]);
+      const doc = result.documents[0];
+      if (!doc) return null;
+      return toTokenRecord(doc as unknown as Record<string, unknown>);
+    },
+    touchTokenLastUsed: async (tokenId) => {
+      await databases.updateDocument(DATABASE_ID, MCP_API_TOKENS_ID, tokenId, {
+        lastUsedAt: new Date().toISOString(),
+      });
+    },
+    verifyJwt: verifyMcpJwt,
+    acquireIdempotencyLock: (eventKey, metadata) =>
+      acquireProcessingLock(databases, eventKey, "mcp_tool", metadata),
+    recordIdempotency: async (eventKey, result) => {
+      await markEventProcessed(databases, eventKey, "mcp_tool", {
+        result: result === undefined ? undefined : { stored: true },
+      });
+      if (redis && result !== undefined) {
+        await redis.set(`mcp:idem:${eventKey}`, JSON.stringify(result), IDEMPOTENCY_TTL_SECONDS);
+      }
+    },
+    getIdempotencyResult: async (eventKey) => {
+      if (redis) {
+        const raw = await redis.get(`mcp:idem:${eventKey}`);
+        if (raw) {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return raw;
+          }
+        }
+      }
+      if (await isEventProcessed(databases, eventKey, "mcp_tool")) {
+        return { replayed: true };
+      }
+      return null;
+    },
+    now: () => new Date().toISOString(),
+    logAudit: async (entry) => {
+      try {
+        const organizationId = String(entry.organizationId ?? entry.workspaceId ?? "");
+        const payload = buildOrgAuditLogDocument({
+          organizationId,
+          actorUserId: String(entry.userId ?? entry.actorUserId ?? ""),
+          actionType: String(entry.action ?? entry.actionType ?? "mcp"),
+          metadata: {
+            workspaceId: entry.workspaceId,
+            projectId: entry.projectId,
+            resourceType: entry.resourceType,
+            resourceId: entry.resourceId,
+            resourceName: entry.resourceName,
+            ...(entry.metadata && typeof entry.metadata === "object"
+              ? (entry.metadata as Record<string, unknown>)
+              : {}),
+          },
+        });
+        await databases.createDocument(
+          DATABASE_ID,
+          ORGANIZATION_AUDIT_LOGS_ID,
+          ID.unique(),
+          pickLiveOrgAuditLogDocument(payload)
+        );
+      } catch {
+        // Audit must never fail the MCP call.
+      }
+    },
+  };
+}
