@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { PageError } from "@/components/page-error";
 import { PageLoader } from "@/components/page-loader";
 
@@ -8,7 +9,7 @@ import { EditWorkspaceForm } from "@/features/workspaces/components/edit-workspa
 import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useCurrentMember } from "@/features/members/hooks/use-current-member";
 
-export const WorkspaceIdSettingsClient = () => {
+const WorkspaceIdSettingsClientContent = () => {
   const workspaceId = useWorkspaceId();
   const { data: initialValues, isLoading } = useGetWorkspace({ workspaceId });
   const {
@@ -29,4 +30,12 @@ export const WorkspaceIdSettingsClient = () => {
   }
 
   return <EditWorkspaceForm initialValues={initialValues} />;
+};
+
+export const WorkspaceIdSettingsClient = () => {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <WorkspaceIdSettingsClientContent />
+    </Suspense>
+  );
 };

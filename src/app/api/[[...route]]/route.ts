@@ -62,6 +62,7 @@ import byob from "@/features/byob/server/route";
 // Bug Reports
 import bugReports from "@/features/bug-reports/api/route";
 import integrations from "@/features/integrations/server";
+import mcpApp from "@/features/mcp/route";
 // Global Traffic Metering - NOW WITH BATCHING
 // Events are collected in memory and flushed every 60s (1 write instead of ~3600/hr)
 import { batchedTrafficMeteringMiddleware } from "@/lib/traffic-metering-batched";
@@ -134,7 +135,9 @@ const routes = app
   // Bug Reports
   .route("/bug-reports", bugReports)
   // Slack / Discord / MCP integrations
-  .route("/integrations", integrations);
+  .route("/integrations", integrations)
+  // Production Streamable HTTP MCP (POST /api/mcp)
+  .route("/mcp", mcpApp);
 
 export const GET = handle(app);
 export const POST = handle(app);

@@ -9,6 +9,7 @@ const nextConfig = {
   // Set the output file tracing root to the current project directory
   // This silences the warning about multiple lockfiles
   outputFileTracingRoot: __dirname,
+  transpilePackages: ['@fairlx/mcp-server'],
   experimental: {
     staleTimes: {
       dynamic: 30,  // Cache dynamic pages for 30s on client navigation

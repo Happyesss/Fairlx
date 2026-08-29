@@ -3,6 +3,7 @@ import {
   ensureCollection,
   ensureStringAttribute,
   ensureDatetimeAttribute,
+  ensureBooleanAttribute,
   ensureIndex,
   sleep,
 } from "../lib/db-helpers";
@@ -26,13 +27,17 @@ export async function setupMcpApiTokens(
     Permission.read(Role.any()),
   ]);
 
-  await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "projectId", 256, true);
+  await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "projectId", 256, false);
   await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "workspaceId", 256, true);
   await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "name", 256, true);
   // sha256 hex = 64 chars; allow headroom
   await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "tokenHash", 128, true);
   await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "tokenPrefix", 32, true);
   await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "createdBy", 256, true);
+  await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "organizationId", 256, false);
+  await ensureStringAttribute(databases, databaseId, COLLECTION_ID, "scopes", 64, false, undefined, true);
+  await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, "expiresAt", false);
+  await ensureBooleanAttribute(databases, databaseId, COLLECTION_ID, "isRevoked", false, false);
   await ensureDatetimeAttribute(databases, databaseId, COLLECTION_ID, "lastUsedAt", false);
 
   await sleep(2000);
@@ -44,6 +49,14 @@ export async function setupMcpApiTokens(
     "projectId_idx",
     IndexType.Key,
     ["projectId"]
+  );
+  await ensureIndex(
+    databases,
+    databaseId,
+    COLLECTION_ID,
+    "workspaceId_idx",
+    IndexType.Key,
+    ["workspaceId"]
   );
   // Unique lookup for auth
   await ensureIndex(

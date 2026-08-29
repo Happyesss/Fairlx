@@ -77,27 +77,32 @@ export function useSlackOAuthStart() {
   });
 }
 
-export function useMcpTokens(projectId: string) {
+export function useMcpTokens(projectId?: string, workspaceId?: string) {
+  const hasKey = !!projectId || !!workspaceId;
   return useQuery({
-    queryKey: ["mcp-tokens", projectId],
-    enabled: !!projectId,
-    queryFn: () =>
-      api<{ data: Array<Record<string, unknown>> }>(
-        `/api/integrations/mcp/tokens?projectId=${encodeURIComponent(projectId)}`
-      ),
+    queryKey: ["mcp-tokens", projectId ?? workspaceId ?? ""],
+    enabled: hasKey,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (projectId) params.set("projectId", projectId);
+      else if (workspaceId) params.set("workspaceId", workspaceId);
+      return api<{ data: Array<Record<string, unknown>> }>(
+        `/api/integrations/mcp/tokens?${params.toString()}`
+      );
+    },
   });
 }
 
 export function useCreateMcpToken() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (json: { projectId: string; workspaceId: string; name: string }) =>
-      api<{ data: { token: string; name: string; $id: string; tokenPrefix: string } }>(
+    mutationFn: (json: { projectId?: string; workspaceId: string; name: string }) =>
+      api<{ data: { token: string; name: string; $id: string; tokenPrefix: string; scope: string } }>(
         "/api/integrations/mcp/tokens",
         { method: "POST", body: JSON.stringify(json) }
       ),
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["mcp-tokens", vars.projectId] });
+      qc.invalidateQueries({ queryKey: ["mcp-tokens", vars.projectId ?? vars.workspaceId] });
     },
   });
 }
@@ -105,13 +110,21 @@ export function useCreateMcpToken() {
 export function useDeleteMcpToken() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, projectId }: { id: string; projectId: string }) => {
+    mutationFn: async ({
+      id,
+      projectId,
+      workspaceId,
+    }: {
+      id: string;
+      projectId?: string;
+      workspaceId?: string;
+    }) => {
       await api(`/api/integrations/mcp/tokens/${id}`, { method: "DELETE" });
-      return { projectId };
+      return { projectId, workspaceId };
     },
     onSuccess: (data) => {
       toast.success("Token revoked");
-      qc.invalidateQueries({ queryKey: ["mcp-tokens", data.projectId] });
+      qc.invalidateQueries({ queryKey: ["mcp-tokens", data.projectId ?? data.workspaceId] });
     },
   });
 }
