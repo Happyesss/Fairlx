@@ -9,6 +9,8 @@ import { usePathname } from "next/navigation";
 import { MobileSidebar } from "./mobile-sidebar";
 import { Breadcrumb } from "./breadcrumb";
 import { ModeToggle } from "./mode-toggle";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 const pathnameMap = {
   tasks: {
@@ -47,7 +49,12 @@ export const Navbar = () => {
           <h1 className="text-lg font-semibold">{title}</h1>
         </div>
       </div>
-      <div id="navbar-actions" className="flex items-center gap-2">
+      <div id="navbar-actions" className="flex items-center gap-4">
+        <Link href="/agent/dashboard" target="_blank">
+          <Button variant="outline" size="sm" className="hidden lg:flex text-primary border-primary hover:bg-primary/10">
+            Switch to Agent
+          </Button>
+        </Link>
         <MobileSidebar />
         <ModeToggle />
         <BugReportPopover />

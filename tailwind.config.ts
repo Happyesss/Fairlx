@@ -58,6 +58,28 @@ const config: Config = {
 					border: 'hsl(var(--sidebar-border))',
 					muted: 'hsl(var(--sidebar-muted))',
 					accent: 'hsl(var(--sidebar-accent))'
+				},
+				'fairlx-bg': '#0f1115',
+				'fairlx-surface': '#16191f',
+				'fairlx-surface-hover': '#1e2128',
+				'fairlx-border': '#2a2d35',
+				'fairlx-text': '#e2e8f0',
+				'fairlx-text-muted': '#94a3b8',
+				'fairlx-primary': '#3b82f6',
+				'fairlx-primary-hover': '#2563eb',
+				'fairlx-success': '#10b981',
+				'fairlx-warning': '#f59e0b',
+				'fairlx-danger': '#ef4444',
+				gray: {
+					...require('tailwindcss/colors').gray,
+					850: '#1a1d24',
+					900: '#111318',
+					950: '#0a0c10'
+				},
+				blue: {
+					...require('tailwindcss/colors').blue,
+					500: '#3b82f6',
+					600: '#2563eb'
 				}
 			},
 			borderRadius: {
