@@ -74,6 +74,10 @@ const modelSchema = z.object({
   role: z.enum(["default", "flash", "custom"]).optional(),
   isEnabled: z.boolean().optional().default(true),
   isPlatform: z.boolean().optional().default(false),
+  toolCalling: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  maxInputTokens: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
 });
 
 const aiConfigSchema = z.object({

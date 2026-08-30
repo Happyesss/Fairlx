@@ -77,6 +77,10 @@ export type AgentModel = {
   role?: AgentModelRole;
   isEnabled: boolean;
   isPlatform: boolean;
+  toolCalling?: boolean;
+  vision?: boolean;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
 };
 
 export type AgentAiConfigPublic = {

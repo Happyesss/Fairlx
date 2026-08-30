@@ -189,6 +189,9 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
       return;
     }
 
+    const existing = modelForm.id
+      ? draft.models.find((model) => model.id === modelForm.id)
+      : undefined;
     const nextModel: AgentModel = {
       id: modelForm.id || newId("model"),
       providerId: modelForm.providerId,
@@ -197,6 +200,10 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
       role: modelForm.role,
       isEnabled: modelForm.isEnabled,
       isPlatform: modelForm.isPlatform,
+      toolCalling: existing?.toolCalling,
+      vision: existing?.vision,
+      maxInputTokens: existing?.maxInputTokens,
+      maxOutputTokens: existing?.maxOutputTokens,
     };
 
     setDraft((current) => ({
@@ -239,7 +246,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
         <DialogHeader>
           <DialogTitle>Manage Models</DialogTitle>
           <DialogDescription className="text-fairlx-text-muted">
-            Auto uses Grok 4.6 and DeepSeek Flash. Add BYOK providers from the catalog.
+            Auto uses Grok 4.6 and DeepSeek V4 Flash. Add BYOK providers from the catalog.
           </DialogDescription>
         </DialogHeader>
 
@@ -269,7 +276,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
           </div>
           {draft.mode === "auto" && (
             <p className="text-xs text-fairlx-text-muted">
-              Routes with Grok 4.6 (`{GROK_46_MODEL_ID}`) and DeepSeek Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
+              Routes with Grok 4.6 (`{GROK_46_MODEL_ID}`) and DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
             </p>
           )}
         </div>
