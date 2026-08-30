@@ -60,6 +60,17 @@ export async function handleWriteTool(
       return webhookCreate(args, runtime, auth);
     case "fairlx_github_sync":
       return githubSync(args, runtime, auth);
+    // ── New write tools ──
+    case "fairlx_subtask_create":
+      return subtaskCreate(args, runtime, auth);
+    case "fairlx_subtask_update":
+      return subtaskUpdate(args, runtime, auth);
+    case "fairlx_notification_mark_read":
+      return notificationMarkRead(args, runtime, auth);
+    case "fairlx_saved_view_create":
+      return savedViewCreate(args, runtime, auth);
+    case "fairlx_sprint_update":
+      return sprintUpdate(args, runtime, auth);
     default:
       throw invalidParams(`Unknown write tool: ${name}`);
   }
@@ -706,3 +717,181 @@ async function githubSync(
   }
   return toolResult({ repositories: synced, count: synced.length });
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW write tools
+// ═══════════════════════════════════════════════════════════════════
+
+async function subtaskCreate(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workItemId = requireString(args, "workItemId");
+  const title = requireString(args, "title");
+  const item = await loadWorkItem(runtime, auth, workItemId);
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(item.projectId),
+    PERMISSIONS.EDIT_TASKS,
+    ["tasks:write"]
+  );
+  const run = async () => {
+    const subtask = await runtime.store.create<Record<string, unknown>>(runtime.collections.subtasks, {
+      parentTaskId: workItemId,
+      projectId: item.projectId,
+      workspaceId: item.workspaceId,
+      title,
+      isCompleted: false,
+      createdBy: auth.actorUserId,
+    });
+    return toolResult({ subtask: withId(subtask) });
+  };
+  const idem = optionalString(args, "idempotencyKey");
+  if (idem) return withIdempotency(runtime, idem, "fairlx_subtask_create", run);
+  return run();
+}
+
+async function subtaskUpdate(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const subtaskId = requireString(args, "subtaskId");
+  let subtask: Record<string, unknown>;
+  try {
+    subtask = await runtime.store.get<Record<string, unknown>>(runtime.collections.subtasks, subtaskId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  const projectId = String(subtask.projectId);
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, ["tasks:write"]);
+  const patch: Record<string, unknown> = {};
+  if (args.title !== undefined) patch.title = requireString(args, "title");
+  if (args.isCompleted !== undefined) patch.isCompleted = Boolean(args.isCompleted);
+  const updated = await runtime.store.update<Record<string, unknown>>(
+    runtime.collections.subtasks,
+    subtaskId,
+    patch
+  );
+  return toolResult({ subtask: withId(updated) });
+}
+
+async function notificationMarkRead(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const notificationId = optionalString(args, "notificationId");
+  const markAll = args.markAll === true;
+  if (!notificationId && !markAll) {
+    throw invalidParams("notificationId or markAll is required");
+  }
+  if (notificationId) {
+    let notification: Record<string, unknown>;
+    try {
+      notification = await runtime.store.get<Record<string, unknown>>(
+        runtime.collections.notifications,
+        notificationId
+      );
+    } catch {
+      throw notFoundError("Not found");
+    }
+    // Only allow marking own notifications
+    if (String(notification.userId) !== auth.actorUserId) {
+      throw notFoundError("Not found");
+    }
+    const updated = await runtime.store.update<Record<string, unknown>>(
+      runtime.collections.notifications,
+      notificationId,
+      { isRead: true }
+    );
+    return toolResult({ notification: withId(updated) });
+  }
+  // Mark all unread notifications as read
+  const queries: import("../runtime/types").McpQuery[] = [
+    { type: "equal", field: "userId", value: auth.actorUserId },
+    { type: "equal", field: "isRead", value: false },
+    { type: "limit", value: 100 },
+  ];
+  const workspaceId = optionalString(args, "workspaceId");
+  if (workspaceId) {
+    queries.push({ type: "equal", field: "workspaceId", value: workspaceId });
+  }
+  const unread = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.notifications,
+    queries
+  );
+  let count = 0;
+  for (const n of unread.documents) {
+    await runtime.store.update(runtime.collections.notifications, String(n.$id), { isRead: true });
+    count++;
+  }
+  return toolResult({ markedRead: count });
+}
+
+async function savedViewCreate(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  const name = requireString(args, "name");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.CREATE_VIEWS, ["views:write"]);
+  const project = await loadProject(runtime, auth, projectId);
+  const run = async () => {
+    const view = await runtime.store.create<Record<string, unknown>>(runtime.collections.savedViews, {
+      projectId,
+      workspaceId: String(project.workspaceId),
+      name,
+      filters: optionalString(args, "filters") ?? "{}",
+      isShared: args.isShared === true,
+      createdBy: auth.actorUserId,
+    });
+    return toolResult({ view: withId(view) });
+  };
+  const idem = optionalString(args, "idempotencyKey");
+  if (idem) return withIdempotency(runtime, idem, "fairlx_saved_view_create", run);
+  return run();
+}
+
+async function sprintUpdate(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const sprintId = requireString(args, "sprintId");
+  let sprint: Record<string, unknown>;
+  try {
+    sprint = await runtime.store.get<Record<string, unknown>>(runtime.collections.sprints, sprintId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(sprint.projectId),
+    PERMISSIONS.EDIT_SPRINTS,
+    ["sprints:manage"]
+  );
+  const patch: Record<string, unknown> = {};
+  if (args.name !== undefined) patch.name = requireString(args, "name");
+  if (args.goal !== undefined) patch.goal = String(args.goal);
+  if (args.startDate !== undefined) patch.startDate = String(args.startDate);
+  if (args.endDate !== undefined) patch.endDate = String(args.endDate);
+  const updated = await runtime.store.update<Record<string, unknown>>(
+    runtime.collections.sprints,
+    sprintId,
+    patch
+  );
+  await audit(runtime, {
+    projectId: sprint.projectId,
+    userId: auth.actorUserId,
+    action: "mcp.sprint.update",
+    resourceType: "sprint",
+    resourceId: sprintId,
+  });
+  return toolResult({ sprint: withId(updated) });
+}
+
