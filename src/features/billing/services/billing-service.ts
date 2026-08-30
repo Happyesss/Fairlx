@@ -28,6 +28,13 @@ import {
 import { Wallet } from "@/features/wallet/types";
 import { deductFromWallet } from "@/features/wallet/services/wallet-service";
 import { WALLETS_ID } from "@/config";
+import { calculateUsageCostUsd } from "@/lib/usage-cost";
+
+const USAGE_RATE_CENTS = {
+    trafficPerGB: USAGE_RATE_TRAFFIC_GB,
+    storagePerGBMonth: USAGE_RATE_STORAGE_GB_MONTH,
+    computePerUnit: USAGE_RATE_COMPUTE_UNIT,
+};
 
 /**
  * Billing Service
@@ -87,17 +94,25 @@ export async function aggregateUsageForBillingPeriod(
         return breakdown;
     }
 
-    // Aggregate values across all daily summaries in the period
-    let sumStorageAvgGB = 0;
+    // Aggregate values across all daily summaries in the period.
+    // StorageAvgGB on each daily doc is a month-to-date GB-month, so take the
+    // latest period per workspace and then sum workspaces — never average days.
     let sumTrafficTotalGB = 0;
     let sumComputeTotalUnits = 0;
     let totalAlreadyPaid = 0;
+    const latestStorageByWorkspace = new Map<string, { period: string; storageAvgGB: number }>();
 
     for (const agg of aggregations.documents) {
-        // Metric aggregation (revised v3 schema fields)
         sumTrafficTotalGB += Number(agg.trafficTotalGB) || 0;
         sumComputeTotalUnits += Number(agg.computeTotalUnits) || 0;
-        sumStorageAvgGB += Number(agg.storageAvgGB) || 0;
+
+        const workspaceId = String(agg.workspaceId || "");
+        const period = String(agg.period || "");
+        const storageAvgGB = Number(agg.storageAvgGB) || 0;
+        const prev = latestStorageByWorkspace.get(workspaceId);
+        if (!prev || period >= prev.period) {
+            latestStorageByWorkspace.set(workspaceId, { period, storageAvgGB });
+        }
 
         // Track what has already been debited via instant billing
         if (agg.status === 'billed') {
@@ -105,25 +120,33 @@ export async function aggregateUsageForBillingPeriod(
         }
     }
 
-    // Calculate totals
+    let storageAvgGB = 0;
+    for (const entry of latestStorageByWorkspace.values()) {
+        storageAvgGB += entry.storageAvgGB;
+    }
+
     breakdown.trafficGB = sumTrafficTotalGB;
     breakdown.computeUnits = sumComputeTotalUnits;
-    
-    // Average storage for the period
-    breakdown.storageAvgGB = sumStorageAvgGB / Math.max(1, aggregations.total);
+    breakdown.storageAvgGB = storageAvgGB;
     breakdown.costs.totalAlreadyPaid = Number(totalAlreadyPaid.toFixed(6));
 
-    // Module breakdown currently not supported in daily rollups (summed into totals)
     breakdown.byModule = {
         traffic: breakdown.trafficGB,
         storage: breakdown.storageAvgGB,
         compute: breakdown.computeUnits,
     };
 
-    // Calculate costs with 6-decimal precision
-    breakdown.costs.traffic = Number((breakdown.trafficGB * USAGE_RATE_TRAFFIC_GB / 100).toFixed(6));
-    breakdown.costs.storage = Number((breakdown.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH / 100).toFixed(6));
-    breakdown.costs.compute = Number((breakdown.computeUnits * USAGE_RATE_COMPUTE_UNIT / 100).toFixed(6));
+    const costs = calculateUsageCostUsd(
+        {
+            trafficGB: breakdown.trafficGB,
+            storageAvgGB: breakdown.storageAvgGB,
+            computeUnits: breakdown.computeUnits,
+        },
+        USAGE_RATE_CENTS
+    );
+    breakdown.costs.traffic = costs.traffic;
+    breakdown.costs.storage = costs.storage;
+    breakdown.costs.compute = costs.compute;
     
     // Final total for invoice = (Full Monthly Cost) - (Already Paid via Instant)
     const monthlyGross = (

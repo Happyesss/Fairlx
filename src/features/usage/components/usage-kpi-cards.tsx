@@ -75,7 +75,7 @@ export function UsageKPICards({
     currency = "USD",
     exchangeRate = 1,
     walletBalance,
-    walletCurrency = "USD"
+    walletCurrency: _walletCurrency = "USD",
 }: UsageKPICardsProps) {
     if (isLoading) {
         return (
@@ -125,12 +125,8 @@ export function UsageKPICards({
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             <KPICard
                 title="Wallet Balance"
-                value={walletBalance !== undefined ? new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: walletCurrency,
-                    minimumFractionDigits: 2,
-                }).format(walletBalance) : "0.00"}
-                subtitle="Available for compute"
+                value={walletBalance !== undefined ? formatCurrency(walletBalance) : formatCurrency(0)}
+                subtitle="Available for compute (billed in USD)"
                 icon={<DollarSign className="h-5 w-5" />}
                 className="border-l-4 border-l-blue-600 bg-gradient-to-br from-blue-500/5 to-indigo-500/5"
             />
@@ -144,7 +140,7 @@ export function UsageKPICards({
             <KPICard
                 title="Storage Used"
                 value={summary ? formatBytes(Math.max(0, summary.storageAvgBytes)) : "0 B"}
-                subtitle="Total current storage"
+                subtitle="Billed GB-month (time-weighted)"
                 icon={<HardDrive className="h-5 w-5" />}
                 className="border-l-4 border-l-amber-500"
             />
@@ -167,7 +163,7 @@ export function UsageKPICards({
                 value={summary ? formatCurrency(summary.estimatedCost.total) : "$0.00"}
                 subtitle={
                     summary
-                        ? `Traffic: ${formatCurrency(summary.estimatedCost.traffic)} | AI: ${formatCurrency(summary.estimatedCost.ai)}`
+                        ? `Billed in USD. Traffic: ${formatCurrency(summary.estimatedCost.traffic)} | AI: ${formatCurrency(summary.estimatedCost.ai)}`
                         : undefined
                 }
                 icon={<DollarSign className="h-5 w-5" />}

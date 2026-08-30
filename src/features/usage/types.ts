@@ -207,6 +207,13 @@ export type UsageSummary = {
         ai: number;
         total: number;
     };
+    /** Server-resolved USD rates used to compute estimatedCost. */
+    rates?: {
+        trafficPerGBUsd: number;
+        storagePerGBMonthUsd: number;
+        computePerUnitUsd: number;
+        billingCurrency: "USD";
+    };
     eventCount: number;
     breakdown: {
         bySource: Record<UsageSource, number>;
@@ -217,6 +224,13 @@ export type UsageSummary = {
             [ResourceType.COMPUTE]: number;
             ai: number;
             aiCost: number;
+            estimatedCost?: {
+                traffic: number;
+                storage: number;
+                compute: number;
+                ai: number;
+                total: number;
+            };
         }>;
     };
     dailyUsage: Array<{

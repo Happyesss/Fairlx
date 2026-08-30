@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { USAGE_RATE_TRAFFIC_GB, USAGE_RATE_STORAGE_GB_MONTH, USAGE_RATE_COMPUTE_UNIT, BILLING_CURRENCY } from "@/config";
+import { centsToUsd } from "@/lib/usage-cost";
 
 interface BillingExplainerProps {
     usageBreakdown?: {
@@ -37,7 +38,7 @@ export function BillingExplainer({
     periodEnd,
 }: BillingExplainerProps) {
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat("en-IN", {
+        return new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: BILLING_CURRENCY,
         }).format(amount);
@@ -85,7 +86,7 @@ export function BillingExplainer({
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <span>{formatCurrency(USAGE_RATE_TRAFFIC_GB)}</span>
+                        <span>{formatCurrency(centsToUsd(USAGE_RATE_TRAFFIC_GB))}</span>
                     </div>
 
                     <div className="flex justify-between">
@@ -102,7 +103,7 @@ export function BillingExplainer({
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <span>{formatCurrency(USAGE_RATE_STORAGE_GB_MONTH)}</span>
+                        <span>{formatCurrency(centsToUsd(USAGE_RATE_STORAGE_GB_MONTH))}</span>
                     </div>
 
                     <div className="flex justify-between">
@@ -119,7 +120,7 @@ export function BillingExplainer({
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <span>{formatCurrency(USAGE_RATE_COMPUTE_UNIT)}</span>
+                        <span>{formatCurrency(centsToUsd(USAGE_RATE_COMPUTE_UNIT))}</span>
                     </div>
                 </div>
 
@@ -155,7 +156,8 @@ export function BillingExplainer({
                 {/* Invoice Lock Note */}
                 <div className="border-t pt-3 text-xs text-muted-foreground">
                     <p>
-                        <strong>Note:</strong> Invoices are generated at the end of each billing period.
+                        <strong>Note:</strong> All usage is billed in USD. Visibility currency is display-only.
+                        Invoices are generated at the end of each billing period.
                         Once generated, the usage snapshot is locked and cannot be modified.
                     </p>
                 </div>

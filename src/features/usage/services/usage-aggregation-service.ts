@@ -6,11 +6,22 @@ import {
     USAGE_EVENTS_ID,
     USAGE_AGGREGATIONS_ID,
     WORKSPACES_ID,
+    BILLING_CURRENCY,
+    USAGE_RATE_TRAFFIC_GB,
+    USAGE_RATE_STORAGE_GB_MONTH,
+    USAGE_RATE_COMPUTE_UNIT,
 } from "@/config";
 import {
     UsageEvent,
     ResourceType,
 } from "@/features/usage/types";
+import { calculateUsageCostUsd, dailyStorageDebitUsd, roundUsd } from "@/lib/usage-cost";
+
+const USAGE_RATE_CENTS = {
+    trafficPerGB: USAGE_RATE_TRAFFIC_GB,
+    storagePerGBMonth: USAGE_RATE_STORAGE_GB_MONTH,
+    computePerUnit: USAGE_RATE_COMPUTE_UNIT,
+};
 
 /**
  * Daily Usage Roll-Up Service
@@ -198,26 +209,28 @@ export async function aggregateDailyUsage(
                     } catch { /* ignore fallback failure */ }
                 }
 
-                // Calculate total cost
-                const {
-                    USAGE_RATE_TRAFFIC_GB,
-                    USAGE_RATE_STORAGE_GB_MONTH,
-                    USAGE_RATE_COMPUTE_UNIT,
-                } = await import('@/config');
+                // Record cost for the day: traffic + compute + one day's storage slice.
+                // Traffic/compute/AI are already instant-debited via the usage ledger.
+                // Daily wallet debit is storage-only so we do not double-charge.
+                const dayCosts = calculateUsageCostUsd(
+                    {
+                        trafficGB: trafficTotalGB,
+                        storageAvgGB,
+                        computeUnits,
+                    },
+                    USAGE_RATE_CENTS
+                );
+                const storageDebit = dailyStorageDebitUsd(
+                    storageAvgGB,
+                    USAGE_RATE_CENTS,
+                    targetDate
+                );
+                const totalCost = roundUsd(dayCosts.traffic + dayCosts.compute + storageDebit);
 
-                const totalCost = Number((
-                    ((trafficTotalGB * USAGE_RATE_TRAFFIC_GB) / 100) +
-                    ((storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100) +
-                    ((computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100)
-                ).toFixed(6));
-
-                // =========================================================
-                // NEW: Instant Wallet Debit
-                // =========================================================
                 let billingStatus: 'billed' | 'pending' | 'failed' = 'pending';
                 let walletTransactionId: string | undefined = undefined;
 
-                if (totalCost > 0) {
+                if (storageDebit > 0) {
                     try {
                         const { getOrCreateWallet, deductFromWallet } = await import("@/features/wallet/services/wallet-service");
                         const wallet = await getOrCreateWallet(databases, { 
@@ -226,10 +239,10 @@ export async function aggregateDailyUsage(
                             billingAccountId: billingAccount?.$id
                         });
 
-                        const deductionResult = await deductFromWallet(databases, wallet.$id, totalCost, {
+                        const deductionResult = await deductFromWallet(databases, wallet.$id, storageDebit, {
                             referenceId: `usage_${targetDate}_${workspaceId.slice(-4)}`,
                             idempotencyKey: `usage_billing_${workspaceId}_${targetDate}`,
-                            description: `Usage Billing for ${targetDate} (${workspaceId})`
+                            description: `Storage billing for ${targetDate} (${workspaceId})`
                         });
 
                         if (deductionResult.success) {
@@ -243,7 +256,6 @@ export async function aggregateDailyUsage(
                         billingStatus = 'failed';
                     }
                 } else {
-                    // Zero cost usage is auto-billed
                     billingStatus = 'billed';
                 }
 
@@ -262,7 +274,7 @@ export async function aggregateDailyUsage(
                         storageAvgGB,
                         computeTotalUnits: computeUnits,
                         totalCost,
-                        currency: 'INR',
+                        currency: BILLING_CURRENCY,
                         status: billingStatus,
                         walletTransactionId: walletTransactionId || null,
                     }

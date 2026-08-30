@@ -15,11 +15,7 @@ import {
 } from "@/components/ui/table";
 import { UsageEvent, UsageSummary } from "../types";
 import { WorkspaceUsageDrawer } from "./workspace-usage-drawer";
-import { 
-    USAGE_RATE_TRAFFIC_GB, 
-    USAGE_RATE_STORAGE_GB_MONTH, 
-    USAGE_RATE_COMPUTE_UNIT 
-} from "@/config";
+import { calculateUsageCostUsd, formatUsdAsDisplayCurrency } from "@/lib/usage-cost";
 
 interface WorkspaceUsageData {
     workspaceId: string;
@@ -41,20 +37,16 @@ interface WorkspaceUsageBreakdownProps {
     summary: UsageSummary | null;
     workspaces?: Array<{ $id: string; name: string }>;
     isLoading?: boolean;
+    currency?: string;
+    exchangeRate?: number;
 }
-
-// Pricing (example rates - should match billing config)
-// Pricing rates from global config (converted from cents to USD)
-const PRICING = {
-    trafficPerGB: USAGE_RATE_TRAFFIC_GB / 100,
-    storagePerGB: USAGE_RATE_STORAGE_GB_MONTH / 100,
-    computePerUnit: USAGE_RATE_COMPUTE_UNIT / 100,
-};
 
 export function WorkspaceUsageBreakdown({
     summary,
     workspaces = [],
-    isLoading
+    isLoading,
+    currency = "USD",
+    exchangeRate = 1,
 }: WorkspaceUsageBreakdownProps) {
     const [sortBy, setSortBy] = useState<keyof WorkspaceUsageData>("estimatedCost");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -74,22 +66,22 @@ export function WorkspaceUsageBreakdown({
 
         // Convert to display format, iterating through ALL workspaces
         return workspaces.map((ws) => {
-            const data = byWorkspace[ws.$id] || { traffic: 0, storage: 0, compute: 0 };
+            const data = byWorkspace[ws.$id] || { traffic: 0, storage: 0, compute: 0, ai: 0, aiCost: 0 };
 
             const trafficBytes = data.traffic || 0;
             const storageBytes = Math.max(0, data.storage || 0);
-            
             const trafficGB = trafficBytes / (1024 * 1024 * 1024);
             const storageGB = storageBytes / (1024 * 1024 * 1024);
             const computeUnits = data.compute || 0;
             const aiTokens = data.ai || 0;
             const aiCostUSD = data.aiCost || 0;
 
-            const estimatedCost =
-                (trafficGB * PRICING.trafficPerGB) +
-                (storageGB * PRICING.storagePerGB) +
-                (computeUnits * PRICING.computePerUnit) +
-                aiCostUSD;
+            const estimatedCost = data.estimatedCost?.total ?? calculateUsageCostUsd({
+                trafficGB,
+                storageAvgGB: storageGB,
+                computeUnits,
+                aiCostUSD,
+            }).total;
 
             return {
                 workspaceId: ws.$id,
@@ -140,10 +132,6 @@ export function WorkspaceUsageBreakdown({
             setSortBy(column);
             setSortOrder("desc");
         }
-    };
-
-    const formatNumber = (num: number, decimals = 2) => {
-        return num.toFixed(decimals);
     };
 
     const formatBytes = (bytes: number) => {
@@ -233,7 +221,7 @@ export function WorkspaceUsageBreakdown({
                                     >
                                         <div className="flex items-center gap-1">
                                             <HardDrive className="h-3 w-3" />
-                                            Storage
+                                            Storage (GB-mo)
                                             {sortBy === "storageGB" && (sortOrder === "desc" ? " ↓" : " ↑")}
                                         </div>
                                     </TableHead>
@@ -283,7 +271,7 @@ export function WorkspaceUsageBreakdown({
                                         <TableCell>{workspace.computeUnits.toLocaleString()}</TableCell>
                                         <TableCell>{workspace.aiTokens.toLocaleString()} tokens</TableCell>
                                         <TableCell className="text-right font-medium">
-                                            ${formatNumber(workspace.estimatedCost, 4)}
+                                            {formatUsdAsDisplayCurrency(workspace.estimatedCost, currency, exchangeRate)}
                                         </TableCell>
                                         <TableCell>
                                             <Button
@@ -305,7 +293,7 @@ export function WorkspaceUsageBreakdown({
                                     <TableCell>{totals.computeUnits.toLocaleString()}</TableCell>
                                     <TableCell>{totals.aiTokens.toLocaleString()} tokens</TableCell>
                                     <TableCell className="text-right font-bold">
-                                        ${formatNumber(totals.estimatedCost, 4)}
+                                        {formatUsdAsDisplayCurrency(totals.estimatedCost, currency, exchangeRate)}
                                     </TableCell>
                                     <TableCell></TableCell>
                                 </TableRow>
@@ -313,7 +301,7 @@ export function WorkspaceUsageBreakdown({
                         </Table>
                     </div>
                     <p className="text-xs text-muted-foreground mt-4">
-                        Click column headers to sort. All usage is billed to the organization.
+                        Click column headers to sort. Usage is billed in USD; amounts shown in your visibility currency. Storage is time-weighted GB-month.
                     </p>
                 </CardContent>
             </Card>

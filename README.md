@@ -473,10 +473,10 @@ EXCHANGE_RATE_API_KEY=your_exchange_rate_api_key
 # Billing Configuration
 # ===============================
 BILLING_GRACE_PERIOD_DAYS=14
-BILLING_CURRENCY=INR
-USAGE_RATE_TRAFFIC_GB=0.10
-USAGE_RATE_STORAGE_GB_MONTH=0.05
-USAGE_RATE_COMPUTE_UNIT=0.001
+BILLING_CURRENCY=USD
+USAGE_RATE_TRAFFIC_GB=12.0
+USAGE_RATE_STORAGE_GB_MONTH=2.0
+USAGE_RATE_COMPUTE_UNIT=1.0
 
 # eMandate Feature Flag
 ENABLE_EMANDATE=false
@@ -986,10 +986,10 @@ All collection IDs must be configured. See [`.env.example`](.env.example) for th
 | `RAZORPAY_KEY_SECRET` | Razorpay secret key | - |
 | `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook verification | - |
 | `BILLING_GRACE_PERIOD_DAYS` | Days before suspension | `14` |
-| `BILLING_CURRENCY` | Default currency | `INR` |
-| `USAGE_RATE_TRAFFIC_GB` | Cost per GB traffic (cents) | `0.10` |
-| `USAGE_RATE_STORAGE_GB_MONTH` | Cost per GB/month storage (cents) | `0.05` |
-| `USAGE_RATE_COMPUTE_UNIT` | Cost per compute unit (cents) | `0.001` |
+| `BILLING_CURRENCY` | Billing currency (USD; local is display-only) | `USD` |
+| `USAGE_RATE_TRAFFIC_GB` | Cost per GB traffic (cents) | `12.0` |
+| `USAGE_RATE_STORAGE_GB_MONTH` | Cost per GB/month storage (cents) | `2.0` |
+| `USAGE_RATE_COMPUTE_UNIT` | Cost per compute unit (cents) | `1.0` |
 | `ENABLE_EMANDATE` | Enable Razorpay e-mandate | `false` |
 | `CRON_SECRET` | Secret for cron endpoints | - |
 
@@ -1389,10 +1389,10 @@ export const mutationGuard = async (c: Context, next: () => Promise<void>) => {
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `BILLING_GRACE_PERIOD_DAYS` | Days before suspension | 14 |
-| `BILLING_CURRENCY` | Invoice currency | INR |
-| `USAGE_RATE_TRAFFIC_GB` | Cost per GB traffic (cents) | 0.10 |
-| `USAGE_RATE_STORAGE_GB_MONTH` | Cost per GB/month storage (cents) | 0.05 |
-| `USAGE_RATE_COMPUTE_UNIT` | Cost per compute unit (cents) | 0.001 |
+| `BILLING_CURRENCY` | Invoice currency (USD; local is display-only) | USD |
+| `USAGE_RATE_TRAFFIC_GB` | Cost per GB traffic (cents) | 12.0 |
+| `USAGE_RATE_STORAGE_GB_MONTH` | Cost per GB/month storage (cents) | 2.0 |
+| `USAGE_RATE_COMPUTE_UNIT` | Cost per compute unit (cents) | 1.0 |
 | `ENABLE_EMANDATE` | Enable e-mandate | false |
 
 ### Billing Collections

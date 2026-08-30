@@ -25,7 +25,18 @@ import { OrganizationRole, OrgMemberStatus } from "@/features/organizations/type
 import { OrgPermissionKey } from "@/features/org-permissions/types";
 import { DepartmentPermission } from "@/features/departments/types";
 import { parseDepartmentPermissionKeys } from "@/features/departments/lib/collection-schema";
-
+import {
+    bytesToGB,
+    gbToBytes,
+    calculateUsageCostUsd,
+    getUsageRatesUsd,
+    emptyWorkspaceUsage,
+    applyLatestStorageAvg,
+    workspaceUsageToBreakdown,
+    aggregatedPeriodKey,
+    sumUsageCosts,
+    type WorkspaceUsageAccumulator,
+} from "@/lib/usage-cost";
 import {
     createUsageEventSchema,
     getUsageEventsSchema,
@@ -47,6 +58,12 @@ import {
     ResourceType,
     UsageSource,
 } from "../types";
+
+const USAGE_RATE_CENTS = {
+    trafficPerGB: USAGE_RATE_TRAFFIC_GB,
+    storagePerGBMonth: USAGE_RATE_STORAGE_GB_MONTH,
+    computePerUnit: USAGE_RATE_COMPUTE_UNIT,
+};
 
 // Helper to check workspace-level admin access
 async function checkAdminAccess(
@@ -319,33 +336,6 @@ async function getBillingEntityForEvent(
     }
 }
 
-// Convert bytes to GB
-function bytesToGB(bytes: number): number {
-    return bytes / (1024 * 1024 * 1024);
-}
-
-// Calculate cost based on usage (in BILLING_CURRENCY)
-function calculateCost(
-    trafficGB: number,
-    storageAvgGB: number,
-    computeUnits: number,
-    aiCostUSD: number = 0
-) {
-    // Rates are in cents, so we divide by 100 to get USD
-    const traffic = Number(((trafficGB * USAGE_RATE_TRAFFIC_GB) / 100).toFixed(6));
-    const storage = Number((Math.max(0, storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100).toFixed(6));
-    const compute = Number(((computeUnits * USAGE_RATE_COMPUTE_UNIT) / 100).toFixed(6));
-    const ai = Number(aiCostUSD.toFixed(6));
-    
-    return {
-        traffic,
-        storage,
-        compute,
-        ai,
-        total: Number((traffic + storage + compute + ai).toFixed(6)),
-    };
-}
-
 const app = new Hono()
     // ===============================
     // COMBINED DASHBOARD ENDPOINT
@@ -399,7 +389,9 @@ const app = new Hono()
                                 trafficTotalBytes: 0, trafficTotalGB: 0,
                                 storageAvgBytes: 0, storageAvgGB: 0,
                                 computeTotalUnits: 0,
-                                estimatedCost: { traffic: 0, storage: 0, compute: 0, total: 0 },
+                                aiTokensTotal: 0,
+                                estimatedCost: { traffic: 0, storage: 0, compute: 0, ai: 0, total: 0 },
+                                rates: getUsageRatesUsd(USAGE_RATE_CENTS),
                                 eventCount: 0,
                                 breakdown: { bySource: {}, byResourceType: {}, byWorkspace: {} },
                                 dailyUsage: [],
@@ -427,11 +419,16 @@ const app = new Hono()
                 ? Query.equal("billingEntityId", params.organizationId)
                 : Query.equal("workspaceId", params.workspaceId!);
 
-            // Initialize breakdown maps early
-            const byWorkspace: Record<string, { traffic: number; storage: number; compute: number; ai: number; aiCost: number }> = {};
+            const workspaceAcc: Record<string, WorkspaceUsageAccumulator> = {};
+            const getAcc = (workspaceId: string) => {
+                if (!workspaceAcc[workspaceId]) {
+                    workspaceAcc[workspaceId] = emptyWorkspaceUsage();
+                }
+                return workspaceAcc[workspaceId];
+            };
             const dailyUsageMap: Record<string, Record<string, number | string>> = {};
 
-            // 1. Get latest aggregation to determine live event range
+            // 1. Get latest aggregation to decide whether a historical storage baseline is needed
             const latestAggResult = await databases.listDocuments<UsageAggregation>(
                 DATABASE_ID, USAGE_AGGREGATIONS_ID,
                 [
@@ -442,18 +439,9 @@ const app = new Hono()
             ).catch(() => ({ documents: [] as UsageAggregation[] }));
 
             const latestAgg = latestAggResult.documents[0];
-            const latestAggDate = latestAgg?.period || monthStart.split("T")[0];
-            const liveEventsStart = new Date(latestAggDate);
-            
-            // CRITICAL FIX: Only add 1 day if we found an existing aggregation.
-            // If no aggregation exists, start from the beginning of the period (monthStart)
-            // to ensure Day 1 events are not skipped.
-            if (latestAgg) {
-                liveEventsStart.setDate(liveEventsStart.getDate() + 1);
-            }
-            // 1b. Fetch Storage Baseline (Total bytes as of month start)
-            // If no aggregation exists, we calculate it from all historical storage events.
-            let storageBaselineBytes = 0;
+
+            // Past storage events only seed GB-month when no daily aggregations exist yet.
+            // Period "-00" loses to any YYYY-MM-DD daily snapshot.
             if (!latestAgg) {
                 const allPastStorage = await databases.listDocuments<UsageEvent>(
                     DATABASE_ID, USAGE_EVENTS_ID,
@@ -464,24 +452,15 @@ const app = new Hono()
                         Query.limit(5000)
                     ]
                 ).catch(() => ({ documents: [] as UsageEvent[] }));
-                
+
+                const pastByWorkspace: Record<string, number> = {};
                 for (const event of allPastStorage.documents) {
-                    storageBaselineBytes += (event.units || 0);
-                    if (event.workspaceId) {
-                        if (!byWorkspace[event.workspaceId]) {
-                            byWorkspace[event.workspaceId] = { traffic: 0, storage: 0, compute: 0, ai: 0, aiCost: 0 };
-                        }
-                        byWorkspace[event.workspaceId].storage += (event.units || 0);
-                    }
+                    if (!event.workspaceId) continue;
+                    pastByWorkspace[event.workspaceId] =
+                        (pastByWorkspace[event.workspaceId] || 0) + (event.units || 0);
                 }
-            } else {
-                storageBaselineBytes = (latestAgg.storageAvgGB || 0) * 1024 * 1024 * 1024;
-                // If it's a single workspace query, we can assign the baseline to it
-                if (params.workspaceId) {
-                    if (!byWorkspace[params.workspaceId]) {
-                        byWorkspace[params.workspaceId] = { traffic: 0, storage: 0, compute: 0, ai: 0, aiCost: 0 };
-                    }
-                    byWorkspace[params.workspaceId].storage = storageBaselineBytes;
+                for (const [wsId, bytes] of Object.entries(pastByWorkspace)) {
+                    applyLatestStorageAvg(getAcc(wsId), `${targetPeriod}-00`, bytesToGB(bytes));
                 }
             }
             
@@ -528,134 +507,114 @@ const app = new Hono()
                 ).catch(() => ({ documents: [] as UsageAlert[], total: 0 })),
             ]);
 
-            let trafficTotalGB = 0;
-            let storageAvgGB = bytesToGB(storageBaselineBytes);
-            let computeTotalUnits = 0;
-            let aiTokensTotal = 0;
-            let aiCostUSD = 0;
+            const bySource: Record<string, number> = { api: 0, file: 0, job: 0, ai: 0 };
+            const byResourceType: Record<string, number> = { traffic: 0, storage: 0, compute: 0 };
+            const aggregatedPeriods = new Set(
+                dailySummariesResult.documents.map((s) => aggregatedPeriodKey(s.workspaceId, s.period))
+            );
 
-            // Process daily summaries (fast — ~30 records)
-            // NOTE: Daily summaries store values in GB, but the chart component expects
-            //       bytes and auto-scales to KB/MB/GB. So we convert GB→bytes here.
-
+            // Process daily summaries. Latest storageAvgGB per workspace is the billed GB-month.
             for (const summary of dailySummariesResult.documents) {
-                // Now using standardized GB fields from v3 schema
                 const sTrafficGB = summary.trafficTotalGB || 0;
                 const sStorageAvgGB = summary.storageAvgGB || 0;
                 const sComputeUnits = summary.computeTotalUnits || 0;
+                const sAiTokens = summary.aiTokensTotal || 0;
+                const sAiCost = summary.aiCostUSD || 0;
+                const acc = getAcc(summary.workspaceId);
 
-                trafficTotalGB += sTrafficGB;
-                storageAvgGB += sStorageAvgGB;
-                computeTotalUnits += sComputeUnits;
+                acc.trafficBytes += gbToBytes(sTrafficGB);
+                acc.computeUnits += sComputeUnits;
+                acc.aiTokens += sAiTokens;
+                acc.aiCostUSD += sAiCost;
+                applyLatestStorageAvg(acc, summary.period, sStorageAvgGB);
 
-                // Per-workspace breakdown (kept in GB for KPI cards)
-                const wsId = summary.workspaceId;
-                if (!byWorkspace[wsId]) {
-                    byWorkspace[wsId] = { traffic: 0, storage: 0, compute: 0, ai: 0, aiCost: 0 };
-                }
-                byWorkspace[wsId].traffic += (sTrafficGB * 1024 * 1024 * 1024);
-                byWorkspace[wsId].storage += (sStorageAvgGB * 1024 * 1024 * 1024);
-                byWorkspace[wsId].compute += sComputeUnits;
-
-                // Daily chart data — converted to BYTES for chart component
-                const date = summary.period; // YYYY-MM-DD
+                const date = summary.period;
                 if (!dailyUsageMap[date]) {
                     dailyUsageMap[date] = { date, traffic: 0, storage: 0, compute: 0, ai: 0 };
                 }
-                // Convert GB back to bytes for the chart component which expects raw bytes
-                dailyUsageMap[date].traffic = (dailyUsageMap[date].traffic as number) + (sTrafficGB * 1024 * 1024 * 1024);
-                dailyUsageMap[date].storage = (dailyUsageMap[date].storage as number) + (sStorageAvgGB * 1024 * 1024 * 1024);
+                dailyUsageMap[date].traffic = (dailyUsageMap[date].traffic as number) + gbToBytes(sTrafficGB);
+                dailyUsageMap[date].storage = (dailyUsageMap[date].storage as number) + gbToBytes(sStorageAvgGB);
                 dailyUsageMap[date].compute = (dailyUsageMap[date].compute as number) + sComputeUnits;
-                dailyUsageMap[date].ai = (dailyUsageMap[date].ai as number) + (summary.aiTokensTotal || 0);
+                dailyUsageMap[date].ai = (dailyUsageMap[date].ai as number) + sAiTokens;
             }
-
-            const bySource: Record<string, number> = { api: 0, file: 0, job: 0, ai: 0 };
-            const byResourceType: Record<string, number> = { traffic: 0, storage: 0, compute: 0 };
 
             for (const event of allEventsResult.documents) {
                 const eventUnits = event.units ?? 0;
                 const weightedUnits = event.weightedUnits || eventUnits;
                 const eventGB = bytesToGB(eventUnits);
-                
-                // ACCUMULATE TOTALS (Ensures top KPI cards show correct month-to-date data)
-                // Skip if this event is already accounted for in a daily summary
                 const eventDate = event.timestamp.split("T")[0];
-                const isAlreadyAggregated = dailySummariesResult.documents.some(s => s.period === eventDate);
-                
-                if (!isAlreadyAggregated) {
-                    if (event.resourceType === ResourceType.TRAFFIC) {
-                        trafficTotalGB += eventGB;
-                    } else if (event.resourceType === ResourceType.STORAGE) {
-                        storageAvgGB = Math.max(0, storageAvgGB + eventGB);
-                    } else if (event.resourceType === ResourceType.COMPUTE) {
-                        if (event.source === UsageSource.AI) {
-                            aiTokensTotal += eventUnits;
-                            // Extract cost if present in metadata
+                const wsId = event.workspaceId;
+                const isAlreadyAggregated = wsId
+                    ? aggregatedPeriods.has(aggregatedPeriodKey(wsId, eventDate))
+                    : false;
+                if (isAlreadyAggregated) continue;
+
+                const acc = wsId ? getAcc(wsId) : null;
+
+                if (event.resourceType === ResourceType.TRAFFIC) {
+                    if (acc) acc.trafficBytes += eventUnits;
+                } else if (event.resourceType === ResourceType.STORAGE) {
+                    if (acc && (!acc.storagePeriod || eventDate > acc.storagePeriod)) {
+                        acc.storageAvgGB = Math.max(0, acc.storageAvgGB + eventGB);
+                    }
+                } else if (event.resourceType === ResourceType.COMPUTE) {
+                    if (event.source === UsageSource.AI) {
+                        if (acc) {
+                            acc.aiTokens += eventUnits;
                             if (event.metadata) {
                                 try {
-                                    const meta = typeof event.metadata === 'string' ? JSON.parse(event.metadata) : event.metadata;
-                                    if (meta.costUSD) aiCostUSD += meta.costUSD;
+                                    const meta = typeof event.metadata === "string" ? JSON.parse(event.metadata) : event.metadata;
+                                    if (meta.costUSD) acc.aiCostUSD += meta.costUSD;
                                 } catch { /* ignore */ }
                             }
+                        }
+                    } else if (acc) {
+                        acc.computeUnits += weightedUnits;
+                    }
+                }
+
+                bySource[event.source] = (bySource[event.source] || 0) + weightedUnits;
+                byResourceType[event.resourceType] = (byResourceType[event.resourceType] || 0) + weightedUnits;
+
+                if (!dailyUsageMap[eventDate]) {
+                    dailyUsageMap[eventDate] = { date: eventDate, traffic: 0, storage: 0, compute: 0, ai: 0 };
+                }
+                switch (event.resourceType) {
+                    case ResourceType.TRAFFIC:
+                        dailyUsageMap[eventDate].traffic = (dailyUsageMap[eventDate].traffic as number) + eventUnits;
+                        break;
+                    case ResourceType.STORAGE:
+                        dailyUsageMap[eventDate].storage = (dailyUsageMap[eventDate].storage as number) + eventUnits;
+                        break;
+                    case ResourceType.COMPUTE:
+                        if (event.source === UsageSource.AI) {
+                            dailyUsageMap[eventDate].ai = (dailyUsageMap[eventDate].ai as number) + eventUnits;
                         } else {
-                            computeTotalUnits += weightedUnits;
+                            dailyUsageMap[eventDate].compute = (dailyUsageMap[eventDate].compute as number) + weightedUnits;
                         }
-                    }
-
-                    bySource[event.source] = (bySource[event.source] || 0) + weightedUnits;
-                    byResourceType[event.resourceType] = (byResourceType[event.resourceType] || 0) + weightedUnits;
-
-                    if (event.workspaceId) {
-                        if (!byWorkspace[event.workspaceId]) {
-                            byWorkspace[event.workspaceId] = { traffic: 0, storage: 0, compute: 0, ai: 0, aiCost: 0 };
-                        }
-                        switch (event.resourceType) {
-                            case ResourceType.TRAFFIC:
-                                byWorkspace[event.workspaceId].traffic += eventUnits;
-                                break;
-                            case ResourceType.STORAGE:
-                                byWorkspace[event.workspaceId].storage = Math.max(0, byWorkspace[event.workspaceId].storage + eventUnits);
-                                break;
-                            case ResourceType.COMPUTE:
-                                if (event.source !== UsageSource.AI) {
-                                    byWorkspace[event.workspaceId].compute += weightedUnits;
-                                } else {
-                                    byWorkspace[event.workspaceId].ai += eventUnits;
-                                    if (event.metadata) {
-                                        try {
-                                            const meta = typeof event.metadata === 'string' ? JSON.parse(event.metadata) : event.metadata;
-                                            if (meta.costUSD) byWorkspace[event.workspaceId].aiCost += meta.costUSD;
-                                        } catch { /* ignore */ }
-                                    }
-                                }
-                                break;
-                        }
-                    }
-
-                    // Add to chart data
-                    if (!dailyUsageMap[eventDate]) {
-                        dailyUsageMap[eventDate] = { date: eventDate, traffic: 0, storage: 0, compute: 0, ai: 0 };
-                    }
-                    
-                    switch (event.resourceType) {
-                        case ResourceType.TRAFFIC:
-                            dailyUsageMap[eventDate].traffic = (dailyUsageMap[eventDate].traffic as number) + (eventUnits);
-                            break;
-                        case ResourceType.STORAGE:
-                            dailyUsageMap[eventDate].storage = (dailyUsageMap[eventDate].storage as number) + (eventUnits);
-                            break;
-                        case ResourceType.COMPUTE:
-                            if (event.source === UsageSource.AI) {
-                                dailyUsageMap[eventDate].ai = (dailyUsageMap[eventDate].ai as number) + eventUnits;
-                            } else {
-                                dailyUsageMap[eventDate].compute = (dailyUsageMap[eventDate].compute as number) + (weightedUnits);
-                            }
-                            break;
-                    }
+                        break;
                 }
             }
 
-            // Total event count
+            const byWorkspace: Record<string, ReturnType<typeof workspaceUsageToBreakdown>> = {};
+            const workspaceCosts = [];
+            for (const [wsId, acc] of Object.entries(workspaceAcc)) {
+                const breakdown = workspaceUsageToBreakdown(acc, USAGE_RATE_CENTS);
+                byWorkspace[wsId] = breakdown;
+                workspaceCosts.push(breakdown.estimatedCost);
+            }
+
+            const estimatedCost = workspaceCosts.length
+                ? sumUsageCosts(workspaceCosts)
+                : calculateUsageCostUsd(
+                    { trafficGB: 0, storageAvgGB: 0, computeUnits: 0, aiCostUSD: 0 },
+                    USAGE_RATE_CENTS
+                );
+
+            const trafficTotalBytes = Object.values(workspaceAcc).reduce((sum, acc) => sum + acc.trafficBytes, 0);
+            const storageAvgGB = Object.values(workspaceAcc).reduce((sum, acc) => sum + acc.storageAvgGB, 0);
+            const computeTotalUnits = Object.values(workspaceAcc).reduce((sum, acc) => sum + acc.computeUnits, 0);
+            const aiTokensTotal = Object.values(workspaceAcc).reduce((sum, acc) => sum + acc.aiTokens, 0);
             const totalEventCount = dailySummariesResult.total + allEventsResult.total;
 
             return c.json({
@@ -666,20 +625,23 @@ const app = new Hono()
                     },
                     summary: {
                         period: targetPeriod,
-                        trafficTotalBytes: Number((trafficTotalGB * 1024 * 1024 * 1024).toFixed(0)),
-                        trafficTotalGB: Number(trafficTotalGB.toFixed(6)),
-                        storageAvgBytes: Number((Math.max(0, storageAvgGB) * 1024 * 1024 * 1024).toFixed(0)),
+                        trafficTotalBytes: Number(trafficTotalBytes.toFixed(0)),
+                        trafficTotalGB: Number(bytesToGB(trafficTotalBytes).toFixed(6)),
+                        storageAvgBytes: Number(gbToBytes(Math.max(0, storageAvgGB)).toFixed(0)),
                         storageAvgGB: Number(Math.max(0, storageAvgGB).toFixed(6)),
                         computeTotalUnits: Number(computeTotalUnits.toFixed(0)),
                         aiTokensTotal,
-                        estimatedCost: calculateCost(trafficTotalGB, storageAvgGB, computeTotalUnits, aiCostUSD),
+                        estimatedCost,
+                        rates: getUsageRatesUsd(USAGE_RATE_CENTS),
                         eventCount: totalEventCount,
                         breakdown: {
                             bySource: bySource as Record<UsageSource, number>,
                             byResourceType: byResourceType as Record<ResourceType, number>,
-                            byWorkspace: byWorkspace as Record<string, { traffic: number; storage: number; compute: number; ai: number; aiCost: number }>,
+                            byWorkspace,
                         },
-                        dailyUsage: Object.values(dailyUsageMap).sort((a, b) => (a.date as string).localeCompare(b.date as string)) as { date: string; [key: string]: number | string }[],
+                        dailyUsage: Object.values(dailyUsageMap).sort((a, b) =>
+                            (a.date as string).localeCompare(b.date as string)
+                        ) as { date: string; [key: string]: number | string }[],
                     },
                     alerts: {
                         documents: alertsResult.documents,
@@ -941,7 +903,7 @@ const app = new Hono()
                             storageAvgBytes: 0,
                             storageAvgGB: 0,
                             computeTotalUnits: 0,
-                            estimatedCost: { traffic: 0, storage: 0, compute: 0, total: 0 },
+                            estimatedCost: { traffic: 0, storage: 0, compute: 0, ai: 0, total: 0 },
                             eventCount: 0,
                             breakdown: { bySource: {}, byResourceType: {} },
                         }
@@ -1001,7 +963,14 @@ const app = new Hono()
                 storage: 0,
                 compute: 0,
             };
-            const byWorkspace: Record<string, { traffic: number, storage: number, compute: number, ai: number, aiCost: number }> = {};
+            const byWorkspace: Record<string, {
+                traffic: number;
+                storage: number;
+                compute: number;
+                ai: number;
+                aiCost: number;
+                estimatedCost?: ReturnType<typeof calculateUsageCostUsd>;
+            }> = {};
             const dailyUsageMap: Record<string, Record<string, number | string>> = {};
 
             for (const event of events.documents) {
@@ -1035,8 +1004,11 @@ const app = new Hono()
                     if (event.resourceType !== ResourceType.COMPUTE || event.source !== UsageSource.AI) {
                         if (event.resourceType === ResourceType.STORAGE) {
                             byWorkspace[event.workspaceId].storage = Math.max(0, byWorkspace[event.workspaceId].storage + units);
-                        } else {
-                            byWorkspace[event.workspaceId][event.resourceType as keyof typeof byWorkspace[string]] += units;
+                        } else if (
+                            event.resourceType === ResourceType.TRAFFIC ||
+                            event.resourceType === ResourceType.COMPUTE
+                        ) {
+                            byWorkspace[event.workspaceId][event.resourceType] += units;
                         }
                     } else {
                         byWorkspace[event.workspaceId].ai += units;
@@ -1085,6 +1057,18 @@ const app = new Hono()
             const trafficTotalGB = bytesToGB(trafficTotalBytes);
             const storageAvgGB = bytesToGB(storageTotalBytes);
 
+            for (const data of Object.values(byWorkspace)) {
+                data.estimatedCost = calculateUsageCostUsd(
+                    {
+                        trafficGB: bytesToGB(data.traffic),
+                        storageAvgGB: bytesToGB(Math.max(0, data.storage)),
+                        computeUnits: data.compute,
+                        aiCostUSD: data.aiCost,
+                    },
+                    USAGE_RATE_CENTS
+                );
+            }
+
             const summary: UsageSummary = {
                 period: targetPeriod,
                 trafficTotalBytes,
@@ -1093,12 +1077,21 @@ const app = new Hono()
                 storageAvgGB: Math.max(0, storageAvgGB),
                 computeTotalUnits,
                 aiTokensTotal,
-                estimatedCost: calculateCost(trafficTotalGB, storageAvgGB, computeTotalUnits, aiCostUSD),
+                estimatedCost: calculateUsageCostUsd(
+                    {
+                        trafficGB: trafficTotalGB,
+                        storageAvgGB,
+                        computeUnits: computeTotalUnits,
+                        aiCostUSD,
+                    },
+                    USAGE_RATE_CENTS
+                ),
+                rates: getUsageRatesUsd(USAGE_RATE_CENTS),
                 eventCount: events.total,
                 breakdown: {
                     bySource: bySource as Record<UsageSource, number>,
                     byResourceType: byResourceType as Record<ResourceType, number>,
-                    byWorkspace: byWorkspace as Record<string, { traffic: number; storage: number; compute: number; ai: number; aiCost: number }>,
+                    byWorkspace,
                 },
                 dailyUsage: Object.values(dailyUsageMap).sort((a, b) => (a.date as string).localeCompare(b.date as string)) as { date: string;[key: string]: number | string }[],
             };
@@ -1521,7 +1514,6 @@ const app = new Hono()
             return c.json({ error: "Admin access required" }, 403);
         }
 
-        // Get aggregation for period
         const aggregations = await databases.listDocuments<UsageAggregation>(
             DATABASE_ID,
             USAGE_AGGREGATIONS_ID,
@@ -1542,12 +1534,14 @@ const app = new Hono()
             return c.json({ error: "Invoice already exists for this period" }, 400);
         }
 
-        // Calculate total cost
-        const totalCost = Number((
-            ((aggregation.trafficTotalGB * USAGE_RATE_TRAFFIC_GB) / 100) +
-            ((aggregation.storageAvgGB * USAGE_RATE_STORAGE_GB_MONTH) / 100) +
-            ((aggregation.computeTotalUnits * USAGE_RATE_COMPUTE_UNIT) / 100)
-        ).toFixed(6));
+        const totalCost = calculateUsageCostUsd(
+            {
+                trafficGB: aggregation.trafficTotalGB,
+                storageAvgGB: aggregation.storageAvgGB,
+                computeUnits: aggregation.computeTotalUnits,
+            },
+            USAGE_RATE_CENTS
+        ).total;
 
         // Generate invoice ID (human-readable format)
         const invoiceNumber = `INV-${workspaceId.slice(-6).toUpperCase()}-${period.replace('-', '')}`;
