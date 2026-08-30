@@ -5,7 +5,7 @@ import { PERMISSIONS, type McpQuery, type McpRuntime } from "../runtime/types";
 import { compactWorkItem, toolResult, withId, wrapUntrusted } from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem } from "../runtime/tenant";
-import { listQuery, optionalString, requireString } from "./helpers";
+import { listQuery, optionalString, requireString, redactGithubRepo } from "./helpers";
 
 export async function handleReadTool(
   name: string,
@@ -44,6 +44,47 @@ export async function handleReadTool(
       return workflowGet(args, runtime, auth);
     case "fairlx_agent_context_get":
       return agentContextGet(args, runtime, auth);
+    // ── New read tools ──
+    case "fairlx_workspace_members_list":
+      return workspaceMembersList(args, runtime, auth);
+    case "fairlx_workspace_member_get":
+      return workspaceMemberGet(args, runtime, auth);
+    case "fairlx_workspace_get":
+      return workspaceGet(args, runtime, auth);
+    case "fairlx_subtask_list":
+      return subtaskList(args, runtime, auth);
+    case "fairlx_notification_list":
+      return notificationList(args, runtime, auth);
+    case "fairlx_saved_view_list":
+      return savedViewList(args, runtime, auth);
+    case "fairlx_saved_view_get":
+      return savedViewGet(args, runtime, auth);
+    case "fairlx_custom_field_list":
+      return customFieldList(args, runtime, auth);
+    case "fairlx_project_team_list":
+      return projectTeamList(args, runtime, auth);
+    case "fairlx_project_team_members_list":
+      return projectTeamMembersList(args, runtime, auth);
+    case "fairlx_space_list":
+      return spaceList(args, runtime, auth);
+    case "fairlx_space_get":
+      return spaceGet(args, runtime, auth);
+    case "fairlx_program_list":
+      return programList(args, runtime, auth);
+    case "fairlx_program_get":
+      return programGet(args, runtime, auth);
+    case "fairlx_program_milestone_list":
+      return programMilestoneList(args, runtime, auth);
+    case "fairlx_personal_backlog_list":
+      return personalBacklogList(args, runtime, auth);
+    case "fairlx_audit_log_list":
+      return auditLogList(args, runtime, auth);
+    case "fairlx_attachment_list":
+      return attachmentList(args, runtime, auth);
+    case "fairlx_webhook_list":
+      return webhookList(args, runtime, auth);
+    case "fairlx_github_repo_list":
+      return githubRepoList(args, runtime, auth);
     default:
       throw invalidParams(`Unknown read tool: ${name}`);
   }
@@ -434,5 +475,414 @@ async function agentContextGet(
       description: item.description,
       comments: comments.documents.map((d) => d.content),
     }),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW read tools
+// ═══════════════════════════════════════════════════════════════════
+
+async function workspaceMembersList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  assertWorkspaceBound(auth, workspaceId);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.members,
+    listQuery(args, [{ type: "equal", field: "workspaceId", value: workspaceId }])
+  );
+  return toolResult({
+    members: result.documents.map((m) => withId(m)),
+    total: result.total,
+  });
+}
+
+async function workspaceMemberGet(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const memberId = requireString(args, "memberId");
+  let member: Record<string, unknown>;
+  try {
+    member = await runtime.store.get<Record<string, unknown>>(runtime.collections.members, memberId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  const workspaceId = String(member.workspaceId ?? "");
+  assertWorkspaceBound(auth, workspaceId);
+  return toolResult({ member: withId(member) });
+}
+
+async function workspaceGet(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  assertWorkspaceBound(auth, workspaceId);
+  // Verify the actor is a member of this workspace
+  const membership = await runtime.store.list<Record<string, unknown>>(runtime.collections.members, [
+    { type: "equal", field: "userId", value: auth.actorUserId },
+    { type: "equal", field: "workspaceId", value: workspaceId },
+    { type: "limit", value: 1 },
+  ]);
+  if (membership.documents.length === 0) throw notFoundError("Not found");
+  const ws = await runtime.store.get<Record<string, unknown>>(runtime.collections.workspaces, workspaceId);
+  return toolResult({ workspace: withId(ws) });
+}
+
+async function subtaskList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workItemId = requireString(args, "workItemId");
+  const item = await loadWorkItem(runtime, auth, workItemId);
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(item.projectId),
+    PERMISSIONS.VIEW_TASKS,
+    ["tasks:read"]
+  );
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.subtasks,
+    listQuery(args, [{ type: "equal", field: "parentTaskId", value: workItemId }])
+  );
+  return toolResult({
+    subtasks: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function notificationList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const extra: McpQuery[] = [
+    { type: "equal", field: "userId", value: auth.actorUserId },
+  ];
+  const workspaceId = optionalString(args, "workspaceId");
+  if (workspaceId) {
+    assertWorkspaceBound(auth, workspaceId);
+    extra.push({ type: "equal", field: "workspaceId", value: workspaceId });
+  }
+  if (args.isRead === true) {
+    extra.push({ type: "equal", field: "isRead", value: true });
+  } else if (args.isRead === false) {
+    extra.push({ type: "equal", field: "isRead", value: false });
+  }
+  extra.push({ type: "orderDesc", field: "$createdAt" });
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.notifications,
+    listQuery(args, extra)
+  );
+  return toolResult({
+    notifications: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function savedViewList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_VIEWS, ["views:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.savedViews,
+    listQuery(args, [{ type: "equal", field: "projectId", value: projectId }])
+  );
+  return toolResult({
+    views: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function savedViewGet(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const viewId = requireString(args, "viewId");
+  let view: Record<string, unknown>;
+  try {
+    view = await runtime.store.get<Record<string, unknown>>(runtime.collections.savedViews, viewId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  const projectId = String(view.projectId);
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_VIEWS, ["views:read"]);
+  return toolResult({ view: withId(view) });
+}
+
+async function customFieldList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_TASKS, ["tasks:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.customFields,
+    listQuery(args, [{ type: "equal", field: "projectId", value: projectId }])
+  );
+  return toolResult({
+    customFields: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function projectTeamList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_MEMBERS, ["members:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.projectTeams,
+    listQuery(args, [{ type: "equal", field: "projectId", value: projectId }])
+  );
+  return toolResult({
+    teams: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function projectTeamMembersList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const teamId = requireString(args, "teamId");
+  // Resolve the project from the team or from the arg
+  let projectId = optionalString(args, "projectId");
+  if (!projectId) {
+    let team: Record<string, unknown>;
+    try {
+      team = await runtime.store.get<Record<string, unknown>>(runtime.collections.projectTeams, teamId);
+    } catch {
+      throw notFoundError("Not found");
+    }
+    projectId = String(team.projectId);
+  }
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_MEMBERS, ["members:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.projectTeamMembers,
+    listQuery(args, [{ type: "equal", field: "teamId", value: teamId }])
+  );
+  return toolResult({
+    members: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function spaceList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  assertWorkspaceBound(auth, workspaceId);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.spaces,
+    listQuery(args, [{ type: "equal", field: "workspaceId", value: workspaceId }])
+  );
+  return toolResult({
+    spaces: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function spaceGet(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const spaceId = requireString(args, "spaceId");
+  let space: Record<string, unknown>;
+  try {
+    space = await runtime.store.get<Record<string, unknown>>(runtime.collections.spaces, spaceId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  const workspaceId = String(space.workspaceId ?? "");
+  assertWorkspaceBound(auth, workspaceId);
+  return toolResult({ space: withId(space) });
+}
+
+async function programList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  assertWorkspaceBound(auth, workspaceId);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.programs,
+    listQuery(args, [{ type: "equal", field: "workspaceId", value: workspaceId }])
+  );
+  return toolResult({
+    programs: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function programGet(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const programId = requireString(args, "programId");
+  let program: Record<string, unknown>;
+  try {
+    program = await runtime.store.get<Record<string, unknown>>(runtime.collections.programs, programId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  const workspaceId = String(program.workspaceId ?? "");
+  assertWorkspaceBound(auth, workspaceId);
+  return toolResult({ program: withId(program) });
+}
+
+async function programMilestoneList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const programId = requireString(args, "programId");
+  // Resolve the workspace from the program
+  let program: Record<string, unknown>;
+  try {
+    program = await runtime.store.get<Record<string, unknown>>(runtime.collections.programs, programId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  assertWorkspaceBound(auth, String(program.workspaceId ?? ""));
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.programMilestones,
+    listQuery(args, [{ type: "equal", field: "programId", value: programId }])
+  );
+  return toolResult({
+    milestones: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function personalBacklogList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.personalBacklog,
+    listQuery(args, [{ type: "equal", field: "userId", value: auth.actorUserId }])
+  );
+  return toolResult({
+    backlogItems: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function auditLogList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const extra: McpQuery[] = [];
+  const workspaceId = optionalString(args, "workspaceId");
+  if (workspaceId) {
+    assertWorkspaceBound(auth, workspaceId);
+    extra.push({ type: "equal", field: "organizationId", value: workspaceId });
+  } else if (auth.workspaceId) {
+    extra.push({ type: "equal", field: "organizationId", value: auth.workspaceId });
+  }
+  const actionType = optionalString(args, "actionType");
+  if (actionType) {
+    extra.push({ type: "equal", field: "actionType", value: actionType });
+  }
+  extra.push({ type: "orderDesc", field: "$createdAt" });
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.organizationAuditLogs,
+    listQuery(args, extra)
+  );
+  return toolResult({
+    auditLogs: result.documents.map((d) => withId(d)),
+    total: result.total,
+  });
+}
+
+async function attachmentList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workItemId = requireString(args, "workItemId");
+  const item = await loadWorkItem(runtime, auth, workItemId);
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(item.projectId),
+    PERMISSIONS.VIEW_ATTACHMENTS,
+    ["attachments:read"]
+  );
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.attachments,
+    listQuery(args, [{ type: "equal", field: "taskId", value: workItemId }])
+  );
+  return toolResult({
+    attachments: result.documents.map((d) => ({
+      id: d.$id,
+      name: d.name ?? d.fileName,
+      fileName: d.fileName,
+      mimeType: d.mimeType,
+      size: d.size,
+      uploadedBy: d.uploadedBy,
+      createdAt: d.$createdAt,
+    })),
+    total: result.total,
+  });
+}
+
+async function webhookList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_SETTINGS, ["admin:manage"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.projectWebhooks,
+    listQuery(args, [{ type: "equal", field: "projectId", value: projectId }])
+  );
+  return toolResult({
+    webhooks: result.documents.map((d) => ({
+      ...withId(d),
+      secret: undefined, // redact webhook secrets
+    })),
+    total: result.total,
+  });
+}
+
+async function githubRepoList(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_PROJECT, ["project:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.githubRepos,
+    listQuery(args, [{ type: "equal", field: "projectId", value: projectId }])
+  );
+  return toolResult({
+    repositories: result.documents.map((d) => redactGithubRepo(withId(d))),
+    total: result.total,
   });
 }

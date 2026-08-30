@@ -2,6 +2,7 @@ import { PERMISSIONS } from "../runtime/types";
 
 export const ALL_SCOPES = [
   "project:read",
+  "members:read",
   "tasks:read",
   "tasks:write",
   "tasks:delete",
@@ -12,6 +13,14 @@ export const ALL_SCOPES = [
   "docs:write",
   "time:write",
   "workflows:read",
+  "notifications:read",
+  "notifications:write",
+  "views:read",
+  "views:write",
+  "spaces:read",
+  "programs:read",
+  "audit:read",
+  "attachments:read",
   "admin:manage",
 ] as const;
 
@@ -19,6 +28,7 @@ export type McpScope = (typeof ALL_SCOPES)[number];
 
 const SCOPE_TO_PERMISSIONS: Record<string, string[]> = {
   "project:read": [PERMISSIONS.VIEW_PROJECT],
+  "members:read": [PERMISSIONS.VIEW_MEMBERS],
   "tasks:read": [PERMISSIONS.VIEW_TASKS],
   "tasks:write": [PERMISSIONS.CREATE_TASKS, PERMISSIONS.EDIT_TASKS],
   "tasks:delete": [PERMISSIONS.DELETE_TASKS],
@@ -35,6 +45,14 @@ const SCOPE_TO_PERMISSIONS: Record<string, string[]> = {
   "docs:write": [PERMISSIONS.CREATE_DOCS, PERMISSIONS.EDIT_DOCS, PERMISSIONS.DELETE_DOCS],
   "time:write": [PERMISSIONS.EDIT_TASKS],
   "workflows:read": [PERMISSIONS.VIEW_PROJECT],
+  "notifications:read": [PERMISSIONS.VIEW_NOTIFICATIONS],
+  "notifications:write": [PERMISSIONS.VIEW_NOTIFICATIONS],
+  "views:read": [PERMISSIONS.VIEW_VIEWS],
+  "views:write": [PERMISSIONS.CREATE_VIEWS, PERMISSIONS.DELETE_VIEWS],
+  "spaces:read": [PERMISSIONS.VIEW_SPACES],
+  "programs:read": [PERMISSIONS.VIEW_PROGRAMS],
+  "audit:read": [PERMISSIONS.VIEW_AUDIT_LOGS],
+  "attachments:read": [PERMISSIONS.VIEW_ATTACHMENTS],
   "admin:manage": [PERMISSIONS.EDIT_SETTINGS, PERMISSIONS.DELETE_PROJECT],
 };
 

@@ -21,6 +21,18 @@ import {
   WORKFLOW_TRANSITIONS_ID,
   WORKFLOWS_ID,
   WORKSPACES_ID,
+  // New collections for full MCP coverage
+  SUBTASKS_ID,
+  NOTIFICATIONS_ID,
+  SAVED_VIEWS_ID,
+  PROJECT_TEAMS_ID,
+  SPACES_ID,
+  SPACE_MEMBERS_ID,
+  PROGRAMS_ID,
+  PROGRAM_MEMBERS_ID,
+  PROGRAM_MILESTONES_ID,
+  PERSONAL_BACKLOG_ID,
+  ATTACHMENTS_ID,
 } from "@/config";
 import { hashMcpToken } from "@/features/integrations/lib/helpers";
 import {
@@ -63,6 +75,18 @@ const COLLECTIONS: McpCollections = {
   organizationAuditLogs: ORGANIZATION_AUDIT_LOGS_ID,
   customFields: CUSTOM_FIELDS_ID,
   mcpApiTokens: MCP_API_TOKENS_ID,
+  // New collections for full MCP coverage
+  subtasks: SUBTASKS_ID,
+  notifications: NOTIFICATIONS_ID,
+  savedViews: SAVED_VIEWS_ID,
+  projectTeams: PROJECT_TEAMS_ID,
+  spaces: SPACES_ID,
+  spaceMembers: SPACE_MEMBERS_ID,
+  programs: PROGRAMS_ID,
+  programMembers: PROGRAM_MEMBERS_ID,
+  programMilestones: PROGRAM_MILESTONES_ID,
+  personalBacklog: PERSONAL_BACKLOG_ID,
+  attachments: ATTACHMENTS_ID,
 };
 
 const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;

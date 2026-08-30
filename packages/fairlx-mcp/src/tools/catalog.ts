@@ -604,6 +604,403 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     scopes: ["docs:write"],
     permission: PERMISSIONS.DELETE_DOCS,
   },
+  // ═══════════════════════════════════════════════════════════════════
+  // NEW TOOLS — Full MCP Coverage
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── Workspace Members ──
+  {
+    name: "fairlx_workspace_members_list",
+    description: "List all members of a workspace",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, limit: { type: "number" }, cursorAfter: { type: "string" } },
+      required: ["workspaceId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+  {
+    name: "fairlx_workspace_member_get",
+    description: "Get a specific workspace member's details by member document ID",
+    inputSchema: { type: "object", properties: { memberId: id }, required: ["memberId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+
+  // ── Workspace Details ──
+  {
+    name: "fairlx_workspace_get",
+    description: "Get a workspace by ID",
+    inputSchema: { type: "object", properties: { workspaceId: id }, required: ["workspaceId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["project:read"],
+  },
+
+  // ── Subtasks ──
+  {
+    name: "fairlx_subtask_list",
+    description: "List subtasks (checklist items) of a work item",
+    inputSchema: {
+      type: "object",
+      properties: { workItemId: id, limit: { type: "number" } },
+      required: ["workItemId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["tasks:read"],
+    permission: PERMISSIONS.VIEW_TASKS,
+  },
+  {
+    name: "fairlx_subtask_create",
+    description: "Create a subtask on a work item",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workItemId: id,
+        title: { type: "string" },
+        idempotencyKey,
+      },
+      required: ["workItemId", "title"],
+    },
+    riskTier: 2,
+    rateClass: "write",
+    scopes: ["tasks:write"],
+    permission: PERMISSIONS.EDIT_TASKS,
+  },
+  {
+    name: "fairlx_subtask_update",
+    description: "Update a subtask (toggle completion, rename)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subtaskId: id,
+        title: { type: "string" },
+        isCompleted: { type: "boolean" },
+      },
+      required: ["subtaskId"],
+    },
+    riskTier: 2,
+    rateClass: "write",
+    scopes: ["tasks:write"],
+    permission: PERMISSIONS.EDIT_TASKS,
+  },
+  {
+    name: "fairlx_subtask_delete",
+    description: "Delete a subtask. Destructive; requires confirm: true and challengeToken.",
+    inputSchema: {
+      type: "object",
+      properties: { subtaskId: id, confirm, challengeToken },
+      required: ["subtaskId"],
+    },
+    riskTier: 4,
+    rateClass: "destructive",
+    scopes: ["tasks:write"],
+    permission: PERMISSIONS.EDIT_TASKS,
+  },
+
+  // ── Notifications ──
+  {
+    name: "fairlx_notification_list",
+    description: "List notifications for the authenticated user",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: id,
+        isRead: { type: "boolean" },
+        limit: { type: "number" },
+        cursorAfter: { type: "string" },
+      },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["notifications:read"],
+  },
+  {
+    name: "fairlx_notification_mark_read",
+    description: "Mark one or all notifications as read",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notificationId: id,
+        markAll: { type: "boolean", description: "If true, marks all unread notifications as read" },
+        workspaceId: id,
+      },
+    },
+    riskTier: 2,
+    rateClass: "write",
+    scopes: ["notifications:write"],
+  },
+
+  // ── Saved Views ──
+  {
+    name: "fairlx_saved_view_list",
+    description: "List saved views / filters in a project",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: id, limit: { type: "number" } },
+      required: ["projectId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["views:read"],
+    permission: PERMISSIONS.VIEW_VIEWS,
+  },
+  {
+    name: "fairlx_saved_view_get",
+    description: "Get a saved view by ID",
+    inputSchema: { type: "object", properties: { viewId: id }, required: ["viewId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["views:read"],
+    permission: PERMISSIONS.VIEW_VIEWS,
+  },
+  {
+    name: "fairlx_saved_view_create",
+    description: "Create a saved view / filter for a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: id,
+        name: { type: "string" },
+        filters: { type: "string", description: "JSON-encoded filter configuration" },
+        isShared: { type: "boolean" },
+        idempotencyKey,
+      },
+      required: ["projectId", "name"],
+    },
+    riskTier: 2,
+    rateClass: "write",
+    scopes: ["views:write"],
+    permission: PERMISSIONS.CREATE_VIEWS,
+  },
+  {
+    name: "fairlx_saved_view_delete",
+    description: "Delete a saved view. Destructive; requires confirm: true and challengeToken.",
+    inputSchema: {
+      type: "object",
+      properties: { viewId: id, confirm, challengeToken },
+      required: ["viewId"],
+    },
+    riskTier: 4,
+    rateClass: "destructive",
+    scopes: ["views:write"],
+    permission: PERMISSIONS.DELETE_VIEWS,
+  },
+
+  // ── Custom Fields (listing) ──
+  {
+    name: "fairlx_custom_field_list",
+    description: "List custom field definitions for a project",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: id, limit: { type: "number" } },
+      required: ["projectId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["tasks:read"],
+    permission: PERMISSIONS.VIEW_TASKS,
+  },
+
+  // ── Project Teams ──
+  {
+    name: "fairlx_project_team_list",
+    description: "List teams in a project",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: id, limit: { type: "number" } },
+      required: ["projectId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+  {
+    name: "fairlx_project_team_members_list",
+    description: "List members of a specific project team",
+    inputSchema: {
+      type: "object",
+      properties: { teamId: id, projectId: id, limit: { type: "number" } },
+      required: ["teamId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+
+  // ── Spaces ──
+  {
+    name: "fairlx_space_list",
+    description: "List spaces in a workspace",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, limit: { type: "number" }, cursorAfter: { type: "string" } },
+      required: ["workspaceId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["spaces:read"],
+  },
+  {
+    name: "fairlx_space_get",
+    description: "Get a space by ID",
+    inputSchema: { type: "object", properties: { spaceId: id }, required: ["spaceId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["spaces:read"],
+  },
+
+  // ── Programs & Milestones ──
+  {
+    name: "fairlx_program_list",
+    description: "List programs in a workspace",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, limit: { type: "number" }, cursorAfter: { type: "string" } },
+      required: ["workspaceId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["programs:read"],
+  },
+  {
+    name: "fairlx_program_get",
+    description: "Get a program by ID",
+    inputSchema: { type: "object", properties: { programId: id }, required: ["programId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["programs:read"],
+  },
+  {
+    name: "fairlx_program_milestone_list",
+    description: "List milestones for a program",
+    inputSchema: {
+      type: "object",
+      properties: { programId: id, limit: { type: "number" } },
+      required: ["programId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["programs:read"],
+  },
+
+  // ── Personal Backlog ──
+  {
+    name: "fairlx_personal_backlog_list",
+    description: "List items in the authenticated user's personal backlog",
+    inputSchema: {
+      type: "object",
+      properties: { limit: { type: "number" }, cursorAfter: { type: "string" } },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["tasks:read"],
+  },
+
+  // ── Audit Logs ──
+  {
+    name: "fairlx_audit_log_list",
+    description: "List organization / workspace audit logs",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: id,
+        actionType: { type: "string" },
+        limit: { type: "number" },
+        cursorAfter: { type: "string" },
+      },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["audit:read"],
+  },
+
+  // ── Attachments ──
+  {
+    name: "fairlx_attachment_list",
+    description: "List attachments on a work item",
+    inputSchema: {
+      type: "object",
+      properties: { workItemId: id, limit: { type: "number" } },
+      required: ["workItemId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["attachments:read"],
+    permission: PERMISSIONS.VIEW_ATTACHMENTS,
+  },
+
+  // ── Webhook Management (complete CRUD) ──
+  {
+    name: "fairlx_webhook_list",
+    description: "List webhooks for a project",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: id, limit: { type: "number" } },
+      required: ["projectId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.EDIT_SETTINGS,
+  },
+  {
+    name: "fairlx_webhook_delete",
+    description: "Delete a webhook. Destructive; requires confirm: true and challengeToken.",
+    inputSchema: {
+      type: "object",
+      properties: { webhookId: id, confirm, challengeToken },
+      required: ["webhookId"],
+    },
+    riskTier: 4,
+    rateClass: "destructive",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.EDIT_SETTINGS,
+  },
+
+  // ── GitHub Repos ──
+  {
+    name: "fairlx_github_repo_list",
+    description: "List connected GitHub repositories for a project",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: id, limit: { type: "number" } },
+      required: ["projectId"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["project:read"],
+    permission: PERMISSIONS.VIEW_PROJECT,
+  },
+
+  // ── Sprint Update ──
+  {
+    name: "fairlx_sprint_update",
+    description: "Update a sprint (name, goal, dates)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sprintId: id,
+        name: { type: "string" },
+        goal: { type: "string" },
+        startDate: { type: "string" },
+        endDate: { type: "string" },
+      },
+      required: ["sprintId"],
+    },
+    riskTier: 2,
+    rateClass: "write",
+    scopes: ["sprints:manage"],
+    permission: PERMISSIONS.EDIT_SPRINTS,
+  },
 ];
 
 export function getToolDefinition(name: string): McpToolDefinition | undefined {
