@@ -28,6 +28,13 @@ export async function handleDestructiveTool(
       return timeLogDelete(args, runtime, auth);
     case "fairlx_doc_delete":
       return docDelete(args, runtime, auth);
+    // ── New destructive tools ──
+    case "fairlx_subtask_delete":
+      return subtaskDelete(args, runtime, auth);
+    case "fairlx_saved_view_delete":
+      return savedViewDelete(args, runtime, auth);
+    case "fairlx_webhook_delete":
+      return webhookDelete(args, runtime, auth);
     default:
       throw invalidParams(`Unknown destructive tool: ${name}`);
   }
@@ -186,3 +193,87 @@ async function docDelete(
   await runtime.store.delete(runtime.collections.projectDocs, docId);
   return toolResult({ deleted: true, docId });
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// NEW destructive tools
+// ═══════════════════════════════════════════════════════════════════
+
+async function subtaskDelete(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const subtaskId = requireString(args, "subtaskId");
+  let subtask: Record<string, unknown>;
+  try {
+    subtask = await runtime.store.get<Record<string, unknown>>(runtime.collections.subtasks, subtaskId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(subtask.projectId),
+    PERMISSIONS.EDIT_TASKS,
+    ["tasks:write"]
+  );
+  await runtime.store.delete(runtime.collections.subtasks, subtaskId);
+  return toolResult({ deleted: true, subtaskId });
+}
+
+async function savedViewDelete(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const viewId = requireString(args, "viewId");
+  let view: Record<string, unknown>;
+  try {
+    view = await runtime.store.get<Record<string, unknown>>(runtime.collections.savedViews, viewId);
+  } catch {
+    throw notFoundError("Not found");
+  }
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(view.projectId),
+    PERMISSIONS.DELETE_VIEWS,
+    ["views:write"]
+  );
+  await runtime.store.delete(runtime.collections.savedViews, viewId);
+  return toolResult({ deleted: true, viewId });
+}
+
+async function webhookDelete(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const webhookId = requireString(args, "webhookId");
+  let webhook: Record<string, unknown>;
+  try {
+    webhook = await runtime.store.get<Record<string, unknown>>(
+      runtime.collections.projectWebhooks,
+      webhookId
+    );
+  } catch {
+    throw notFoundError("Not found");
+  }
+  await requireProjectAccess(
+    runtime,
+    auth,
+    String(webhook.projectId),
+    PERMISSIONS.EDIT_SETTINGS,
+    ["admin:manage"]
+  );
+  await runtime.store.delete(runtime.collections.projectWebhooks, webhookId);
+  await audit(runtime, {
+    projectId: webhook.projectId,
+    userId: auth.actorUserId,
+    action: "mcp.webhook.delete",
+    resourceType: "webhook",
+    resourceId: webhookId,
+  });
+  return toolResult({ deleted: true, webhookId });
+}
+

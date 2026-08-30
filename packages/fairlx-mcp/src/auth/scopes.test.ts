@@ -71,6 +71,7 @@ describe("scopesFromPermissions", () => {
     const scopes = scopesFromPermissions(VIEWER_PERMISSIONS);
     expect(scopes).toEqual([
       "project:read",
+      "members:read",
       "tasks:read",
       "sprints:read",
       "docs:read",

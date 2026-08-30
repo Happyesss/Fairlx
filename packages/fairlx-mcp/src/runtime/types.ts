@@ -63,6 +63,18 @@ export interface McpCollections {
   organizationAuditLogs: string;
   customFields: string;
   mcpApiTokens: string;
+  // ── New collections for full MCP coverage ──
+  subtasks: string;
+  notifications: string;
+  savedViews: string;
+  projectTeams: string;
+  spaces: string;
+  spaceMembers: string;
+  programs: string;
+  programMembers: string;
+  programMilestones: string;
+  personalBacklog: string;
+  attachments: string;
 }
 
 export interface McpTokenRecord {
@@ -114,10 +126,17 @@ export const PERMISSIONS = {
   VIEW_SPRINTS: "project.sprints.view",
   VIEW_DOCS: "project.docs.view",
   VIEW_MEMBERS: "project.members.view",
+  VIEW_NOTIFICATIONS: "project.notifications.view",
+  VIEW_VIEWS: "project.views.view",
+  VIEW_SPACES: "project.spaces.view",
+  VIEW_PROGRAMS: "project.programs.view",
+  VIEW_ATTACHMENTS: "project.attachments.view",
+  VIEW_AUDIT_LOGS: "project.audit_logs.view",
   CREATE_TASKS: "project.tasks.create",
   CREATE_SPRINTS: "project.sprints.create",
   CREATE_DOCS: "project.docs.create",
   CREATE_COMMENTS: "project.comments.create",
+  CREATE_VIEWS: "project.views.create",
   EDIT_TASKS: "project.tasks.edit",
   EDIT_SPRINTS: "project.sprints.edit",
   EDIT_DOCS: "project.docs.edit",
@@ -127,6 +146,7 @@ export const PERMISSIONS = {
   DELETE_DOCS: "project.docs.delete",
   DELETE_PROJECT: "project.delete",
   DELETE_COMMENTS: "project.comments.delete",
+  DELETE_VIEWS: "project.views.delete",
   START_SPRINT: "project.sprints.start",
   COMPLETE_SPRINT: "project.sprints.complete",
 } as const;

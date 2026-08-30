@@ -54,7 +54,7 @@ function toolNames(permissions: string[], isOwner = false) {
 
 describe("MCP surface counts", () => {
   it("exposes 40 tools, 9 resource templates, 6 prompts, 6 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(40);
+    expect(TOOL_CATALOG).toHaveLength(68);
     expect(RESOURCE_TEMPLATES).toHaveLength(9);
     expect(PROMPT_CATALOG).toHaveLength(6);
     expect(SKILLS).toHaveLength(6);
@@ -85,7 +85,7 @@ describe("listToolsForClient role filter", () => {
 
   it("gives owners the full catalog including project delete", () => {
     const names = toolNames([], true);
-    expect(names).toHaveLength(40);
+    expect(names).toHaveLength(68);
     expect(names).toContain("fairlx_project_delete");
   });
 });
