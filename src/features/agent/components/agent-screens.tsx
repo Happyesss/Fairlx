@@ -906,8 +906,8 @@ export function AgentSettingsScreen() {
   const { data: context } = useGetAgentContext();
   const updateHarness = useUpdateAgentHarness();
   const resetHarness = useResetAgentHarness();
-  const workspaces = context?.workspaces ?? [];
-  const projects = context?.projects ?? [];
+  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
+  const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [projectId, setProjectId] = useState("");
 

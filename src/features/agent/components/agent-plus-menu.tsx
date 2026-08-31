@@ -33,13 +33,13 @@ export function AgentPlusMenu({
   const sessionMode = harness?.settings.sessionMode || "agent";
   const q = query.trim().toLowerCase();
 
-  const workItems = context?.workItems ?? [];
-  const skills = harness?.skills ?? [];
-  const knowledge = harness?.knowledge ?? [];
-  const servers = Object.entries(mcp?.mcpServers ?? {});
-  const workspaces = context?.workspaces ?? [];
-  const projects = context?.projects ?? [];
-  const docs = context?.docs ?? [];
+  const workItems = useMemo(() => context?.workItems ?? [], [context?.workItems]);
+  const skills = useMemo(() => harness?.skills ?? [], [harness?.skills]);
+  const knowledge = useMemo(() => harness?.knowledge ?? [], [harness?.knowledge]);
+  const servers = useMemo(() => Object.entries(mcp?.mcpServers ?? {}), [mcp?.mcpServers]);
+  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
+  const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
+  const docs = useMemo(() => context?.docs ?? [], [context?.docs]);
 
   const filtered = useMemo(() => {
     const match = (value: string) => !q || value.toLowerCase().includes(q);
