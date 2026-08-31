@@ -4,22 +4,54 @@ import { GROK_46_MODEL_ID } from "../constants";
 import type {
   AgentAiConfigStored,
   AgentChatMessage,
-  AgentContext,
-  AgentHarness,
   AgentRun,
+  AgentSpecialistId,
   AgentToolCall,
+  AgentToolEvent,
 } from "../types";
 import { loadAgentContext } from "./context";
-import { getOrCreateHarness } from "./harness";
+import { getOrCreateHarness, upsertHarness } from "./harness";
+import { ensurePersonalMcp } from "./mcp-bridge";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
+import { buildSystemPrompt } from "./prompt";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
-import { AgentEncryptionRequiredError, decryptSecret } from "./secrets";
+import { decryptSecret } from "./secrets";
 import { executeTool, openaiToolsForMode } from "./tools";
-import { updateRun } from "./runs";
+import { getRun, listRuns, updateRun } from "./runs";
+import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
+import { specialistById } from "./graph";
 
-const MAX_TOOL_ITERATIONS = 8;
+const MAX_TOOL_ITERATIONS = 12;
+const MAX_SPECIALIST_ITERATIONS = 4;
 const MAX_HISTORY = 24;
-const CHAT_TIMEOUT_MS = 60_000;
+const cancelledRuns = new Set<string>();
+
+export function cancelAgentTurn(runId: string) {
+  cancelledRuns.add(runId);
+}
+
+export function isAgentTurnCancelled(runId: string) {
+  return cancelledRuns.has(runId);
+}
+
+function thoughtEvent(runId: string, title: string, detail?: string): AgentToolEvent {
+  return {
+    id: crypto.randomUUID(),
+    type: "thought",
+    title,
+    detail,
+    createdAt: new Date().toISOString(),
+    runId,
+  };
+}
+
+function chatHost(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "unknown";
+  }
+}
 
 export type ChatTarget = {
   url: string;
@@ -98,60 +130,6 @@ export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
   };
 }
 
-function buildSystemPrompt(params: {
-  harness: AgentHarness;
-  context: AgentContext;
-  run: AgentRun;
-}): string {
-  const { harness, context, run } = params;
-  const enabledSkills = harness.skills.filter((skill) => skill.enabled);
-  const enabledPatterns = harness.workPatterns.filter((pattern) => pattern.enabled);
-  const workspace =
-    context.workspaces.find((item) => item.id === run.workspaceId) ??
-    context.workspaces.find((item) => item.id === harness.settings.defaultWorkspaceId) ??
-    context.workspaces[0];
-  const project =
-    context.projects.find((item) => item.id === run.projectId) ??
-    context.projects.find((item) => item.id === harness.settings.defaultProjectId);
-
-  const lines = [
-    "You are the Fairlx Agent harness. Help the user plan, inspect, and ship work across Fairlx workspaces, projects, and work items.",
-    `Mode: ${run.mode === "agent" ? "Agent (tools enabled)" : "Manual (chat only, no tools)"}.`,
-    `User: ${context.user.name} <${context.user.email}>.`,
-    workspace ? `Current workspace: ${workspace.name} (${workspace.id}).` : "No workspace selected.",
-    project ? `Current project: ${project.name} (${project.id}).` : "No project selected.",
-    context.workspaces.length
-      ? `Workspaces: ${context.workspaces.map((item) => `${item.name} (${item.id})`).join(", ")}.`
-      : "The user has no workspaces yet.",
-    "Rules:",
-    "- Prefer Fairlx data from tools over guessing.",
-    "- Use tools when they will improve the answer.",
-    "- Never claim you executed a shell command on the Fairlx host. Terminal only records planned commands.",
-    "- Be concise and actionable.",
-    "- Do not invent work items, projects, or credentials.",
-  ];
-
-  if (enabledPatterns.length) {
-    lines.push("Work patterns:");
-    for (const pattern of enabledPatterns) {
-      lines.push(`- ${pattern.name}: ${pattern.instructions}`);
-    }
-  }
-  if (enabledSkills.length) {
-    lines.push("Enabled skills:");
-    for (const skill of enabledSkills) {
-      lines.push(`- ${skill.name}: ${skill.description}. Instructions: ${skill.instructions}`);
-    }
-  }
-  if (harness.knowledge.length) {
-    lines.push("Knowledge base:");
-    for (const item of harness.knowledge.slice(0, 12)) {
-      lines.push(`- ${item.title}: ${item.content.slice(0, 400)}`);
-    }
-  }
-  return lines.join("\n");
-}
-
 type OpenAiMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
@@ -191,15 +169,23 @@ function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiM
   return [{ role: "system", content: system }, ...mapped];
 }
 
-async function chatCompletion(target: ChatTarget, body: Record<string, unknown>): Promise<any> {
+async function chatCompletion(
+  target: ChatTarget,
+  body: Record<string, unknown>,
+  runId: string,
+): Promise<any> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), AGENT_CHAT_TIMEOUT_MS);
+  const poll = setInterval(() => {
+    if (cancelledRuns.has(runId)) controller.abort();
+  }, 250);
   try {
     const response = await fetch(target.url, {
       method: "POST",
       headers: target.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
+      cache: "no-store",
     });
     const text = await response.text();
     let json: any = null;
@@ -213,8 +199,16 @@ async function chatCompletion(target: ChatTarget, body: Record<string, unknown>)
       throw new Error(message);
     }
     return json;
+  } catch (error) {
+    console.error("[agent] chat completion failed", {
+      model: target.model,
+      host: chatHost(target.url),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
     clearTimeout(timer);
+    clearInterval(poll);
   }
 }
 
@@ -256,41 +250,161 @@ export async function runAgentTurn(params: {
   const { databases, user } = params;
   let run = params.run;
 
-  const [harness, context, mcpDoc, aiDoc] = await Promise.all([
+  cancelledRuns.delete(run.id);
+
+  const persistUnlessStopped = async (
+    patch: Parameters<typeof updateRun>[2],
+  ): Promise<AgentRun> => {
+    if (cancelledRuns.has(run.id)) {
+      return (await getRun(databases, user.$id, run.id)) ?? run;
+    }
+    const latest = await getRun(databases, user.$id, run.id);
+    if (latest?.status === "stopped") return latest;
+    return updateRun(databases, run.id, patch);
+  };
+
+  const haltIfStopped = async (): Promise<AgentRun | null> => {
+    if (cancelledRuns.has(run.id)) {
+      return (await getRun(databases, user.$id, run.id)) ?? run;
+    }
+    const latest = await getRun(databases, user.$id, run.id);
+    if (latest?.status === "stopped") return latest;
+    return null;
+  };
+
+  const [initialHarness, context, mcpDoc, aiDoc, runs] = await Promise.all([
     getOrCreateHarness(databases, user.$id),
     loadAgentContext(databases, user),
     getMcpDocument(databases, user.$id),
     getAiDocument(databases, user.$id),
+    listRuns(databases, user.$id, 40),
   ]);
-  const mcp = parseMcpConfig(mcpDoc?.configJson);
+  let harness = initialHarness;
+  const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
   const stored = parseAiConfig(aiDoc);
+
+  const stoppedBeforeModel = await haltIfStopped();
+  if (stoppedBeforeModel) return stoppedBeforeModel;
 
   let target: ChatTarget;
   try {
     target = resolveChatTarget(stored);
   } catch (error) {
-    if (error instanceof AgentEncryptionRequiredError) throw error;
     const message = error instanceof Error ? error.message : "Failed to resolve model.";
-    return updateRun(databases, run.id, { status: "failed", error: message });
+    return persistUnlessStopped({ status: "failed", error: message });
   }
 
-  run = await updateRun(databases, run.id, {
+  run = await persistUnlessStopped({
     status: "running",
     modelId: target.modelId,
     error: "",
+    events: [
+      ...run.events,
+      thoughtEvent(run.id, "Calling model", `Waiting for ${target.model}…`),
+    ],
   });
+  if (run.status === "stopped") return run;
 
   const tools = openaiToolsForMode(run.mode, harness.settings.enabledTools ?? []);
-  const system = buildSystemPrompt({ harness, context, run });
+  const specialistTools = tools.filter((tool) => tool.function.name !== "delegate_agent");
+
+  const toolContext = () => ({
+    runId: run.id,
+    userId: user.$id,
+    context,
+    harness,
+    mcp,
+    databases,
+    runs,
+  });
+
+  const runSpecialistPass = async (
+    specialist: AgentSpecialistId,
+    task: string,
+  ): Promise<{ content: string; events: AgentToolEvent[] }> => {
+    const events: AgentToolEvent[] = [];
+    const specialistRun: AgentRun = {
+      ...run,
+      prompt: task,
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: task,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    let messages = specialistRun.messages;
+    const system = buildSystemPrompt({ harness, context, run: specialistRun, mcp, specialist });
+    for (let iteration = 0; iteration < MAX_SPECIALIST_ITERATIONS; iteration += 1) {
+      if (cancelledRuns.has(run.id)) break;
+      const completion = await chatCompletion(
+        target,
+        {
+          model: target.model,
+          messages: toOpenAiMessages(system, messages),
+          temperature: 0.2,
+          ...(specialistTools.length ? { tools: specialistTools, tool_choice: "auto" } : {}),
+        },
+        run.id,
+      );
+      const choice = completion?.choices?.[0];
+      const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
+      const toolCalls = extractToolCalls(choice);
+      if (!toolCalls.length) {
+        return { content: content || "Specialist finished with no additional notes.", events };
+      }
+      messages = [
+        ...messages,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: content || "",
+          toolCalls,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      for (const call of toolCalls) {
+        if (call.name === "delegate_agent") continue;
+        const result = await executeTool(call.name, call.arguments, toolContext());
+        if (result.harnessPatch) {
+          harness = await upsertHarness(databases, user.$id, result.harnessPatch);
+        }
+        events.push(result.event);
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "tool",
+          content: result.content,
+          toolCallId: call.id,
+          toolName: call.name,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+    const last = [...messages].reverse().find((message) => message.role === "assistant" && message.content);
+    return { content: last?.content || "Specialist reached its tool limit.", events };
+  };
 
   try {
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
-      const completion = await chatCompletion(target, {
-        model: target.model,
-        messages: toOpenAiMessages(system, run.messages),
-        temperature: 0.3,
-        ...(tools.length ? { tools, tool_choice: "auto" } : {}),
-      });
+      const stopped = await haltIfStopped();
+      if (stopped) return stopped;
+
+      const system = buildSystemPrompt({ harness, context, run, mcp });
+      const completion = await chatCompletion(
+        target,
+        {
+          model: target.model,
+          messages: toOpenAiMessages(system, run.messages),
+          temperature: 0.3,
+          ...(tools.length ? { tools, tool_choice: "auto" } : {}),
+        },
+        run.id,
+      );
+      const stoppedAfterChat = await haltIfStopped();
+      if (stoppedAfterChat) return stoppedAfterChat;
+
       const choice = completion?.choices?.[0];
       const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
       const toolCalls = extractToolCalls(choice);
@@ -307,29 +421,43 @@ export async function runAgentTurn(params: {
         const nextEvents = [...run.events];
 
         for (const call of toolCalls) {
-          const result = await executeTool(call.name, call.arguments, {
-            runId: run.id,
-            userId: user.$id,
-            context,
-            harness,
-            mcp,
-          });
+          const stoppedBeforeTool = await haltIfStopped();
+          if (stoppedBeforeTool) return stoppedBeforeTool;
+          const result = await executeTool(call.name, call.arguments, toolContext());
+          if (result.harnessPatch) {
+            harness = await upsertHarness(databases, user.$id, result.harnessPatch);
+          }
           nextEvents.push(result.event);
+          let toolContent = result.content;
+          if (result.delegate) {
+            const specialist = await runSpecialistPass(
+              specialistById(result.delegate.agent),
+              result.delegate.task,
+            );
+            nextEvents.push(...specialist.events);
+            nextEvents.push(thoughtEvent(run.id, `${result.delegate.agent} specialist`, specialist.content.slice(0, 280)));
+            toolContent = JSON.stringify({
+              agent: result.delegate.agent,
+              task: result.delegate.task,
+              result: specialist.content,
+            });
+          }
           nextMessages.push({
             id: crypto.randomUUID(),
             role: "tool",
-            content: result.content,
+            content: toolContent,
             toolCallId: call.id,
             toolName: call.name,
             createdAt: new Date().toISOString(),
           });
         }
 
-        run = await updateRun(databases, run.id, {
+        run = await persistUnlessStopped({
           messages: nextMessages,
           events: nextEvents,
           status: "running",
         });
+        if (run.status === "stopped") return run;
         continue;
       }
 
@@ -339,7 +467,7 @@ export async function runAgentTurn(params: {
         content: content || "Done.",
         createdAt: new Date().toISOString(),
       };
-      return updateRun(databases, run.id, {
+      return persistUnlessStopped({
         messages: [...run.messages, assistantMessage],
         status: "completed",
         error: "",
@@ -352,14 +480,17 @@ export async function runAgentTurn(params: {
       content: "I reached the tool-call limit for this turn. Ask me to continue if you want another pass.",
       createdAt: new Date().toISOString(),
     };
-    return updateRun(databases, run.id, {
+    return persistUnlessStopped({
       messages: [...run.messages, limitMessage],
       status: "completed",
       error: "",
     });
   } catch (error) {
-    if (error instanceof AgentEncryptionRequiredError) throw error;
-    const message = error instanceof Error ? error.message : "Agent turn failed.";
-    return updateRun(databases, run.id, { status: "failed", error: message });
+    const stopped = await haltIfStopped();
+    if (stopped) return stopped;
+    return persistUnlessStopped({
+      status: "failed",
+      error: formatAgentTurnError(error, AGENT_CHAT_TIMEOUT_MS),
+    });
   }
 }

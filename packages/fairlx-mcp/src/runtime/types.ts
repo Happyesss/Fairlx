@@ -75,6 +75,8 @@ export interface McpCollections {
   programMilestones: string;
   personalBacklog: string;
   attachments: string;
+  agentHarness?: string;
+  agentRuns?: string;
 }
 
 export interface McpTokenRecord {

@@ -117,6 +117,23 @@ Move work so no assignee is overloaded relative to story points.
 Respect existing BLOCKS links — do not assign a blocked item as if it were ready.
 `,
   },
+  {
+    id: "agent-harness",
+    name: "Agent harness",
+    description: "Use the user's personal Fairlx Agent harness as global MCP context",
+    content: `# Agent harness
+
+Treat this user's Fairlx Agent harness as a global MCP for personal content — the same way Cursor user rules and skills work.
+
+## Steps
+1. \`fairlx_personal_harness_get\` for mode, skills, rules, and staging.
+2. \`fairlx_personal_search\` when the request mentions a playbook, note, or past chat.
+3. \`fairlx://me/skills\`, \`fairlx://me/knowledge\`, \`fairlx://me/rules\`, \`fairlx://me/chats\`, \`fairlx://me/staging\` as resources.
+4. Follow enabled work patterns. Do not invent knowledge.
+
+Personal MCP is always on for the authenticated user in Fairlx Agent, Cursor, and Antigravity.
+`,
+  },
 ];
 
 export function listSkills(): McpSkill[] {

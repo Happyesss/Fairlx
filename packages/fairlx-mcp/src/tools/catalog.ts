@@ -1001,6 +1001,58 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     scopes: ["sprints:manage"],
     permission: PERMISSIONS.EDIT_SPRINTS,
   },
+
+  // ── Personal Agent harness (global MCP for the authenticated user) ──
+  {
+    name: "fairlx_personal_harness_get",
+    description: "Get this user's Fairlx Agent harness summary (skills, rules, automations, staging)",
+    inputSchema: { type: "object", properties: {} },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: [],
+  },
+  {
+    name: "fairlx_personal_search",
+    description: "Search the user's personal skills, knowledge, rules, automations, and chats",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        kind: {
+          type: "string",
+          enum: ["skills", "knowledge", "rules", "automations", "chats", "staging", "all"],
+        },
+      },
+      required: ["query"],
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: [],
+  },
+  {
+    name: "fairlx_personal_skill_list",
+    description: "List Agent harness skills for the authenticated user",
+    inputSchema: { type: "object", properties: { query: { type: "string" } } },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: [],
+  },
+  {
+    name: "fairlx_personal_knowledge_list",
+    description: "List personal knowledge-base notes for the authenticated user",
+    inputSchema: { type: "object", properties: { query: { type: "string" } } },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: [],
+  },
+  {
+    name: "fairlx_personal_chat_list",
+    description: "List Fairlx Agent chats (runs) for the authenticated user",
+    inputSchema: { type: "object", properties: { limit: { type: "number" } } },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: [],
+  },
 ];
 
 export function getToolDefinition(name: string): McpToolDefinition | undefined {

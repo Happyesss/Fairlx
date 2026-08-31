@@ -26,6 +26,17 @@ export function relativeTime(value?: string | null): string {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
+export function clockTime(value?: string | null, withSeconds = false): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" } : {}),
+  });
+}
+
 export function firstName(name?: string | null, email?: string | null): string {
   const source = (name || "").trim();
   if (source) return source.split(/\s+/)[0] ?? source;

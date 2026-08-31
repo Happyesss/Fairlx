@@ -20,6 +20,10 @@ type StopRunResponse = InferResponseType<
   (typeof client.api)["agent"]["runs"][":runId"]["stop"]["$post"],
   200
 >;
+type ContinueRunResponse = InferResponseType<
+  (typeof client.api)["agent"]["runs"][":runId"]["continue"]["$post"],
+  200
+>;
 type PatchRunResponse = InferResponseType<
   (typeof client.api)["agent"]["runs"][":runId"]["$patch"],
   200
@@ -55,9 +59,9 @@ export const useGetAgentRun = (runId?: string) => {
   return useQuery({
     queryKey: agentRunQueryKey(runId ?? ""),
     enabled: Boolean(runId),
-    staleTime: QUERY_CONFIG.REALTIME.staleTime,
+    staleTime: 0,
     gcTime: QUERY_CONFIG.REALTIME.gcTime,
-    refetchInterval: (query) => (query.state.data?.status === "running" ? 1500 : false),
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 1000 : false),
     queryFn: async () => {
       const response = await client.api.agent.runs[":runId"].$get({
         param: { runId: runId! },
@@ -113,6 +117,29 @@ export const useSendAgentMessage = () => {
   });
 };
 
+export const useContinueAgentRun = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<ContinueRunResponse, Error, { runId: string }>({
+    mutationFn: async ({ runId }) => {
+      const response = await client.api.agent.runs[":runId"]["continue"].$post({
+        param: { runId },
+      });
+      if (!response.ok) {
+        await readError(response, "Failed to continue agent run.");
+      }
+      return (await response.json()) as ContinueRunResponse;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(agentRunQueryKey(result.data.id), result.data);
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to continue agent run.");
+    },
+  });
+};
+
 export const useStopAgentRun = () => {
   const queryClient = useQueryClient();
 
@@ -133,6 +160,30 @@ export const useStopAgentRun = () => {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to stop agent run.");
+    },
+  });
+};
+
+export const useDeleteAgentRun = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ data: { id: string } }, Error, { runId: string }>({
+    mutationFn: async ({ runId }) => {
+      const response = await client.api.agent.runs[":runId"].$delete({
+        param: { runId },
+      });
+      if (!response.ok) {
+        await readError(response, "Failed to delete agent run.");
+      }
+      return (await response.json()) as { data: { id: string } };
+    },
+    onSuccess: (_result, { runId }) => {
+      toast.success("Chat deleted.");
+      queryClient.removeQueries({ queryKey: agentRunQueryKey(runId) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete agent run.");
     },
   });
 };

@@ -59,6 +59,12 @@ export const RESOURCE_TEMPLATES: McpResourceTemplate[] = [
     description: "Recent audit activity for a project",
     mimeType: JSON_MIME,
   },
+  {
+    uriTemplate: "fairlx://me/{kind}",
+    name: "Personal Agent content",
+    description: "User-scoped harness content: harness, skills, knowledge, rules, automations, chats, staging",
+    mimeType: JSON_MIME,
+  },
 ];
 
 export function listResourceTemplates(): McpResourceTemplate[] {
@@ -72,6 +78,51 @@ export function listResources(auth: AuthContext): McpResourceDefinition[] {
     description: skill.description,
     mimeType: "text/markdown",
   }));
+
+  resources.push(
+    {
+      uri: "fairlx://me/harness",
+      name: "Personal harness",
+      description: "This user's Agent harness summary",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/skills",
+      name: "Personal skills",
+      description: "Saved Agent skills",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/knowledge",
+      name: "Personal knowledge",
+      description: "Personal knowledge base",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/rules",
+      name: "Personal rules",
+      description: "Work patterns / rules",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/automations",
+      name: "Personal automations",
+      description: "Harness automations",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/chats",
+      name: "Personal chats",
+      description: "Agent chats for this user",
+      mimeType: JSON_MIME,
+    },
+    {
+      uri: "fairlx://me/staging",
+      name: "Personal git staging",
+      description: "Agent git staging buffer",
+      mimeType: JSON_MIME,
+    }
+  );
 
   if (auth.workspaceId) {
     resources.push({

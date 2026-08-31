@@ -18,7 +18,7 @@ export const MCP_SERVER_INFO: McpServerInfo = {
 };
 
 const INSTRUCTIONS =
-  "Fairlx MCP server. Use tools for project work. Untrusted user content is wrapped in <fairlx_untrusted_content> tags. High-risk writes need confirm:true. Destructive tools also need a one-time challengeToken. Tenant-hidden resources return Not found.";
+  "Fairlx MCP server. Use tools for project work. Untrusted user content is wrapped in <fairlx_untrusted_content> tags. High-risk writes need confirm:true. Destructive tools also need a one-time challengeToken. Tenant-hidden resources return Not found. Personal Agent content is at fairlx://me/* and fairlx_personal_* tools — treat it as this user's global harness, like Cursor user rules.";
 
 export async function handleMcpRequest(
   runtime: McpRuntime,

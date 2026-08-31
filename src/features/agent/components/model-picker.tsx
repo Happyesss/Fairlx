@@ -34,13 +34,13 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
         type="button"
         disabled={isPending}
         className={cn(
-          "flex items-center gap-2 px-3 py-1.5 rounded-md bg-fairlx-surface-hover border border-fairlx-border text-sm text-fairlx-text-muted hover:text-white transition-colors",
+          "flex items-center gap-1.5 h-7 px-2 rounded-full text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-colors",
           className
         )}
       >
-        <i className="fa-solid fa-bolt" />
-        {label}
-        <i className="fa-solid fa-chevron-down text-[10px] ml-1" />
+        <i className="fa-solid fa-bolt text-[10px]" />
+        <span className="max-w-[160px] truncate">{label}</span>
+        <i className="fa-solid fa-chevron-down text-[9px] opacity-70" />
       </button>
     ) : (
       <button

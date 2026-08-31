@@ -106,6 +106,7 @@ export type AgentAiConfigStored = {
 
 export type AgentRunStatus = "idle" | "running" | "completed" | "failed" | "stopped";
 export type AgentRunMode = "agent" | "manual";
+export type AgentSessionMode = "agent" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
 
 export type AgentToolCall = {
@@ -124,6 +125,75 @@ export type AgentChatMessage = {
   createdAt: string;
 };
 
+export type AgentSpecialistId =
+  | "orchestrator"
+  | "planner"
+  | "researcher"
+  | "builder"
+  | "git"
+  | "reviewer";
+
+export type AgentGitStageStatus = "unstaged" | "staged" | "committed";
+
+export type AgentGitStageItem = {
+  id: string;
+  path: string;
+  summary: string;
+  status: AgentGitStageStatus;
+  repoId?: string;
+  branch?: string;
+  content?: string;
+  createdAt: string;
+};
+
+export type AgentGitStaging = {
+  items: AgentGitStageItem[];
+  updatedAt: string;
+};
+
+export type AgentChatMeta = {
+  pinnedRunIds: string[];
+  archivedRunIds: string[];
+};
+
+export type AgentContextGraphNode = {
+  id: string;
+  kind: "workspace" | "project" | "work_item" | "repo" | "mcp" | "specialist";
+  label: string;
+  parentId?: string;
+  meta?: string;
+};
+
+export type AgentContextGraph = {
+  nodes: AgentContextGraphNode[];
+  specialist: AgentSpecialistId;
+  workspaceId?: string;
+  projectId?: string;
+};
+
+export type AgentSearchKind =
+  | "run"
+  | "workspace"
+  | "project"
+  | "work_item"
+  | "skill"
+  | "knowledge"
+  | "automation"
+  | "pattern"
+  | "doc"
+  | "repo"
+  | "mcp"
+  | "staging";
+
+export type AgentSearchHit = {
+  id: string;
+  kind: AgentSearchKind;
+  title: string;
+  href: string;
+  meta: string;
+  score: number;
+};
+
 export type AgentToolEventType =
   | "code_inspect"
   | "terminal"
@@ -135,6 +205,17 @@ export type AgentToolEventType =
   | "list_projects"
   | "list_work_items"
   | "mcp_list"
+  | "mcp_call"
+  | "mcp_resources"
+  | "delegate_agent"
+  | "search_harness"
+  | "create_project"
+  | "git_status"
+  | "git_stage"
+  | "git_unstage"
+  | "git_commit_plan"
+  | "run_automation"
+  | "personal_read"
   | "thought"
   | "error";
 
@@ -205,6 +286,26 @@ export type AgentHarnessSettings = {
   enabledTools: string[];
   defaultWorkspaceId?: string;
   defaultProjectId?: string;
+  sessionMode?: AgentSessionMode;
+};
+
+export type AgentContextChipKind =
+  | "workspace"
+  | "project"
+  | "work_item"
+  | "skill"
+  | "mcp"
+  | "file"
+  | "image"
+  | "doc"
+  | "repo"
+  | "knowledge";
+
+export type AgentContextChip = {
+  kind: AgentContextChipKind;
+  id: string;
+  label: string;
+  meta?: string;
 };
 
 export type AgentHarness = {
@@ -215,6 +316,8 @@ export type AgentHarness = {
   knowledge: AgentKnowledgeItem[];
   workPatterns: AgentWorkPattern[];
   settings: AgentHarnessSettings;
+  gitStaging: AgentGitStaging;
+  chatMeta: AgentChatMeta;
   updatedAt: string;
 };
 

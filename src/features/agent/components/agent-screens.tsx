@@ -35,6 +35,7 @@ import type {
   AgentWorkPattern,
 } from "../types";
 import { AgentPageFrame } from "./agent-app-shell";
+import { AgentNewProjectForm, AutomationRunButton } from "./agent-ops-screens";
 import { McpServersCard } from "./mcp-servers-card";
 import { useAgentUi } from "./agent-ui-context";
 
@@ -115,11 +116,12 @@ export function AgentProjectsScreen() {
 
   return (
     <AgentPageFrame>
-      <div className="max-w-[1400px] mx-auto">
+      <div className="max-w-[1400px] mx-auto space-y-6">
         <ScreenHeader
           title="Projects"
-          description="Projects from workspaces you belong to. Open one to continue work in Fairlx."
+          description="Projects from workspaces you belong to. Create one here, or open an existing project in Fairlx."
         />
+        <AgentNewProjectForm />
         {isLoading ? (
           <LoadingState label="Loading projects…" />
         ) : projects.length === 0 ? (
@@ -406,7 +408,7 @@ export function AgentMcpScreen() {
       <div className="max-w-4xl mx-auto space-y-6">
         <ScreenHeader
           title="MCP servers"
-          description="Per-account MCP servers the Agent can list and reason about. Secrets stay masked in the UI."
+          description="Per-account MCP servers the Agent can call. fairlx is the platform MCP; fairlx-personal is this user's skills, knowledge, rules, chats, and staging. Secrets stay masked in the UI."
           action={
             <Button type="button" size="sm" onClick={openMcp}>
               Manage MCP servers
@@ -540,6 +542,7 @@ export function AgentAutomationsScreen() {
                     ) : null}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
+                    <AutomationRunButton automationId={item.id} />
                     <Switch
                       checked={item.enabled}
                       disabled={updateHarness.isPending}

@@ -1,4 +1,4 @@
-import { DEFAULT_FAIRLX_MCP_SERVER_NAME } from "../constants";
+import { DEFAULT_FAIRLX_MCP_SERVER_NAME, PERSONAL_MCP_SERVER_NAME, PERSONAL_MCP_URL } from "../constants";
 import type { AgentAiConfigPublic, AgentModel, McpConfig } from "../types";
 
 export function defaultMcpConfig(): McpConfig {
@@ -6,6 +6,11 @@ export function defaultMcpConfig(): McpConfig {
     mcpServers: {
       [DEFAULT_FAIRLX_MCP_SERVER_NAME]: {
         url: "/api/mcp",
+        transport: "http",
+        disabled: false,
+      },
+      [PERSONAL_MCP_SERVER_NAME]: {
+        url: PERSONAL_MCP_URL,
         transport: "http",
         disabled: false,
       },
