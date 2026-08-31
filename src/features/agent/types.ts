@@ -331,6 +331,7 @@ export type AgentContextWorkspace = {
 export type AgentContextProject = {
   id: string;
   name: string;
+  imageUrl?: string;
   workspaceId: string;
   description?: string;
   status?: string;

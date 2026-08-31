@@ -437,7 +437,7 @@ export function AgentMcpScreen() {
       <div className="max-w-4xl mx-auto space-y-6">
         <ScreenHeader
           title="MCP servers"
-          description="Per-account MCP servers the Agent can call. fairlx is the platform MCP; fairlx-personal is this user's skills, knowledge, rules, chats, and staging. Secrets stay masked in the UI."
+          description="Connect external MCP servers (GitHub, PostgreSQL, Linear, etc.) to extend the Agent's tool capabilities. Platform and personal tools run automatically in the background."
           action={
             <Button type="button" size="sm" onClick={openMcp}>
               Manage MCP servers

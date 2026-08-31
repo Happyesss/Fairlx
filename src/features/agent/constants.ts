@@ -4,6 +4,7 @@ import type {
   AgentProviderType,
   AgentSkill,
   AgentWorkPattern,
+  McpServerConfig,
 } from "./types";
 
 export const AGENT_MCP_QUERY_KEY = ["agent-mcp-config"] as const;
@@ -20,6 +21,13 @@ export const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
 export const DEFAULT_FAIRLX_MCP_SERVER_NAME = "fairlx";
 export const PERSONAL_MCP_SERVER_NAME = "fairlx-personal";
 export const PERSONAL_MCP_URL = "in-process://personal";
+
+export function isInternalMcpServer(name: string, server?: McpServerConfig): boolean {
+  if (name === DEFAULT_FAIRLX_MCP_SERVER_NAME || name === PERSONAL_MCP_SERVER_NAME) return true;
+  const url = String(server?.url || "");
+  if (url === PERSONAL_MCP_URL || url === "/api/mcp" || url.endsWith("/api/mcp")) return true;
+  return false;
+}
 
 export const PROVIDER_CATALOG: Array<{
   type: AgentProviderType;

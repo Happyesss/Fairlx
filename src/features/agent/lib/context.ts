@@ -23,6 +23,7 @@ type ProjectDoc = Models.Document & {
   description?: string;
   status?: string;
   key?: string;
+  imageUrl?: string;
 };
 type WorkItemDoc = Models.Document & {
   key?: string;
@@ -135,6 +136,7 @@ export async function loadAgentContext(
     projects: projects.map((project) => ({
       id: project.$id,
       name: project.name,
+      imageUrl: project.imageUrl,
       workspaceId: project.workspaceId,
       description: project.description,
       status: project.status,

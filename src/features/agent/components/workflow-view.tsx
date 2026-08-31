@@ -25,14 +25,25 @@ import {
   ChevronRight,
   Check,
 } from "lucide-react";
+import { RiAddCircleFill } from "react-icons/ri";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ProjectAvatar } from "@/features/projects/components/project-avatar";
+import { useCreateProjectModal } from "@/features/projects/hooks/use-create-project-modal";
 
 import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
+import { AGENT_CONTEXT_QUERY_KEY, isInternalMcpServer } from "../constants";
 import {
   useContinueAgentRun,
   useDeleteAgentRun,
@@ -242,6 +253,102 @@ function ContextRow({
   );
 }
 
+function ProjectSelectorRow({
+  run,
+  projects,
+  selectedProject,
+}: {
+  run: AgentRun;
+  projects: Array<{ id: string; name: string; workspaceId: string; imageUrl?: string; key?: string; status?: string }>;
+  selectedProject?: { id: string; name: string; workspaceId: string; imageUrl?: string };
+  workspaceId?: string;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const patchRun = usePatchAgentRun();
+  const updateHarness = useUpdateAgentHarness();
+  const { open: openCreateProject } = useCreateProjectModal();
+
+  const handleSelect = (projId: string | null) => {
+    const nextProject = projects.find((p) => p.id === projId);
+    patchRun.mutate({
+      param: { runId: run.id },
+      json: {
+        projectId: projId || "",
+        ...(nextProject ? { workspaceId: nextProject.workspaceId } : {}),
+      },
+    });
+    updateHarness.mutate({
+      json: {
+        settings: {
+          defaultProjectId: projId || undefined,
+          ...(nextProject ? { defaultWorkspaceId: nextProject.workspaceId } : {}),
+        },
+      },
+    });
+  };
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between mb-1.5 px-1">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1.5 text-[11px] tracking-wider uppercase font-semibold text-sidebar-foreground/50 hover:text-sidebar-foreground/70 transition-colors"
+        >
+          {isExpanded ? (
+            <ChevronDown className="size-3" />
+          ) : (
+            <ChevronRight className="size-3" />
+          )}
+          Projects
+        </button>
+        <RiAddCircleFill
+          onClick={() => openCreateProject()}
+          className="size-5 text-sidebar-foreground/70 cursor-pointer hover:opacity-75 transition"
+        />
+      </div>
+
+      <div
+        className={`transition-all duration-300 overflow-hidden ${
+          isExpanded ? "max-h-96" : "max-h-0"
+        }`}
+      >
+        <Select
+          onValueChange={(val) => handleSelect(val === "none" ? null : val)}
+          value={selectedProject?.id || "none"}
+        >
+          <SelectTrigger className="w-full p-2 font-medium text-xs bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground/90 h-9">
+            <SelectValue placeholder="No project selected." />
+          </SelectTrigger>
+
+          <SelectContent className="bg-popover border-border max-h-72">
+            <SelectItem value="none">
+              <div className="flex items-center gap-3 font-medium">
+                <div className="size-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-xs font-semibold">
+                  —
+                </div>
+                <span className="truncate text-xs text-muted-foreground">No project selected.</span>
+              </div>
+            </SelectItem>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                <div className="flex items-center gap-3 font-medium">
+                  <ProjectAvatar
+                    name={project.name}
+                    image={project.imageUrl}
+                    className="size-6 text-[10px]"
+                  />
+                  <span className="truncate text-xs">{project.name}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 function WorkflowSidebar({
   run,
   events,
@@ -259,8 +366,15 @@ function WorkflowSidebar({
   const { data: mcp } = useGetAgentMcpConfig();
   const { data: ai } = useGetAgentAiConfig();
   const workspace = context?.workspaces.find((item) => item.id === run.workspaceId) ?? context?.workspaces[0];
+  const workspaceId = run.workspaceId || harness?.settings.defaultWorkspaceId || workspace?.id;
+  const workspaceProjects = useMemo(
+    () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
+    [context?.projects, workspaceId]
+  );
   const project = context?.projects.find((item) => item.id === run.projectId);
-  const connected = Object.values(mcp?.mcpServers ?? {}).filter((server) => !server.disabled).length;
+  const connected = Object.entries(mcp?.mcpServers ?? {}).filter(
+    ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
+  ).length;
   const staging = harness?.gitStaging?.items ?? [];
   const live = events.slice(-12);
   const repo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
@@ -300,23 +414,11 @@ function WorkflowSidebar({
         {tab === "context" ? (
           <>
             <div className="flex flex-col gap-3">
-              <ContextRow
-                icon={Globe}
-                iconClass="text-green-500"
-                label="Workspace"
-                value={workspace?.name || "No workspace"}
-                href={workspace ? `/workspaces/${workspace.id}` : "/agent/workspaces"}
-              />
-              <ContextRow
-                icon={FolderKanban}
-                iconClass="text-blue-500"
-                label="Project"
-                value={project?.name || "No project"}
-                href={
-                  project
-                    ? `/workspaces/${project.workspaceId}/projects/${project.id}`
-                    : "/agent/projects"
-                }
+              <ProjectSelectorRow
+                run={run}
+                projects={workspaceProjects}
+                selectedProject={project}
+                workspaceId={workspace?.id}
               />
               <div>
                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Agent</div>
@@ -332,7 +434,9 @@ function WorkflowSidebar({
                   <span className="text-foreground text-xs font-medium group-hover:text-primary transition-colors">MCP Servers</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-green-500 font-medium text-[11px]">{connected} connected</span>
+                  <span className={cn("font-medium text-[11px]", connected > 0 ? "text-green-500" : "text-muted-foreground")}>
+                    {connected} connected
+                  </span>
                   <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
                 </div>
               </button>

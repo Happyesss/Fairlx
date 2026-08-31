@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
+import { isInternalMcpServer } from "../constants";
 import { AGENT_SESSION_MODES, chipKey, runModeForSession } from "../lib/session-context";
 import type { AgentContextChip, AgentSessionMode } from "../types";
 import { useAgentUi } from "./agent-ui-context";
@@ -38,22 +39,30 @@ export function AgentPlusMenu({
   onAdd: (chip: AgentContextChip) => void;
 }) {
   const { openMcp, openModels, openNewWorkspace } = useAgentUi();
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<MenuView>("root");
+  const [query, setQuery] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
   const { data: mcp } = useGetAgentMcpConfig();
   const updateHarness = useUpdateAgentHarness();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [view, setView] = useState<MenuView>("root");
-  const selected = new Set(chips.map(chipKey));
+
+  const selected = useMemo(() => new Set(chips.map(chipKey)), [chips]);
   const sessionMode = harness?.settings.sessionMode || "agent";
   const q = query.trim().toLowerCase();
 
   const workItems = useMemo(() => context?.workItems ?? [], [context?.workItems]);
   const skills = useMemo(() => harness?.skills ?? [], [harness?.skills]);
   const knowledge = useMemo(() => harness?.knowledge ?? [], [harness?.knowledge]);
-  const servers = useMemo(() => Object.entries(mcp?.mcpServers ?? {}), [mcp?.mcpServers]);
+  const servers = useMemo(
+    () =>
+      Object.entries(mcp?.mcpServers ?? {}).filter(
+        ([name, server]) => !isInternalMcpServer(name, server)
+      ),
+    [mcp?.mcpServers]
+  );
   const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
   const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
   const docs = useMemo(() => context?.docs ?? [], [context?.docs]);

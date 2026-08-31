@@ -1,3 +1,4 @@
+import { isInternalMcpServer } from "../constants";
 import type { McpConfig, McpServerConfig } from "../types";
 import { maskEncryptedSecret } from "./secrets";
 
@@ -27,5 +28,7 @@ export function toPublicMcpConfig(config: McpConfig): McpConfig {
 
 export function connectedMcpCount(config: McpConfig | undefined): number {
   if (!config?.mcpServers) return 0;
-  return Object.values(config.mcpServers).filter((server) => !server.disabled).length;
+  return Object.entries(config.mcpServers).filter(
+    ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
+  ).length;
 }

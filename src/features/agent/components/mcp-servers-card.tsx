@@ -3,12 +3,14 @@
 import { ChevronRight } from "lucide-react";
 import { useAgentUi } from "./agent-ui-context";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
-import { getMcpServerIcon } from "../constants";
+import { getMcpServerIcon, isInternalMcpServer } from "../constants";
 import type { McpConfig } from "../types";
 
 function connectedMcpCount(config: McpConfig | undefined): number {
   if (!config?.mcpServers) return 0;
-  return Object.values(config.mcpServers).filter((server) => !server.disabled).length;
+  return Object.entries(config.mcpServers).filter(
+    ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
+  ).length;
 }
 
 export function McpConnectedLabel({ className }: { className?: string }) {
@@ -25,7 +27,9 @@ export function McpConnectedLabel({ className }: { className?: string }) {
 export function McpServersCard() {
   const { openMcp } = useAgentUi();
   const { data, isLoading } = useGetAgentMcpConfig();
-  const servers = Object.entries(data?.mcpServers ?? {});
+  const servers = Object.entries(data?.mcpServers ?? {}).filter(
+    ([name, server]) => !isInternalMcpServer(name, server)
+  );
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
@@ -44,7 +48,16 @@ export function McpServersCard() {
           <p className="text-xs text-muted-foreground px-2 py-2">Loading MCP servers…</p>
         )}
         {!isLoading && servers.length === 0 && (
-          <p className="text-xs text-muted-foreground px-2 py-2">No MCP servers configured.</p>
+          <div className="py-3 px-3 rounded-lg border border-dashed border-border text-center bg-muted/20">
+            <p className="text-xs text-muted-foreground">No external MCP servers added.</p>
+            <button
+              type="button"
+              onClick={openMcp}
+              className="text-xs font-medium text-primary hover:underline mt-1 inline-block"
+            >
+              + Add external server
+            </button>
+          </div>
         )}
         {servers.map(([name, server]) => {
           const icon = getMcpServerIcon(name);

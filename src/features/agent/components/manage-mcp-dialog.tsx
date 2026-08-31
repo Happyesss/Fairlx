@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
 import { useUpdateAgentMcpConfig } from "../api/use-update-agent-mcp-config";
-import { getMcpServerIcon } from "../constants";
+import { getMcpServerIcon, isInternalMcpServer } from "../constants";
 import { defaultMcpConfig } from "../lib/client-defaults";
 import type { McpConfig, McpServerConfig, McpTransport } from "../types";
 
@@ -45,6 +45,32 @@ type ServerForm = {
 
 function cloneConfig(config: McpConfig): McpConfig {
   return JSON.parse(JSON.stringify(config)) as McpConfig;
+}
+
+function getCustomMcpConfig(config: McpConfig): McpConfig {
+  const custom: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
+    if (!isInternalMcpServer(name, server)) {
+      custom[name] = server;
+    }
+  }
+  return { ...config, mcpServers: custom };
+}
+
+function mergeWithInternalServers(custom: McpConfig, source: McpConfig): McpConfig {
+  const internal: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(source.mcpServers ?? {})) {
+    if (isInternalMcpServer(name, server)) {
+      internal[name] = server;
+    }
+  }
+  return {
+    ...custom,
+    mcpServers: {
+      ...internal,
+      ...(custom.mcpServers ?? {}),
+    },
+  };
 }
 
 function recordToLines(record?: Record<string, string>): string {
@@ -144,22 +170,29 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
   useEffect(() => {
     if (data) {
       setDraft(data);
-      setJsonText(JSON.stringify(data, null, 2));
+      setJsonText(JSON.stringify(getCustomMcpConfig(data), null, 2));
     }
   }, [data]);
 
-  const servers = useMemo(() => Object.entries(draft.mcpServers ?? {}), [draft]);
+  const servers = useMemo(
+    () =>
+      Object.entries(draft.mcpServers ?? {}).filter(
+        ([name, server]) => !isInternalMcpServer(name, server)
+      ),
+    [draft]
+  );
 
   const persistDraft = (next: McpConfig) => {
     setDraft(next);
-    setJsonText(JSON.stringify(next, null, 2));
+    setJsonText(JSON.stringify(getCustomMcpConfig(next), null, 2));
   };
 
   const handleSave = () => {
     let payload = draft;
     if (view === "json") {
       try {
-        payload = JSON.parse(jsonText) as McpConfig;
+        const parsed = JSON.parse(jsonText) as McpConfig;
+        payload = mergeWithInternalServers(parsed, draft);
       } catch {
         toast.error("Invalid JSON. Fix syntax before saving.");
         return;
@@ -190,7 +223,7 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
         <DialogHeader>
           <DialogTitle>Manage MCP Servers</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Per-account MCP config.json. Secrets stay masked after save.
+            Connect external MCP servers (GitHub, PostgreSQL, Linear, etc.) to extend your Agent&apos;s tool capabilities.
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +235,8 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
             onClick={() => {
               if (view === "json") {
                 try {
-                  persistDraft(JSON.parse(jsonText) as McpConfig);
+                  const parsed = JSON.parse(jsonText) as McpConfig;
+                  persistDraft(mergeWithInternalServers(parsed, draft));
                 } catch {
                   toast.error("Fix JSON before switching views.");
                   return;
@@ -218,7 +252,7 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
             size="sm"
             variant={view === "json" ? "primary" : "outline"}
             onClick={() => {
-              setJsonText(JSON.stringify(draft, null, 2));
+              setJsonText(JSON.stringify(getCustomMcpConfig(draft), null, 2));
               setView("json");
               setForm(null);
             }}
@@ -294,7 +328,12 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
                 );
               })}
               {servers.length === 0 && !isLoading && (
-                <p className="text-sm text-muted-foreground">No MCP servers yet.</p>
+                <div className="py-6 px-4 text-center rounded-lg border border-dashed border-border bg-muted/20">
+                  <p className="text-sm font-medium text-foreground">No external MCP servers configured</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Built-in workspace and personal tools are active in the background. Click &quot;Add server&quot; below to connect external tools (e.g. GitHub, PostgreSQL, Linear).
+                  </p>
+                </div>
               )}
             </div>
 
