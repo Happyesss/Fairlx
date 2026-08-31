@@ -74,6 +74,8 @@ import { setupUserRecoveryCodes } from './collections/user-recovery-codes';
 import { setupEmailOtpCodes } from './collections/email-otp-codes';
 import { setupAIModelPricing } from './collections/ai-model-pricing';
 import { setupBugReports } from './collections/bug-reports';
+import { setupAgentMcpConfigs } from './collections/agent-mcp-configs';
+import { setupAgentAiConfigs } from './collections/agent-ai-configs';
 
 // ─── Storage Bucket Imports ──────────────────────────────────
 import { setupImagesBucket } from './storage/images-bucket';
@@ -150,6 +152,8 @@ const collectionSetups: Array<{
         { name: 'User Recovery Codes', setup: setupUserRecoveryCodes },
         { name: 'Email OTP Codes', setup: setupEmailOtpCodes },
         { name: 'Bug Reports', setup: setupBugReports },
+        { name: 'Agent MCP Configs', setup: setupAgentMcpConfigs },
+        { name: 'Agent AI Configs', setup: setupAgentAiConfigs },
     ];
 
 // ─── Exported Functions ──────────────────────────────────────
