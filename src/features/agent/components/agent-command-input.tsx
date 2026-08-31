@@ -148,7 +148,11 @@ export function AgentCommandInput({
           <div className="ml-auto flex items-center gap-2">
             <ModelPicker variant="chip" />
             <Button type="submit" size="sm" disabled={!prompt.trim() || createRun.isPending}>
-              <i className="fa-solid fa-paper-plane" />
+              {createRun.isPending ? (
+                "Starting…"
+              ) : (
+                <i className="fa-solid fa-paper-plane" />
+              )}
             </Button>
           </div>
         </div>

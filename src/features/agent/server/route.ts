@@ -33,8 +33,8 @@ import {
   upsertHarness,
 } from "../lib/harness";
 import { createRun, getRun, listRuns, updateRun } from "../lib/runs";
-import { runAgentTurn } from "../lib/runtime";
-import type { AgentRun } from "../types";
+import { cancelAgentTurn } from "../lib/runtime";
+import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
 
 const mcpServerSchema = z
   .object({
@@ -173,31 +173,6 @@ function sessionUser(c: Context) {
   return { $id: user.$id, name: user.name, email: user.email };
 }
 
-async function completeAgentTurn(
-  c: Context,
-  databases: Parameters<typeof runAgentTurn>[0]["databases"],
-  user: Parameters<typeof runAgentTurn>[0]["user"],
-  run: AgentRun
-) {
-  try {
-    const completed = await runAgentTurn({ databases, user, run });
-    return c.json({ data: completed });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Agent run failed.";
-    try {
-      await updateRun(databases, run.id, { status: "failed", error: message });
-    } catch (persistError) {
-      console.error("[agent] failed to persist run error", persistError);
-    }
-    const encrypted = encryptionErrorResponse(error, c);
-    if (encrypted) return encrypted;
-    console.error("[agent] run failed", error);
-    const failed = await getRun(databases, user.$id, run.id);
-    if (failed) return c.json({ data: failed });
-    return c.json({ error: "Agent run failed." }, 500);
-  }
-}
-
 function encryptionErrorResponse(error: unknown, c: Context) {
   if (error instanceof AgentEncryptionRequiredError) {
     return c.json({ error: error.message }, 500);
@@ -331,21 +306,16 @@ const app = new Hono()
     const json = c.req.valid("json");
     const { databases } = await createAdminClient();
     try {
-      const [harness, context] = await Promise.all([
-        getOrCreateHarness(databases, user.$id),
-        loadAgentContext(databases, user),
-      ]);
-      const workspaceId =
-        json.workspaceId || harness.settings.defaultWorkspaceId || context.workspaces[0]?.id;
-      const projectId = json.projectId || harness.settings.defaultProjectId;
+      const harness = await getOrCreateHarness(databases, user.$id);
       const run = await createRun(databases, {
         userId: user.$id,
         prompt: json.prompt,
         mode: harness.settings.mode,
-        workspaceId,
-        projectId,
+        workspaceId: json.workspaceId || harness.settings.defaultWorkspaceId,
+        projectId: json.projectId || harness.settings.defaultProjectId,
       });
-      return await completeAgentTurn(c, databases, user, run);
+      scheduleAgentTurn({ databases, user, run });
+      return c.json({ data: run });
     } catch (error) {
       const encrypted = encryptionErrorResponse(error, c);
       if (encrypted) return encrypted;
@@ -401,12 +371,34 @@ const app = new Hono()
           { id: crypto.randomUUID(), role: "user", content, createdAt },
         ],
       });
-      return await completeAgentTurn(c, databases, user, run);
+      scheduleAgentTurn({ databases, user, run });
+      return c.json({ data: run });
     } catch (error) {
       const encrypted = encryptionErrorResponse(error, c);
       if (encrypted) return encrypted;
       console.error("[agent] failed to send message", error);
       return c.json({ error: "Failed to send message." }, 500);
+    }
+  })
+  .post("/runs/:runId/continue", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const runId = c.req.param("runId");
+    const { databases } = await createAdminClient();
+    try {
+      const existing = await getRun(databases, user.$id, runId);
+      if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.status === "completed") return c.json({ data: existing });
+      if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
+
+      const run =
+        existing.status === "running"
+          ? existing
+          : await updateRun(databases, runId, { status: "running", error: "" });
+      scheduleAgentTurn({ databases, user, run });
+      return c.json({ data: run });
+    } catch (error) {
+      console.error("[agent] failed to continue run", error);
+      return c.json({ error: "Failed to continue agent run." }, 500);
     }
   })
   .post("/runs/:runId/stop", sessionMiddleware, async (c) => {
@@ -416,6 +408,7 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      cancelAgentTurn(runId);
       if (existing.status !== "running") return c.json({ data: existing });
       const data = await updateRun(databases, runId, { status: "stopped" });
       return c.json({ data });

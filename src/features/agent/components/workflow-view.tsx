@@ -1,15 +1,20 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 
-import { useGetAgentRun, useSendAgentMessage, useStopAgentRun } from "../api/use-agent-runs";
+import {
+  useContinueAgentRun,
+  useGetAgentRun,
+  useSendAgentMessage,
+  useStopAgentRun,
+} from "../api/use-agent-runs";
 import { AGENT_TOOL_CATALOG } from "../constants";
 import { relativeTime } from "../lib/agent-ui";
-import type { AgentChatMessage, AgentRunStatus } from "../types";
+import type { AgentChatMessage, AgentRunStatus, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
 
 function statusClass(status: AgentRunStatus) {
@@ -17,6 +22,11 @@ function statusClass(status: AgentRunStatus) {
   if (status === "completed") return "text-green-500";
   if (status === "failed") return "text-red-400";
   return "text-fairlx-text-muted";
+}
+
+function eventIcon(event: AgentToolEvent) {
+  if (event.type === "thought") return "fa-regular fa-comment-dots";
+  return AGENT_TOOL_CATALOG.find((tool) => tool.id === event.type)?.icon ?? "fa-solid fa-circle-nodes";
 }
 
 function MessageBubble({ message }: { message: AgentChatMessage }) {
@@ -53,7 +63,16 @@ function WorkflowViewInner() {
   const { data: run, isLoading, error } = useGetAgentRun(runId);
   const sendMessage = useSendAgentMessage();
   const stopRun = useStopAgentRun();
+  const continueRun = useContinueAgentRun();
+  const continuedRef = useRef<string | null>(null);
   const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    if (!run || run.status !== "running") return;
+    if (continuedRef.current === run.id) return;
+    continuedRef.current = run.id;
+    continueRun.mutate({ runId: run.id });
+  }, [run, continueRun]);
 
   if (!runId) {
     return (
@@ -115,6 +134,17 @@ function WorkflowViewInner() {
             Stop
           </Button>
         ) : null}
+        {run.status === "failed" || run.status === "stopped" ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={continueRun.isPending}
+            onClick={() => continueRun.mutate({ runId: run.id })}
+          >
+            Retry
+          </Button>
+        ) : null}
       </div>
       <div className="flex-1 min-h-0 grid lg:grid-cols-[1fr_280px]">
         <div className="min-h-0 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -124,8 +154,20 @@ function WorkflowViewInner() {
             run.messages.map((message) => <MessageBubble key={message.id} message={message} />)
           )}
           {run.error ? (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {run.error}
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300 flex items-start justify-between gap-3">
+              <span>{run.error}</span>
+              {run.status === "failed" || run.status === "stopped" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={continueRun.isPending}
+                  onClick={() => continueRun.mutate({ runId: run.id })}
+                >
+                  Retry
+                </Button>
+              ) : null}
             </div>
           ) : null}
           {running ? <p className="text-xs text-fairlx-primary">Agent is working…</p> : null}
@@ -139,9 +181,7 @@ function WorkflowViewInner() {
               {run.events.map((event) => (
                 <div key={event.id} className="rounded-lg border border-fairlx-border px-3 py-2">
                   <div className="text-xs font-medium text-white">
-                    <i
-                      className={`${AGENT_TOOL_CATALOG.find((tool) => tool.id === event.type)?.icon ?? "fa-solid fa-circle-nodes"} mr-2 text-fairlx-primary`}
-                    />
+                    <i className={`${eventIcon(event)} mr-2 text-fairlx-primary`} />
                     {event.title}
                   </div>
                   {event.detail ? (
@@ -178,7 +218,13 @@ function WorkflowViewInner() {
             }}
             rows={2}
             disabled={running}
-            placeholder={running ? "Wait for the Agent to finish this turn…" : "Send a follow-up…"}
+            placeholder={
+              running
+                ? "Wait for the Agent to finish this turn…"
+                : run.status === "failed" || run.status === "stopped"
+                  ? "Retry this turn, or send a follow-up…"
+                  : "Send a follow-up…"
+            }
             className="flex-1 resize-none rounded-xl border border-fairlx-border bg-fairlx-surface px-3 py-2 text-sm text-fairlx-text placeholder:text-fairlx-text-muted focus:outline-none"
           />
           <Button type="submit" disabled={!draft.trim() || running || sendMessage.isPending}>

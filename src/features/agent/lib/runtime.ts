@@ -8,18 +8,47 @@ import type {
   AgentHarness,
   AgentRun,
   AgentToolCall,
+  AgentToolEvent,
 } from "../types";
 import { loadAgentContext } from "./context";
 import { getOrCreateHarness } from "./harness";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
-import { AgentEncryptionRequiredError, decryptSecret } from "./secrets";
+import { decryptSecret } from "./secrets";
 import { executeTool, openaiToolsForMode } from "./tools";
-import { updateRun } from "./runs";
+import { getRun, updateRun } from "./runs";
+import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 
 const MAX_TOOL_ITERATIONS = 8;
 const MAX_HISTORY = 24;
-const CHAT_TIMEOUT_MS = 60_000;
+const cancelledRuns = new Set<string>();
+
+export function cancelAgentTurn(runId: string) {
+  cancelledRuns.add(runId);
+}
+
+export function isAgentTurnCancelled(runId: string) {
+  return cancelledRuns.has(runId);
+}
+
+function thoughtEvent(runId: string, title: string, detail?: string): AgentToolEvent {
+  return {
+    id: crypto.randomUUID(),
+    type: "thought",
+    title,
+    detail,
+    createdAt: new Date().toISOString(),
+    runId,
+  };
+}
+
+function chatHost(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "unknown";
+  }
+}
 
 export type ChatTarget = {
   url: string;
@@ -191,15 +220,23 @@ function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiM
   return [{ role: "system", content: system }, ...mapped];
 }
 
-async function chatCompletion(target: ChatTarget, body: Record<string, unknown>): Promise<any> {
+async function chatCompletion(
+  target: ChatTarget,
+  body: Record<string, unknown>,
+  runId: string,
+): Promise<any> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), AGENT_CHAT_TIMEOUT_MS);
+  const poll = setInterval(() => {
+    if (cancelledRuns.has(runId)) controller.abort();
+  }, 250);
   try {
     const response = await fetch(target.url, {
       method: "POST",
       headers: target.headers,
       body: JSON.stringify(body),
       signal: controller.signal,
+      cache: "no-store",
     });
     const text = await response.text();
     let json: any = null;
@@ -213,8 +250,16 @@ async function chatCompletion(target: ChatTarget, body: Record<string, unknown>)
       throw new Error(message);
     }
     return json;
+  } catch (error) {
+    console.error("[agent] chat completion failed", {
+      model: target.model,
+      host: chatHost(target.url),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
     clearTimeout(timer);
+    clearInterval(poll);
   }
 }
 
@@ -256,6 +301,28 @@ export async function runAgentTurn(params: {
   const { databases, user } = params;
   let run = params.run;
 
+  cancelledRuns.delete(run.id);
+
+  const persistUnlessStopped = async (
+    patch: Parameters<typeof updateRun>[2],
+  ): Promise<AgentRun> => {
+    if (cancelledRuns.has(run.id)) {
+      return (await getRun(databases, user.$id, run.id)) ?? run;
+    }
+    const latest = await getRun(databases, user.$id, run.id);
+    if (latest?.status === "stopped") return latest;
+    return updateRun(databases, run.id, patch);
+  };
+
+  const haltIfStopped = async (): Promise<AgentRun | null> => {
+    if (cancelledRuns.has(run.id)) {
+      return (await getRun(databases, user.$id, run.id)) ?? run;
+    }
+    const latest = await getRun(databases, user.$id, run.id);
+    if (latest?.status === "stopped") return latest;
+    return null;
+  };
+
   const [harness, context, mcpDoc, aiDoc] = await Promise.all([
     getOrCreateHarness(databases, user.$id),
     loadAgentContext(databases, user),
@@ -265,32 +332,49 @@ export async function runAgentTurn(params: {
   const mcp = parseMcpConfig(mcpDoc?.configJson);
   const stored = parseAiConfig(aiDoc);
 
+  const stoppedBeforeModel = await haltIfStopped();
+  if (stoppedBeforeModel) return stoppedBeforeModel;
+
   let target: ChatTarget;
   try {
     target = resolveChatTarget(stored);
   } catch (error) {
-    if (error instanceof AgentEncryptionRequiredError) throw error;
     const message = error instanceof Error ? error.message : "Failed to resolve model.";
-    return updateRun(databases, run.id, { status: "failed", error: message });
+    return persistUnlessStopped({ status: "failed", error: message });
   }
 
-  run = await updateRun(databases, run.id, {
+  run = await persistUnlessStopped({
     status: "running",
     modelId: target.modelId,
     error: "",
+    events: [
+      ...run.events,
+      thoughtEvent(run.id, "Calling model", `Waiting for ${target.model}…`),
+    ],
   });
+  if (run.status === "stopped") return run;
 
   const tools = openaiToolsForMode(run.mode, harness.settings.enabledTools ?? []);
   const system = buildSystemPrompt({ harness, context, run });
 
   try {
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
-      const completion = await chatCompletion(target, {
-        model: target.model,
-        messages: toOpenAiMessages(system, run.messages),
-        temperature: 0.3,
-        ...(tools.length ? { tools, tool_choice: "auto" } : {}),
-      });
+      const stopped = await haltIfStopped();
+      if (stopped) return stopped;
+
+      const completion = await chatCompletion(
+        target,
+        {
+          model: target.model,
+          messages: toOpenAiMessages(system, run.messages),
+          temperature: 0.3,
+          ...(tools.length ? { tools, tool_choice: "auto" } : {}),
+        },
+        run.id,
+      );
+      const stoppedAfterChat = await haltIfStopped();
+      if (stoppedAfterChat) return stoppedAfterChat;
+
       const choice = completion?.choices?.[0];
       const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
       const toolCalls = extractToolCalls(choice);
@@ -307,6 +391,8 @@ export async function runAgentTurn(params: {
         const nextEvents = [...run.events];
 
         for (const call of toolCalls) {
+          const stoppedBeforeTool = await haltIfStopped();
+          if (stoppedBeforeTool) return stoppedBeforeTool;
           const result = await executeTool(call.name, call.arguments, {
             runId: run.id,
             userId: user.$id,
@@ -325,11 +411,12 @@ export async function runAgentTurn(params: {
           });
         }
 
-        run = await updateRun(databases, run.id, {
+        run = await persistUnlessStopped({
           messages: nextMessages,
           events: nextEvents,
           status: "running",
         });
+        if (run.status === "stopped") return run;
         continue;
       }
 
@@ -339,7 +426,7 @@ export async function runAgentTurn(params: {
         content: content || "Done.",
         createdAt: new Date().toISOString(),
       };
-      return updateRun(databases, run.id, {
+      return persistUnlessStopped({
         messages: [...run.messages, assistantMessage],
         status: "completed",
         error: "",
@@ -352,14 +439,17 @@ export async function runAgentTurn(params: {
       content: "I reached the tool-call limit for this turn. Ask me to continue if you want another pass.",
       createdAt: new Date().toISOString(),
     };
-    return updateRun(databases, run.id, {
+    return persistUnlessStopped({
       messages: [...run.messages, limitMessage],
       status: "completed",
       error: "",
     });
   } catch (error) {
-    if (error instanceof AgentEncryptionRequiredError) throw error;
-    const message = error instanceof Error ? error.message : "Agent turn failed.";
-    return updateRun(databases, run.id, { status: "failed", error: message });
+    const stopped = await haltIfStopped();
+    if (stopped) return stopped;
+    return persistUnlessStopped({
+      status: "failed",
+      error: formatAgentTurnError(error, AGENT_CHAT_TIMEOUT_MS),
+    });
   }
 }
