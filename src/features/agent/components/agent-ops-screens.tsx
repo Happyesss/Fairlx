@@ -458,7 +458,7 @@ export function AgentNewProjectForm({
   const { data: harness } = useGetAgentHarness();
   const createProject = useCreateProject();
   const queryClient = useQueryClient();
-  const workspaces = data?.workspaces ?? [];
+  const workspaces = useMemo(() => data?.workspaces ?? [], [data?.workspaces]);
   const [workspaceId, setWorkspaceId] = useState(harness?.settings.defaultWorkspaceId || workspaces[0]?.id || "");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

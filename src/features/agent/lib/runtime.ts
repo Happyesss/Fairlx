@@ -169,11 +169,42 @@ function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiM
   return [{ role: "system", content: system }, ...mapped];
 }
 
+type OpenAiRawToolCall = {
+  id?: string;
+  name?: string;
+  function?: {
+    name?: string;
+    arguments?: string | Record<string, unknown>;
+  };
+};
+
+type OpenAiChoiceMessage = {
+  content?: string | null;
+  tool_calls?: OpenAiRawToolCall[];
+  function_call?: {
+    name?: string;
+    arguments?: string | Record<string, unknown>;
+  };
+};
+
+type OpenAiChoice = {
+  message?: OpenAiChoiceMessage;
+};
+
+type OpenAiChatCompletionResponse = {
+  choices?: OpenAiChoice[];
+  error?: {
+    message?: string;
+  };
+  message?: string;
+  [key: string]: unknown;
+};
+
 async function chatCompletion(
   target: ChatTarget,
   body: Record<string, unknown>,
   runId: string,
-): Promise<any> {
+): Promise<OpenAiChatCompletionResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AGENT_CHAT_TIMEOUT_MS);
   const poll = setInterval(() => {
@@ -188,9 +219,9 @@ async function chatCompletion(
       cache: "no-store",
     });
     const text = await response.text();
-    let json: any = null;
+    let json: OpenAiChatCompletionResponse | null = null;
     try {
-      json = text ? JSON.parse(text) : null;
+      json = text ? (JSON.parse(text) as OpenAiChatCompletionResponse) : null;
     } catch {
       json = { error: { message: text } };
     }
@@ -198,7 +229,7 @@ async function chatCompletion(
       const message = json?.error?.message || json?.message || `Chat completion failed (${response.status})`;
       throw new Error(message);
     }
-    return json;
+    return json ?? {};
   } catch (error) {
     console.error("[agent] chat completion failed", {
       model: target.model,
@@ -212,12 +243,12 @@ async function chatCompletion(
   }
 }
 
-function extractToolCalls(choice: any): AgentToolCall[] {
+function extractToolCalls(choice?: OpenAiChoice): AgentToolCall[] {
   const message = choice?.message ?? {};
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   if (toolCalls.length) {
     return toolCalls
-      .map((call: any) => ({
+      .map((call: OpenAiRawToolCall) => ({
         id: String(call.id || crypto.randomUUID()),
         name: String(call.function?.name || call.name || ""),
         arguments:
@@ -225,7 +256,7 @@ function extractToolCalls(choice: any): AgentToolCall[] {
             ? call.function.arguments
             : JSON.stringify(call.function?.arguments ?? {}),
       }))
-      .filter((call: AgentToolCall) => call.name);
+      .filter((call: AgentToolCall) => Boolean(call.name));
   }
   if (message.function_call?.name) {
     return [

@@ -24,10 +24,13 @@ export function AgentScopeBar() {
   const [search, setSearch] = useState("");
   const [newName, setNewName] = useState("");
 
-  const workspaces = context?.workspaces ?? [];
+  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
   const workspaceId = harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
   const workspace = workspaces.find((item) => item.id === workspaceId);
-  const projects = (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId);
+  const projects = useMemo(
+    () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
+    [context?.projects, workspaceId],
+  );
   const projectId = harness?.settings.defaultProjectId;
   const project = projects.find((item) => item.id === projectId) ?? context?.projects.find((item) => item.id === projectId);
   const repo = (context?.githubRepos ?? []).find(
