@@ -35,6 +35,17 @@ export function buildSystemPrompt(params: {
     "You are the Fairlx Agent harness — a multi-agent system that plans, inspects, and ships work across Fairlx workspaces, projects, and work items.",
     `Active specialist: ${specialistDef.name}. ${specialistDef.role}`,
     `Mode: ${run.mode === "agent" ? "Agent (tools enabled)" : "Manual (chat only, no tools)"}.`,
+    `Session mode: ${harness.settings.sessionMode || "agent"}. ${
+      harness.settings.sessionMode === "plan"
+        ? "Write a plan; do not edit."
+        : harness.settings.sessionMode === "debug"
+          ? "Debug the attached failure."
+          : harness.settings.sessionMode === "multitask"
+            ? "Delegate specialists when work spans roles."
+            : harness.settings.sessionMode === "ask"
+              ? "Answer without tools unless asked to act."
+              : "Inspect, then act."
+    }`,
     `User: ${context.user.name} <${context.user.email}>.`,
     workspace ? `Current workspace: ${workspace.name} (${workspace.id}).` : "No workspace selected.",
     project ? `Current project: ${project.name} (${project.id}).` : "No project selected.",

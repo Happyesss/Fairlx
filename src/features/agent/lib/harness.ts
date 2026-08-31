@@ -47,6 +47,7 @@ export function defaultHarnessSettings(): AgentHarnessSettings {
   return {
     mode: "agent",
     enabledTools: [...DEFAULT_ENABLED_TOOLS],
+    sessionMode: "agent",
   };
 }
 
@@ -79,7 +80,21 @@ export function parseHarness(doc: HarnessDocument): AgentHarness {
     ...parseJson<Partial<AgentHarnessSettings>>(doc.settingsJson, {}),
   };
   settings.enabledTools = mergeEnabledTools(settings.enabledTools);
-  if (settings.mode !== "manual") {
+  const sessionMode = settings.sessionMode;
+  if (
+    sessionMode === "plan" ||
+    sessionMode === "debug" ||
+    sessionMode === "multitask" ||
+    sessionMode === "ask" ||
+    sessionMode === "agent"
+  ) {
+    settings.sessionMode = sessionMode;
+  } else {
+    settings.sessionMode = "agent";
+  }
+  if (settings.sessionMode === "ask") {
+    settings.mode = "manual";
+  } else if (settings.mode !== "manual") {
     settings.mode = "agent";
   }
 
@@ -204,6 +219,11 @@ export async function upsertHarness(
       enabledTools: mergeEnabledTools(patch.settings?.enabledTools ?? current.settings.enabledTools),
     },
   };
+  if (next.settings.sessionMode === "ask") {
+    next.settings.mode = "manual";
+  } else if (patch.settings?.sessionMode && patch.settings.sessionMode !== "ask") {
+    next.settings.mode = patch.settings.mode ?? "agent";
+  }
 
   const payload: Record<string, string> = {
     userId,

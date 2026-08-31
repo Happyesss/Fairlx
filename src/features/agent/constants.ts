@@ -114,18 +114,18 @@ export function getProviderCatalogItem(type: AgentProviderType) {
 }
 
 export const AGENT_NAV = [
-  { href: "/agent/dashboard", label: "Agent Home", icon: "fa-solid fa-house", shortcut: "⌘H" },
+  { href: "/agent/dashboard", label: "Agent Home", icon: "fa-solid fa-house-chimney", shortcut: "⌘H" },
   { href: "/agent/chats", label: "Chats", icon: "fa-regular fa-comments" },
   { href: "/agent/search", label: "Search", icon: "fa-solid fa-magnifying-glass", shortcut: "⌘K" },
-  { href: "/agent/projects", label: "Projects", icon: "fa-regular fa-folder" },
-  { href: "/agent/workspaces", label: "Workspaces", icon: "fa-solid fa-border-all" },
-  { href: "/agent/git", label: "Git & staging", icon: "fa-brands fa-git-alt" },
-  { href: "/agent/skills", label: "Skills", icon: "fa-solid fa-bullseye" },
-  { href: "/agent/tools", label: "Tools", icon: "fa-solid fa-wrench" },
+  { href: "/agent/projects", label: "Projects", icon: "fa-solid fa-folder" },
+  { href: "/agent/workspaces", label: "Workspaces", icon: "fa-solid fa-briefcase" },
+  { href: "/agent/git", label: "Git & staging", icon: "fa-solid fa-code-merge" },
+  { href: "/agent/skills", label: "Skills", icon: "fa-solid fa-wrench" },
+  { href: "/agent/tools", label: "Tools", icon: "fa-solid fa-screwdriver-wrench" },
   { href: "/agent/mcp", label: "MCP Servers", icon: "fa-solid fa-server" },
   { href: "/agent/automations", label: "Automations", icon: "fa-solid fa-bolt" },
   { href: "/agent/integrations", label: "Integrations", icon: "fa-solid fa-puzzle-piece" },
-  { href: "/agent/knowledge", label: "Knowledge Base", icon: "fa-regular fa-book" },
+  { href: "/agent/knowledge", label: "Knowledge Base", icon: "fa-solid fa-book" },
   { href: "/agent/settings", label: "Settings", icon: "fa-solid fa-gear" },
 ] as const;
 

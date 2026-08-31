@@ -6,6 +6,8 @@ import { commitStaged, emptyChatMeta, emptyGitStaging, stageItem, unstageItem } 
 import { resolveSpecialist, buildContextGraph } from "./graph";
 import { readPersonalContent } from "./personal";
 import { defaultHarnessData } from "./harness";
+import { groupTranscript, summarizeToolResult } from "./transcript";
+import { composeUserPrompt, displayUserContent } from "./session-context";
 import type { AgentContext, AgentRun } from "../types";
 
 function harness() {
@@ -132,5 +134,61 @@ describe("personal MCP", () => {
       runs: [run("Pinned chat")],
     }) as Array<{ id: string; pinned: boolean }>;
     expect(chats[0]?.pinned).toBe(true);
+  });
+});
+
+describe("session context", () => {
+  it("prefixes attached work items and session mode onto the user prompt", () => {
+    const content = composeUserPrompt(
+      "Fix the login redirect",
+      [{ kind: "work_item", id: "i1", label: "Fix login", meta: "WEB-1" }],
+      "debug",
+    );
+    expect(content).toContain("[Session mode: debug]");
+    expect(content).toContain("work_item: Fix login");
+    expect(displayUserContent(content)).toBe("Fix the login redirect");
+  });
+});
+
+describe("transcript grouping", () => {
+  it("groups tool calls into a collapsible step card instead of raw dumps", () => {
+    const now = new Date().toISOString();
+    const blocks = groupTranscript(
+      [
+        { id: "u1", role: "user", content: "hello", createdAt: now },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "Looking that up.",
+          createdAt: now,
+          toolCalls: [{ id: "c1", name: "git_status", arguments: "{}" }],
+        },
+        {
+          id: "t1",
+          role: "tool",
+          toolCallId: "c1",
+          toolName: "git_status",
+          content: JSON.stringify({ repos: [{ id: "r1" }], staging: { items: [] } }),
+          createdAt: now,
+        },
+        { id: "a2", role: "assistant", content: "Repo is clean.", createdAt: now },
+      ],
+      [{ id: "e1", type: "git_status", title: "Checked git status", createdAt: now, runId: "run1" }],
+    );
+    expect(blocks.map((block) => block.kind)).toEqual(["user", "steps", "assistant"]);
+    const steps = blocks[1];
+    expect(steps.kind).toBe("steps");
+    if (steps.kind !== "steps") return;
+    expect(steps.lead?.content).toBe("Looking that up.");
+    expect(summarizeToolResult("git_status", steps.steps[0]?.result?.content).detail).toContain("repos");
+  });
+
+  it("surfaces MCP method errors as a failed step summary", () => {
+    const summary = summarizeToolResult(
+      "mcp_call",
+      JSON.stringify({ server: "fairlx", tool: "triage", result: { error: "Method not found: triage" } }),
+    );
+    expect(summary.ok).toBe(false);
+    expect(summary.detail).toContain("Method not found");
   });
 });

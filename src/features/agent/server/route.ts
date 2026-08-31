@@ -106,13 +106,13 @@ const selectSchema = z.object({
 });
 
 const createRunSchema = z.object({
-  prompt: z.string().trim().min(1).max(4000),
+  prompt: z.string().trim().min(1).max(8000),
   workspaceId: z.string().optional(),
   projectId: z.string().optional(),
 });
 
 const sendMessageSchema = z.object({
-  content: z.string().trim().min(1).max(4000),
+  content: z.string().trim().min(1).max(8000),
 });
 
 const patchRunSchema = z.object({
@@ -190,6 +190,7 @@ const harnessSchema = z.object({
       enabledTools: z.array(z.string()).optional(),
       defaultWorkspaceId: z.string().optional(),
       defaultProjectId: z.string().optional(),
+      sessionMode: z.enum(["agent", "plan", "debug", "multitask", "ask"]).optional(),
     })
     .optional(),
 });

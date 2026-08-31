@@ -1,24 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
-import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
+import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useCreateAgentRun } from "../api/use-agent-runs";
-import { AGENT_FIELD_CLASS } from "../constants";
-import { useAgentUi } from "./agent-ui-context";
+import { chipKey, composeUserPrompt } from "../lib/session-context";
+import type { AgentContextChip } from "../types";
+import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
+import { AgentScopeBar } from "./agent-scope-bar";
 import { ModelPicker } from "./model-picker";
 
 const QUICK_ACTIONS = [
@@ -49,38 +42,53 @@ const QUICK_ACTIONS = [
   },
 ] as const;
 
+function autosize(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
+}
+
 export function AgentCommandInput({
   showQuickActions = true,
-  placeholder = "Ask the Agent to inspect work, search, or ship a change…",
+  placeholder = "Ask anything, @ to mention, / for actions",
+  variant = "create",
+  disabled = false,
+  submitting = false,
+  onFollowUp,
 }: {
   showQuickActions?: boolean;
   placeholder?: string;
+  variant?: "create" | "followup";
+  disabled?: boolean;
+  submitting?: boolean;
+  onFollowUp?: (content: string) => void;
 }) {
   const router = useRouter();
-  const { openNewWorkspace } = useAgentUi();
   const { data: harness } = useGetAgentHarness();
   const { data: context } = useGetAgentContext();
   const createRun = useCreateAgentRun();
-  const updateHarness = useUpdateAgentHarness();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState("");
-  const [contextOpen, setContextOpen] = useState(false);
-  const [workspaceId, setWorkspaceId] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [chips, setChips] = useState<AgentContextChip[]>([]);
 
-  const workspaces = context?.workspaces ?? [];
-  const selectedWorkspaceId =
-    workspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id || "";
-  const projects = (context?.projects ?? []).filter(
-    (project) => !selectedWorkspaceId || project.workspaceId === selectedWorkspaceId
-  );
+  const busy = submitting || createRun.isPending;
+  const canSend = Boolean(prompt.trim()) && !busy && !disabled;
+  const sessionMode = harness?.settings.sessionMode || "agent";
 
-  const startRun = (value: string) => {
+  const submit = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || createRun.isPending) return;
+    if (!trimmed || busy || disabled) return;
+    const content = composeUserPrompt(trimmed, chips, sessionMode);
+    if (variant === "followup") {
+      onFollowUp?.(content);
+      setPrompt("");
+      setChips([]);
+      if (textareaRef.current) textareaRef.current.style.height = "44px";
+      return;
+    }
     createRun.mutate(
       {
         json: {
-          prompt: trimmed,
+          prompt: content,
           workspaceId: harness?.settings.defaultWorkspaceId || context?.workspaces[0]?.id,
           projectId: harness?.settings.defaultProjectId,
         },
@@ -88,84 +96,85 @@ export function AgentCommandInput({
       {
         onSuccess: (result) => {
           setPrompt("");
+          setChips([]);
+          if (textareaRef.current) textareaRef.current.style.height = "44px";
           router.push(`/agent/workflow?runId=${result.data.id}`);
         },
-      }
+      },
     );
   };
 
   return (
-    <div className="space-y-4">
+    <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
+      <AgentScopeBar />
       <form
-        className="rounded-2xl border border-fairlx-border bg-fairlx-surface p-3"
+        className="rounded-[22px] border border-white/10 bg-[#1a1b1e] shadow-[0_12px_40px_rgba(0,0,0,0.55)] flex flex-col"
         onSubmit={(event) => {
           event.preventDefault();
-          startRun(prompt);
+          submit(prompt);
         }}
       >
+        <ContextChips
+          chips={chips}
+          onRemove={(chip) => setChips((current) => current.filter((item) => chipKey(item) !== chipKey(chip)))}
+        />
         <textarea
+          ref={textareaRef}
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => {
+            setPrompt(event.target.value);
+            autosize(event.currentTarget);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              startRun(prompt);
+              submit(prompt);
             }
           }}
           placeholder={placeholder}
-          rows={3}
-          className="w-full resize-none bg-transparent text-sm text-fairlx-text placeholder:text-fairlx-text-muted focus:outline-none"
+          rows={1}
+          disabled={busy}
+          className="w-full bg-transparent text-[15px] text-zinc-100 leading-6 px-4 pt-3.5 pb-1.5 resize-none focus:outline-none placeholder:text-zinc-500 min-h-[44px] max-h-40"
         />
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={openNewWorkspace}
-            className="h-8 w-8 rounded-md border border-fairlx-border text-fairlx-text-muted hover:text-white hover:bg-fairlx-surface-hover"
-            title="New workspace"
-          >
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setWorkspaceId(harness?.settings.defaultWorkspaceId || workspaces[0]?.id || "");
-              setProjectId(harness?.settings.defaultProjectId || "");
-              setContextOpen(true);
-            }}
-            className="h-8 rounded-md border border-fairlx-border px-3 text-xs text-fairlx-text-muted hover:text-white hover:bg-fairlx-surface-hover"
-          >
-            <i className="fa-solid fa-layer-group mr-2" />
-            Context
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/agent/tools")}
-            className="h-8 rounded-md border border-fairlx-border px-3 text-xs text-fairlx-text-muted hover:text-white hover:bg-fairlx-surface-hover"
-          >
-            <i className="fa-solid fa-wrench mr-2" />
-            Tools
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <ModelPicker variant="chip" />
-            <Button type="submit" size="sm" disabled={!prompt.trim() || createRun.isPending}>
-              {createRun.isPending ? (
-                "Starting…"
-              ) : (
-                <i className="fa-solid fa-paper-plane" />
+        <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+          <AgentPlusMenu
+            chips={chips}
+            onAdd={(chip) => setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])}
+          />
+          <ModelPicker variant="chip" />
+          {sessionMode !== "agent" ? (
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500 px-1">{sessionMode}</span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              type="submit"
+              disabled={!canSend}
+              className={cn(
+                "h-7 w-7 rounded-full flex items-center justify-center transition-colors",
+                canSend
+                  ? "bg-white text-zinc-900 hover:bg-zinc-200"
+                  : "bg-zinc-700/80 text-zinc-400 cursor-default",
               )}
-            </Button>
+              title="Send"
+            >
+              {busy ? (
+                <i className="fa-solid fa-circle-notch fa-spin text-[10px]" />
+              ) : (
+                <i className="fa-solid fa-arrow-up text-[11px]" />
+              )}
+            </button>
           </div>
         </div>
       </form>
-      {showQuickActions ? (
-        <div className="flex flex-wrap gap-2">
+      {showQuickActions && variant === "create" ? (
+        <div className="flex flex-wrap gap-2 px-1">
           {QUICK_ACTIONS.map((action) => (
             <button
               key={action.label}
               type="button"
-              disabled={createRun.isPending}
-              onClick={() => startRun(action.prompt)}
-              className="inline-flex items-center gap-2 rounded-full border border-fairlx-border bg-fairlx-surface px-3 py-1.5 text-xs text-fairlx-text-muted hover:text-white hover:bg-fairlx-surface-hover"
+              disabled={busy}
+              onClick={() => submit(action.prompt)}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06]"
             >
               <i className={action.icon} />
               {action.label}
@@ -173,75 +182,6 @@ export function AgentCommandInput({
           ))}
         </div>
       ) : null}
-
-      <Dialog open={contextOpen} onOpenChange={setContextOpen}>
-        <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-md">
-          <DialogHeader>
-            <DialogTitle>Run context</DialogTitle>
-            <DialogDescription className="text-fairlx-text-muted">
-              Default workspace and project for new Agent runs.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="context-workspace">Workspace</Label>
-              <select
-                id="context-workspace"
-                value={selectedWorkspaceId}
-                onChange={(event) => {
-                  setWorkspaceId(event.target.value);
-                  setProjectId("");
-                }}
-                className={`h-10 w-full rounded-md border px-3 text-sm ${AGENT_FIELD_CLASS}`}
-              >
-                <option value="">None</option>
-                {workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="context-project">Project</Label>
-              <select
-                id="context-project"
-                value={projectId || harness?.settings.defaultProjectId || ""}
-                onChange={(event) => setProjectId(event.target.value)}
-                className={`h-10 w-full rounded-md border px-3 text-sm ${AGENT_FIELD_CLASS}`}
-              >
-                <option value="">None</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              disabled={updateHarness.isPending}
-              onClick={() => {
-                updateHarness.mutate(
-                  {
-                    json: {
-                      settings: {
-                        defaultWorkspaceId: selectedWorkspaceId,
-                        defaultProjectId: projectId,
-                      },
-                    },
-                  },
-                  { onSuccess: () => setContextOpen(false) }
-                );
-              }}
-            >
-              Save context
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

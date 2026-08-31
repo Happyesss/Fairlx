@@ -106,6 +106,7 @@ export type AgentAiConfigStored = {
 
 export type AgentRunStatus = "idle" | "running" | "completed" | "failed" | "stopped";
 export type AgentRunMode = "agent" | "manual";
+export type AgentSessionMode = "agent" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
 
 export type AgentToolCall = {
@@ -285,6 +286,26 @@ export type AgentHarnessSettings = {
   enabledTools: string[];
   defaultWorkspaceId?: string;
   defaultProjectId?: string;
+  sessionMode?: AgentSessionMode;
+};
+
+export type AgentContextChipKind =
+  | "workspace"
+  | "project"
+  | "work_item"
+  | "skill"
+  | "mcp"
+  | "file"
+  | "image"
+  | "doc"
+  | "repo"
+  | "knowledge";
+
+export type AgentContextChip = {
+  kind: AgentContextChipKind;
+  id: string;
+  label: string;
+  meta?: string;
 };
 
 export type AgentHarness = {
