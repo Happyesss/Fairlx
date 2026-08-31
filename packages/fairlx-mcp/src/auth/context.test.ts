@@ -29,10 +29,19 @@ describe("tokenToAuthContext", () => {
 });
 
 describe("jwtToAuthContext", () => {
-  it("inherits ALL_SCOPES including admin:manage", () => {
+    it("inherits ALL_SCOPES including admin:manage", () => {
     const auth = jwtToAuthContext("user_jwt");
     expect(auth.scopes).toEqual([...ALL_SCOPES]);
     expect(auth.scopes).toContain("admin:manage");
     expect(auth.scopes).toContain("tasks:delete");
+  });
+
+  it("can bind a workspace and role scopes for the in-app agent", () => {
+    const auth = jwtToAuthContext("user_jwt", {
+      workspaceId: "ws_1",
+      scopes: ["tasks:read", "members:read"],
+    });
+    expect(auth.workspaceId).toBe("ws_1");
+    expect(auth.scopes).toEqual(["tasks:read", "members:read"]);
   });
 });

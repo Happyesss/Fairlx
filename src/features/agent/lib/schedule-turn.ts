@@ -31,8 +31,9 @@ export function scheduleAgentTurn(params: {
   databases: Databases;
   user: { $id: string; name?: string; email?: string };
   run: AgentRun;
+  resume?: { decision: "accept" | "deny" };
 }): void {
-  const { databases, user, run } = params;
+  const { databases, user, run, resume } = params;
   if (inFlight.has(run.id)) return;
 
   let started = false;
@@ -40,7 +41,7 @@ export function scheduleAgentTurn(params: {
     if (started) return;
     started = true;
     try {
-      await runAgentTurn({ databases, user, run });
+      await runAgentTurn({ databases, user, run, resume });
     } catch (error) {
       console.error(
         "[agent] turn failed",

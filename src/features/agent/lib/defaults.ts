@@ -32,7 +32,8 @@ export function defaultAiStoredConfig(): AgentAiConfigStored {
 }
 
 export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfigStored {
-  const providers = [...config.providers];
+  const platformProviderIds = new Set(PLATFORM_PROVIDERS.map((p) => p.id));
+  const providers = config.providers.filter((p) => !p.isPlatform || platformProviderIds.has(p.id));
   for (const platform of PLATFORM_PROVIDERS) {
     const nextPlatform = overlayPlatformProvider(platform);
     const index = providers.findIndex((provider) => provider.id === platform.id);
@@ -51,7 +52,8 @@ export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfi
     };
   }
 
-  const models = [...config.models];
+  const platformModelIds = new Set(PLATFORM_MODELS.map((m) => m.id));
+  const models = config.models.filter((m) => !m.isPlatform || platformModelIds.has(m.id));
   for (const platform of PLATFORM_MODELS) {
     const nextPlatform = overlayPlatformModel(platform);
     const index = models.findIndex((model) => model.id === platform.id);
@@ -68,9 +70,15 @@ export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfi
     };
   }
 
+  const selectedModelId =
+    !config.selectedModelId || !models.some((m) => m.id === config.selectedModelId)
+      ? (PLATFORM_MODELS[0]?.id ?? "")
+      : config.selectedModelId;
+
   return {
     ...config,
     mode: config.mode === "manual" ? "manual" : "auto",
+    selectedModelId,
     providers,
     models,
   };

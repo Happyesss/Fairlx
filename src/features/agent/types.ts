@@ -104,7 +104,13 @@ export type AgentAiConfigStored = {
   models: AgentModel[];
 };
 
-export type AgentRunStatus = "idle" | "running" | "completed" | "failed" | "stopped";
+export type AgentRunStatus =
+  | "idle"
+  | "running"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "awaiting_confirmation";
 export type AgentRunMode = "agent" | "manual";
 export type AgentSessionMode = "agent" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
@@ -194,6 +200,11 @@ export type AgentSearchHit = {
   score: number;
 };
 
+export type AgentPendingConfirmation = {
+  calls: AgentToolCall[];
+  summary: string;
+};
+
 export type AgentToolEventType =
   | "code_inspect"
   | "terminal"
@@ -217,6 +228,8 @@ export type AgentToolEventType =
   | "run_automation"
   | "personal_read"
   | "thought"
+  | "confirmation"
+  | "confirmation_resolved"
   | "error";
 
 export type AgentToolEvent = {
@@ -326,6 +339,7 @@ export type AgentContextWorkspace = {
   name: string;
   imageUrl?: string;
   inviteCode?: string;
+  role?: string;
 };
 
 export type AgentContextProject = {

@@ -44,6 +44,7 @@ import {
 import { generateWorkItemKey } from "@/features/sprints/lib/generate-work-item-key";
 import { validateStatusTransition } from "@/features/workflows/lib/validate-status-transition";
 import { createAdminClient } from "@/lib/appwrite";
+import { batchGetUsers } from "@/lib/batch-users";
 import {
   resolveUserProjectAccess as resolveAccess,
 } from "@/lib/permissions/resolveUserProjectAccess";
@@ -52,6 +53,7 @@ import {
   isEventProcessed,
   markEventProcessed,
 } from "@/lib/processed-events-registry";
+import { CK, CKPattern, invalidateCache, invalidateCachePattern } from "@/lib/redis";
 import { getRedisClient } from "@/lib/redis/client";
 import { createAppwriteStore } from "./appwrite-store";
 import { verifyMcpJwt } from "./jwt";
@@ -135,7 +137,7 @@ function toTokenRecord(doc: Record<string, unknown>): McpTokenRecord {
 }
 
 export async function createMcpRuntime(): Promise<McpRuntime> {
-  const { databases } = await createAdminClient();
+  const { databases, users } = await createAdminClient();
   const redisClient = getRedisClient();
   const redis = redisClient ? wrapRedis(redisClient) : null;
   const store = createAppwriteStore(databases, DATABASE_ID);
@@ -214,6 +216,27 @@ export async function createMcpRuntime(): Promise<McpRuntime> {
       return null;
     },
     now: () => new Date().toISOString(),
+    lookupUsers: async (userIds) => {
+      const map = await batchGetUsers(users, userIds);
+      return [...map.values()].map((user) => {
+        const prefs = user.prefs as { profileImageUrl?: string | null } | undefined;
+        return {
+          id: user.$id,
+          name: user.name || user.email || "",
+          email: user.email || "",
+          profileImageUrl: prefs?.profileImageUrl ?? null,
+        };
+      });
+    },
+    onMembershipChanged: async ({ userId, workspaceId }) => {
+      await invalidateCache(
+        CK.workspaceMember(userId, workspaceId),
+        CK.memberList(workspaceId),
+        CK.authLifecycle(userId)
+      );
+      await invalidateCachePattern(CKPattern.workspacePerms(workspaceId));
+      await invalidateCachePattern(CKPattern.allUserPerms(userId));
+    },
     logAudit: async (entry) => {
       try {
         const organizationId = String(entry.organizationId ?? entry.workspaceId ?? "");

@@ -1,6 +1,6 @@
 import type { Databases } from "node-appwrite";
 
-import { GROK_46_MODEL_ID } from "../constants";
+import { DEEPSEEK_FLASH_MODEL_ID } from "../constants";
 import type {
   AgentAiConfigStored,
   AgentChatMessage,
@@ -9,16 +9,20 @@ import type {
   AgentToolCall,
   AgentToolEvent,
 } from "../types";
+import { buildAgentMcpAuth, mcpToolsForAuth } from "./agent-auth";
 import { loadAgentContext } from "./context";
 import { getOrCreateHarness, upsertHarness } from "./harness";
 import { ensurePersonalMcp } from "./mcp-bridge";
+import { extractToolCallsFromText, mergeToolCalls, normalizeAgentToolCall, stripToolCallMarkup } from "./parse-tool-calls";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
 import { buildSystemPrompt } from "./prompt";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
 import { decryptSecret } from "./secrets";
-import { executeTool, openaiToolsForMode } from "./tools";
+import { executeTool, openaiToolsForTurn } from "./tools";
 import { getRun, listRuns, updateRun } from "./runs";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
+import { sanitizeAssistantVisible } from "./visible-content";
+import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
 import { specialistById } from "./graph";
 
 const MAX_TOOL_ITERATIONS = 12;
@@ -86,10 +90,11 @@ function defaultByokBase(provider: string): string {
 export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
   const models = stored.models.map(overlayPlatformModel);
   const selectedId =
-    stored.mode === "auto" || !stored.selectedModelId ? GROK_46_MODEL_ID : stored.selectedModelId;
+    stored.mode === "auto" || !stored.selectedModelId ? DEEPSEEK_FLASH_MODEL_ID : stored.selectedModelId;
   const model =
     models.find((item) => item.id === selectedId && item.isEnabled) ??
-    models.find((item) => item.id === GROK_46_MODEL_ID) ??
+    models.find((item) => item.id === DEEPSEEK_FLASH_MODEL_ID && item.isEnabled) ??
+    models.find((item) => item.isEnabled) ??
     models[0];
   if (!model) throw new Error("No AI model is configured.");
   const provider = stored.providers.find((item) => item.id === model.providerId);
@@ -179,7 +184,7 @@ type OpenAiRawToolCall = {
 };
 
 type OpenAiChoiceMessage = {
-  content?: string | null;
+  content?: string | null | Array<{ type?: string; text?: string }>;
   tool_calls?: OpenAiRawToolCall[];
   function_call?: {
     name?: string;
@@ -243,6 +248,31 @@ async function chatCompletion(
   }
 }
 
+function extractMessageContent(message?: OpenAiChoiceMessage): string {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "string" ? part : String(part?.text ?? "")))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function collectToolCalls(
+  choice: OpenAiChoice | undefined,
+  mcpToolNames: string[],
+): { content: string; toolCalls: AgentToolCall[] } {
+  const rawContent = extractMessageContent(choice?.message);
+  const native = extractToolCalls(choice).map((call) => normalizeAgentToolCall(call, mcpToolNames));
+  const fromText = extractToolCallsFromText(rawContent, mcpToolNames);
+  return {
+    content: stripToolCallMarkup(rawContent),
+    toolCalls: mergeToolCalls(native, fromText),
+  };
+}
+
 function extractToolCalls(choice?: OpenAiChoice): AgentToolCall[] {
   const message = choice?.message ?? {};
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -273,12 +303,22 @@ function extractToolCalls(choice?: OpenAiChoice): AgentToolCall[] {
   return [];
 }
 
+function unmatchedToolCalls(run: AgentRun): AgentToolCall[] {
+  const lastAssistant = [...run.messages].reverse().find((message) => message.role === "assistant" && message.toolCalls?.length);
+  if (!lastAssistant?.toolCalls?.length) return [];
+  const answered = new Set(
+    run.messages.filter((message) => message.role === "tool" && message.toolCallId).map((message) => message.toolCallId),
+  );
+  return lastAssistant.toolCalls.filter((call) => !answered.has(call.id));
+}
+
 export async function runAgentTurn(params: {
   databases: Databases;
   user: { $id: string; name?: string; email?: string };
   run: AgentRun;
+  resume?: { decision: "accept" | "deny" };
 }): Promise<AgentRun> {
-  const { databases, user } = params;
+  const { databases, user, resume } = params;
   let run = params.run;
 
   cancelledRuns.delete(run.id);
@@ -325,19 +365,25 @@ export async function runAgentTurn(params: {
     return persistUnlessStopped({ status: "failed", error: message });
   }
 
+  const mcpAuth = await buildAgentMcpAuth({ databases, userId: user.$id, context, run });
+  const mcpToolDefs = run.mode === "agent" ? mcpToolsForAuth(mcpAuth) : [];
+  const mcpToolNames = mcpToolDefs.map((tool) => tool.name);
+
   run = await persistUnlessStopped({
     status: "running",
     modelId: target.modelId,
     error: "",
-    events: [
-      ...run.events,
-      thoughtEvent(run.id, "Calling model", `Waiting for ${target.model}…`),
-    ],
+    events: resume ? run.events : [...run.events, thoughtEvent(run.id, "Working")],
   });
   if (run.status === "stopped") return run;
 
-  const tools = openaiToolsForMode(run.mode, harness.settings.enabledTools ?? []);
+  const tools = openaiToolsForTurn({
+    mode: run.mode,
+    enabledTools: harness.settings.enabledTools ?? [],
+    mcpTools: mcpToolDefs,
+  });
   const specialistTools = tools.filter((tool) => tool.function.name !== "delegate_agent");
+  const system = buildSystemPrompt({ harness, context, run, mcp });
 
   const toolContext = () => ({
     runId: run.id,
@@ -347,7 +393,65 @@ export async function runAgentTurn(params: {
     mcp,
     databases,
     runs,
+    workspaceId: run.workspaceId || mcpAuth.workspaceId,
+    projectId: run.projectId || mcpAuth.projectId,
+    mcpAuth,
   });
+
+  const applyToolCall = async (
+    call: AgentToolCall,
+    nextMessages: AgentChatMessage[],
+    nextEvents: AgentToolEvent[],
+  ) => {
+    const result = await executeTool(call.name, call.arguments, toolContext());
+    if (result.harnessPatch) {
+      harness = await upsertHarness(databases, user.$id, result.harnessPatch);
+    }
+    nextEvents.push(result.event);
+    let toolContent = result.content;
+    if (result.delegate) {
+      const specialist = await runSpecialistPass(
+        specialistById(result.delegate.agent),
+        result.delegate.task,
+      );
+      nextEvents.push(...specialist.events);
+      toolContent = JSON.stringify({
+        agent: result.delegate.agent,
+        task: result.delegate.task,
+        result: specialist.content,
+      });
+    }
+    nextMessages.push({
+      id: crypto.randomUUID(),
+      role: "tool",
+      content: toolContent,
+      toolCallId: call.id,
+      toolName: call.name,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const pauseForConfirmation = async (
+    nextMessages: AgentChatMessage[],
+    nextEvents: AgentToolEvent[],
+    writes: AgentToolCall[],
+  ) => {
+    const summary = writes.map((call) => confirmationSummary(call)).join(" · ");
+    nextEvents.push({
+      id: crypto.randomUUID(),
+      type: "confirmation",
+      title: summary,
+      payload: { calls: writes, summary },
+      createdAt: new Date().toISOString(),
+      runId: run.id,
+    });
+    return persistUnlessStopped({
+      messages: nextMessages,
+      events: nextEvents,
+      status: "awaiting_confirmation",
+      error: "",
+    });
+  };
 
   const runSpecialistPass = async (
     specialist: AgentSpecialistId,
@@ -367,36 +471,37 @@ export async function runAgentTurn(params: {
       ],
     };
     let messages = specialistRun.messages;
-    const system = buildSystemPrompt({ harness, context, run: specialistRun, mcp, specialist });
+    const specialistSystem = buildSystemPrompt({ harness, context, run: specialistRun, mcp, specialist });
     for (let iteration = 0; iteration < MAX_SPECIALIST_ITERATIONS; iteration += 1) {
       if (cancelledRuns.has(run.id)) break;
       const completion = await chatCompletion(
         target,
         {
           model: target.model,
-          messages: toOpenAiMessages(system, messages),
+          messages: toOpenAiMessages(specialistSystem, messages),
           temperature: 0.2,
           ...(specialistTools.length ? { tools: specialistTools, tool_choice: "auto" } : {}),
         },
         run.id,
       );
-      const choice = completion?.choices?.[0];
-      const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
-      const toolCalls = extractToolCalls(choice);
-      if (!toolCalls.length) {
-        return { content: content || "Specialist finished with no additional notes.", events };
+      const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames);
+      if (!collected.toolCalls.length) {
+        return {
+          content: sanitizeAssistantVisible(collected.content) || "Specialist finished with no additional notes.",
+          events,
+        };
       }
       messages = [
         ...messages,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: content || "",
-          toolCalls,
+          content: collected.content || "",
+          toolCalls: collected.toolCalls,
           createdAt: new Date().toISOString(),
         },
       ];
-      for (const call of toolCalls) {
+      for (const call of collected.toolCalls) {
         if (call.name === "delegate_agent") continue;
         const result = await executeTool(call.name, call.arguments, toolContext());
         if (result.harnessPatch) {
@@ -418,17 +523,65 @@ export async function runAgentTurn(params: {
   };
 
   try {
+    if (resume) {
+      const pending = findPendingConfirmation(run.events) ?? { calls: unmatchedToolCalls(run), summary: "" };
+      const pendingCalls = pending.calls.length ? pending.calls : unmatchedToolCalls(run);
+      const nextMessages = [...run.messages];
+      const nextEvents = [
+        ...run.events,
+        {
+          id: crypto.randomUUID(),
+          type: "confirmation_resolved" as const,
+          title: resume.decision === "accept" ? "Accepted" : "Denied",
+          createdAt: new Date().toISOString(),
+          runId: run.id,
+        },
+      ];
+      // Persist resolved immediately so the UI drops Accept/Deny even if the
+      // following tool/model work takes a while or another poller is stale.
+      run = await persistUnlessStopped({
+        events: nextEvents,
+        status: "running",
+        error: "",
+      });
+      if (run.status === "stopped") return run;
+      if (resume.decision === "deny") {
+        for (const call of pendingCalls) {
+          nextMessages.push({
+            id: crypto.randomUUID(),
+            role: "tool",
+            content: JSON.stringify({ error: "The user denied this action." }),
+            toolCallId: call.id,
+            toolName: call.name,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } else {
+        for (const call of pendingCalls) {
+          const stoppedBeforeTool = await haltIfStopped();
+          if (stoppedBeforeTool) return stoppedBeforeTool;
+          await applyToolCall(call, nextMessages, nextEvents);
+        }
+      }
+      run = await persistUnlessStopped({
+        messages: nextMessages,
+        events: nextEvents,
+        status: "running",
+        error: "",
+      });
+      if (run.status === "stopped") return run;
+    }
+
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
       const stopped = await haltIfStopped();
       if (stopped) return stopped;
 
-      const system = buildSystemPrompt({ harness, context, run, mcp });
       const completion = await chatCompletion(
         target,
         {
           model: target.model,
           messages: toOpenAiMessages(system, run.messages),
-          temperature: 0.3,
+          temperature: 0.2,
           ...(tools.length ? { tools, tool_choice: "auto" } : {}),
         },
         run.id,
@@ -436,51 +589,30 @@ export async function runAgentTurn(params: {
       const stoppedAfterChat = await haltIfStopped();
       if (stoppedAfterChat) return stoppedAfterChat;
 
-      const choice = completion?.choices?.[0];
-      const content = typeof choice?.message?.content === "string" ? choice.message.content : "";
-      const toolCalls = extractToolCalls(choice);
+      const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames);
+      const content = sanitizeAssistantVisible(collected.content);
 
-      if (toolCalls.length) {
+      if (collected.toolCalls.length) {
         const assistantMessage: AgentChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: content || "",
-          toolCalls,
+          content,
+          toolCalls: collected.toolCalls,
           createdAt: new Date().toISOString(),
         };
         const nextMessages = [...run.messages, assistantMessage];
         const nextEvents = [...run.events];
+        const writes = collected.toolCalls.filter((call) => isWriteToolCall(call));
+        const reads = collected.toolCalls.filter((call) => !isWriteToolCall(call));
 
-        for (const call of toolCalls) {
+        for (const call of reads) {
           const stoppedBeforeTool = await haltIfStopped();
           if (stoppedBeforeTool) return stoppedBeforeTool;
-          const result = await executeTool(call.name, call.arguments, toolContext());
-          if (result.harnessPatch) {
-            harness = await upsertHarness(databases, user.$id, result.harnessPatch);
-          }
-          nextEvents.push(result.event);
-          let toolContent = result.content;
-          if (result.delegate) {
-            const specialist = await runSpecialistPass(
-              specialistById(result.delegate.agent),
-              result.delegate.task,
-            );
-            nextEvents.push(...specialist.events);
-            nextEvents.push(thoughtEvent(run.id, `${result.delegate.agent} specialist`, specialist.content.slice(0, 280)));
-            toolContent = JSON.stringify({
-              agent: result.delegate.agent,
-              task: result.delegate.task,
-              result: specialist.content,
-            });
-          }
-          nextMessages.push({
-            id: crypto.randomUUID(),
-            role: "tool",
-            content: toolContent,
-            toolCallId: call.id,
-            toolName: call.name,
-            createdAt: new Date().toISOString(),
-          });
+          await applyToolCall(call, nextMessages, nextEvents);
+        }
+
+        if (writes.length) {
+          return pauseForConfirmation(nextMessages, nextEvents, writes);
         }
 
         run = await persistUnlessStopped({

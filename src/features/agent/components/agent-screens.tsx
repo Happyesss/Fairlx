@@ -53,6 +53,8 @@ import type {
 import { AgentPageFrame } from "./agent-app-shell";
 import { AgentNewProjectForm, AutomationRunButton } from "./agent-ops-screens";
 import { McpServersCard } from "./mcp-servers-card";
+import { WorkspaceAvatar } from "@/features/workspaces/components/workspace-avatar";
+import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 import { useAgentUi } from "./agent-ui-context";
 
 const selectClass = cn("h-10 w-full rounded-md px-3 text-sm outline-none", AGENT_FIELD_CLASS);
@@ -168,12 +170,15 @@ export function AgentProjectsScreen() {
                 className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{project.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground truncate">
-                      {workspaceName(workspaces, project.workspaceId)}
-                      {project.key ? ` · ${project.key}` : ""}
-                    </p>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ProjectAvatar name={project.name} image={project.imageUrl} className="size-7 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{project.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                        {workspaceName(workspaces, project.workspaceId)}
+                        {project.key ? ` · ${project.key}` : ""}
+                      </p>
+                    </div>
                   </div>
                   {project.status ? (
                     <span className="text-[11px] text-muted-foreground shrink-0 font-medium">{project.status}</span>
@@ -232,10 +237,15 @@ export function AgentWorkspacesScreen() {
                   href={`/workspaces/${workspace.id}`}
                   className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm"
                 >
-                  <p className="text-sm font-semibold text-foreground truncate">{workspace.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {count} {count === 1 ? "project" : "projects"}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <WorkspaceAvatar name={workspace.name} image={workspace.imageUrl} className="size-8 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{workspace.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {count} {count === 1 ? "project" : "projects"}
+                      </p>
+                    </div>
+                  </div>
                 </Link>
               );
             })}
@@ -380,6 +390,113 @@ export function AgentSkillsScreen() {
   );
 }
 
+function WorkPatternsEditor() {
+  const { data: harness, isLoading } = useGetAgentHarness();
+  const updateHarness = useUpdateAgentHarness();
+  const patterns = harness?.workPatterns ?? [];
+  const [name, setName] = useState("");
+  const [instructions, setInstructions] = useState("");
+
+  const save = (next: AgentWorkPattern[], message?: string) => {
+    updateHarness.mutate(
+      { json: { workPatterns: next } },
+      {
+        onSuccess: () => {
+          if (message) toast.success(message);
+        },
+      }
+    );
+  };
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    save(
+      [
+        ...patterns,
+        {
+          id: newId(),
+          name: trimmed,
+          instructions: instructions.trim(),
+          enabled: true,
+          createdAt: nowIso(),
+        },
+      ],
+      "Work pattern saved."
+    );
+    setName("");
+    setInstructions("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
+        <div className="space-y-1.5">
+          <Label htmlFor="pattern-name">Name</Label>
+          <Input
+            id="pattern-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Ship small PRs"
+            className={AGENT_FIELD_CLASS}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pattern-instructions">Instructions</Label>
+          <Textarea
+            id="pattern-instructions"
+            value={instructions}
+            onChange={(event) => setInstructions(event.target.value)}
+            placeholder="How the Agent should work by default."
+            className={AGENT_FIELD_CLASS}
+            rows={4}
+          />
+        </div>
+        <Button type="submit" disabled={!name.trim() || updateHarness.isPending}>
+          {updateHarness.isPending ? "Saving…" : "Add work pattern"}
+        </Button>
+      </form>
+      {isLoading ? (
+        <LoadingState label="Loading work patterns…" />
+      ) : patterns.length === 0 ? (
+        <EmptyState
+          icon={Settings}
+          title="No work patterns"
+          body="Add a pattern or reset the harness to restore the starter set."
+        />
+      ) : (
+        <div className="space-y-3">
+          {patterns.map((pattern) => (
+            <div key={pattern.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">{pattern.name}</p>
+                <div className="flex items-center gap-3 shrink-0">
+                  <Switch
+                    checked={pattern.enabled}
+                    disabled={updateHarness.isPending}
+                    onCheckedChange={(enabled) =>
+                      save(patterns.map((item) => (item.id === pattern.id ? { ...item, enabled } : item)))
+                    }
+                  />
+                  <RemoveButton
+                    label="Remove"
+                    disabled={updateHarness.isPending}
+                    onClick={() => save(patterns.filter((item) => item.id !== pattern.id), "Work pattern removed.")}
+                  />
+                </div>
+              </div>
+              {pattern.instructions ? (
+                <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{pattern.instructions}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AgentToolsScreen() {
   const { data: harness, isLoading } = useGetAgentHarness();
   const updateHarness = useUpdateAgentHarness();
@@ -424,6 +541,157 @@ export function AgentToolsScreen() {
             ))}
           </div>
         )}
+      </div>
+    </AgentPageFrame>
+  );
+}
+
+export function AgentSettingsScreen() {
+  const { data: harness, isLoading } = useGetAgentHarness();
+  const { data: context } = useGetAgentContext();
+  const updateHarness = useUpdateAgentHarness();
+  const resetHarness = useResetAgentHarness();
+  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
+  const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [projectId, setProjectId] = useState("");
+
+  useEffect(() => {
+    setWorkspaceId(harness?.settings.defaultWorkspaceId ?? "");
+    setProjectId(harness?.settings.defaultProjectId ?? "");
+  }, [harness?.settings.defaultWorkspaceId, harness?.settings.defaultProjectId]);
+
+  useEffect(() => {
+    const scroll = () => {
+      const id = window.location.hash.replace("#", "");
+      if (!id) return;
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    scroll();
+    window.addEventListener("hashchange", scroll);
+    return () => window.removeEventListener("hashchange", scroll);
+  }, []);
+
+  const workspaceProjects = useMemo(
+    () => projects.filter((project: AgentContextProject) => !workspaceId || project.workspaceId === workspaceId),
+    [projects, workspaceId]
+  );
+
+  const onWorkspaceChange = (next: string) => {
+    setWorkspaceId(next);
+    const stillValid = projects.some((project) => project.id === projectId && project.workspaceId === next);
+    if (!stillValid) setProjectId("");
+  };
+
+  const saveDefaults = (event: FormEvent) => {
+    event.preventDefault();
+    updateHarness.mutate(
+      {
+        json: {
+          settings: {
+            defaultWorkspaceId: workspaceId || undefined,
+            defaultProjectId: projectId || undefined,
+          },
+        },
+      },
+      {
+        onSuccess: () => toast.success("Defaults saved."),
+      }
+    );
+  };
+
+  return (
+    <AgentPageFrame>
+      <div className="max-w-4xl mx-auto space-y-10">
+        <ScreenHeader
+          title="Settings"
+          description="Harness defaults, work patterns, and a full reset of Agent data for this account."
+        />
+
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Default context</h2>
+          {isLoading ? (
+            <LoadingState label="Loading settings…" />
+          ) : (
+            <form onSubmit={saveDefaults} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="default-workspace">Default workspace</Label>
+                  <select
+                    id="default-workspace"
+                    value={workspaceId}
+                    onChange={(event) => onWorkspaceChange(event.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">None</option>
+                    {workspaces.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>
+                        {workspace.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="default-project">Default project</Label>
+                  <select
+                    id="default-project"
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                    className={selectClass}
+                    disabled={!workspaceId}
+                  >
+                    <option value="">None</option>
+                    {workspaceProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <Button type="submit" disabled={updateHarness.isPending}>
+                {updateHarness.isPending ? "Saving…" : "Save defaults"}
+              </Button>
+            </form>
+          )}
+        </section>
+
+        <section id="work-patterns" className="scroll-mt-6 space-y-4">
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Work patterns</h2>
+          <p className="text-xs text-muted-foreground">
+            Standing instructions injected into every Agent run. Toggle quietly; save a new pattern to persist it.
+          </p>
+          <WorkPatternsEditor />
+        </section>
+
+        <section id="reset" className="scroll-mt-6 space-y-4">
+          <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider">Danger Zone</h2>
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-5 space-y-3 shadow-sm">
+            <p className="text-xs text-muted-foreground">
+              Delete this account’s Agent runs and restore skills, automations, knowledge, and work patterns to the
+              starter harness. MCP and model configs are not removed.
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" size="sm" disabled={resetHarness.isPending}>
+                  {resetHarness.isPending ? "Resetting…" : "Reset harness"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset the Agent harness?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This deletes your Agent runs and restores starter skills and work patterns. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => resetHarness.mutate()}>Reset</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </section>
       </div>
     </AgentPageFrame>
   );
@@ -823,260 +1091,4 @@ export function AgentKnowledgeScreen() {
   );
 }
 
-function WorkPatternsEditor() {
-  const { data: harness, isLoading } = useGetAgentHarness();
-  const updateHarness = useUpdateAgentHarness();
-  const patterns = harness?.workPatterns ?? [];
-  const [name, setName] = useState("");
-  const [instructions, setInstructions] = useState("");
 
-  const save = (next: AgentWorkPattern[], message?: string) => {
-    updateHarness.mutate(
-      { json: { workPatterns: next } },
-      {
-        onSuccess: () => {
-          if (message) toast.success(message);
-        },
-      }
-    );
-  };
-
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    save(
-      [
-        ...patterns,
-        {
-          id: newId(),
-          name: trimmed,
-          instructions: instructions.trim(),
-          enabled: true,
-          createdAt: nowIso(),
-        },
-      ],
-      "Work pattern saved."
-    );
-    setName("");
-    setInstructions("");
-  };
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
-        <div className="space-y-1.5">
-          <Label htmlFor="pattern-name">Name</Label>
-          <Input
-            id="pattern-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Ship small PRs"
-            className={AGENT_FIELD_CLASS}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="pattern-instructions">Instructions</Label>
-          <Textarea
-            id="pattern-instructions"
-            value={instructions}
-            onChange={(event) => setInstructions(event.target.value)}
-            placeholder="How the Agent should work by default."
-            className={AGENT_FIELD_CLASS}
-            rows={4}
-          />
-        </div>
-        <Button type="submit" disabled={!name.trim() || updateHarness.isPending}>
-          {updateHarness.isPending ? "Saving…" : "Add work pattern"}
-        </Button>
-      </form>
-      {isLoading ? (
-        <LoadingState label="Loading work patterns…" />
-      ) : patterns.length === 0 ? (
-        <EmptyState
-          icon={Settings}
-          title="No work patterns"
-          body="Add a pattern or reset the harness to restore the starter set."
-        />
-      ) : (
-        <div className="space-y-3">
-          {patterns.map((pattern) => (
-            <div key={pattern.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-semibold text-foreground">{pattern.name}</p>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Switch
-                    checked={pattern.enabled}
-                    disabled={updateHarness.isPending}
-                    onCheckedChange={(enabled) =>
-                      save(patterns.map((item) => (item.id === pattern.id ? { ...item, enabled } : item)))
-                    }
-                  />
-                  <RemoveButton
-                    label="Remove"
-                    disabled={updateHarness.isPending}
-                    onClick={() => save(patterns.filter((item) => item.id !== pattern.id), "Work pattern removed.")}
-                  />
-                </div>
-              </div>
-              {pattern.instructions ? (
-                <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{pattern.instructions}</p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function AgentSettingsScreen() {
-  const { data: harness, isLoading } = useGetAgentHarness();
-  const { data: context } = useGetAgentContext();
-  const updateHarness = useUpdateAgentHarness();
-  const resetHarness = useResetAgentHarness();
-  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
-  const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
-  const [workspaceId, setWorkspaceId] = useState("");
-  const [projectId, setProjectId] = useState("");
-
-  useEffect(() => {
-    setWorkspaceId(harness?.settings.defaultWorkspaceId ?? "");
-    setProjectId(harness?.settings.defaultProjectId ?? "");
-  }, [harness?.settings.defaultWorkspaceId, harness?.settings.defaultProjectId]);
-
-  useEffect(() => {
-    const scroll = () => {
-      const id = window.location.hash.replace("#", "");
-      if (!id) return;
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-    scroll();
-    window.addEventListener("hashchange", scroll);
-    return () => window.removeEventListener("hashchange", scroll);
-  }, []);
-
-  const workspaceProjects = useMemo(
-    () => projects.filter((project: AgentContextProject) => !workspaceId || project.workspaceId === workspaceId),
-    [projects, workspaceId]
-  );
-
-  const onWorkspaceChange = (next: string) => {
-    setWorkspaceId(next);
-    const stillValid = projects.some((project) => project.id === projectId && project.workspaceId === next);
-    if (!stillValid) setProjectId("");
-  };
-
-  const saveDefaults = (event: FormEvent) => {
-    event.preventDefault();
-    updateHarness.mutate(
-      {
-        json: {
-          settings: {
-            defaultWorkspaceId: workspaceId || undefined,
-            defaultProjectId: projectId || undefined,
-          },
-        },
-      },
-      {
-        onSuccess: () => toast.success("Defaults saved."),
-      }
-    );
-  };
-
-  return (
-    <AgentPageFrame>
-      <div className="max-w-4xl mx-auto space-y-10">
-        <ScreenHeader
-          title="Settings"
-          description="Harness defaults, work patterns, and a full reset of Agent data for this account."
-        />
-
-        <section className="space-y-4">
-          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Default context</h2>
-          {isLoading ? (
-            <LoadingState label="Loading settings…" />
-          ) : (
-            <form onSubmit={saveDefaults} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="default-workspace">Default workspace</Label>
-                  <select
-                    id="default-workspace"
-                    value={workspaceId}
-                    onChange={(event) => onWorkspaceChange(event.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">None</option>
-                    {workspaces.map((workspace) => (
-                      <option key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="default-project">Default project</Label>
-                  <select
-                    id="default-project"
-                    value={projectId}
-                    onChange={(event) => setProjectId(event.target.value)}
-                    className={selectClass}
-                    disabled={!workspaceId}
-                  >
-                    <option value="">None</option>
-                    {workspaceProjects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <Button type="submit" disabled={updateHarness.isPending}>
-                {updateHarness.isPending ? "Saving…" : "Save defaults"}
-              </Button>
-            </form>
-          )}
-        </section>
-
-        <section id="work-patterns" className="scroll-mt-6 space-y-4">
-          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Work patterns</h2>
-          <p className="text-xs text-muted-foreground">
-            Standing instructions injected into every Agent run. Toggle quietly; save a new pattern to persist it.
-          </p>
-          <WorkPatternsEditor />
-        </section>
-
-        <section id="reset" className="scroll-mt-6 space-y-4">
-          <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider">Danger Zone</h2>
-          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-5 space-y-3 shadow-sm">
-            <p className="text-xs text-muted-foreground">
-              Delete this account’s Agent runs and restore skills, automations, knowledge, and work patterns to the
-              starter harness. MCP and model configs are not removed.
-            </p>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button type="button" variant="destructive" size="sm" disabled={resetHarness.isPending}>
-                  {resetHarness.isPending ? "Resetting…" : "Reset harness"}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Reset the Agent harness?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This deletes your Agent runs and restores starter skills and work patterns. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => resetHarness.mutate()}>Reset</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </section>
-      </div>
-    </AgentPageFrame>
-  );
-}

@@ -35,6 +35,7 @@ import {
 import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
+import { findPendingConfirmation } from "../lib/write-guard";
 import { ensurePersonalMcp } from "../lib/mcp-bridge";
 import { searchAgentIndex } from "../lib/search";
 import { parseGitStaging, parseChatMeta } from "../lib/git-staging";
@@ -389,6 +390,9 @@ const app = new Hono()
       if (existing.status === "running") {
         return c.json({ error: "Run is already in progress." }, 409);
       }
+      if (existing.status === "awaiting_confirmation") {
+        return c.json({ error: "Accept or deny the pending action first." }, 409);
+      }
       const createdAt = new Date().toISOString();
       const run = await updateRun(databases, runId, {
         status: "running",
@@ -414,8 +418,10 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.status === "awaiting_confirmation") return c.json({ data: existing });
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
+      if (findPendingConfirmation(existing.events ?? [])) return c.json({ data: existing });
 
       const run =
         existing.status === "running"
@@ -436,12 +442,62 @@ const app = new Hono()
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
       cancelAgentTurn(runId);
-      if (existing.status !== "running") return c.json({ data: existing });
+      if (existing.status !== "running" && existing.status !== "awaiting_confirmation") {
+        return c.json({ data: existing });
+      }
       const data = await updateRun(databases, runId, { status: "stopped" });
       return c.json({ data });
     } catch (error) {
       console.error("[agent] failed to stop run", error);
       return c.json({ error: "Failed to stop agent run." }, 500);
+    }
+  })
+  .post("/runs/:runId/confirm", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const runId = c.req.param("runId");
+    const { databases } = await createAdminClient();
+    try {
+      const existing = await getRun(databases, user.$id, runId);
+      if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.status !== "awaiting_confirmation") {
+        return c.json({ error: "Nothing is waiting for approval." }, 409);
+      }
+      if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
+      const run = await updateRun(databases, runId, { status: "running", error: "" });
+      scheduleAgentTurn({
+        databases,
+        user,
+        run: { ...existing, status: "running" },
+        resume: { decision: "accept" },
+      });
+      return c.json({ data: run });
+    } catch (error) {
+      console.error("[agent] failed to confirm run", error);
+      return c.json({ error: "Failed to accept the action." }, 500);
+    }
+  })
+  .post("/runs/:runId/deny", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const runId = c.req.param("runId");
+    const { databases } = await createAdminClient();
+    try {
+      const existing = await getRun(databases, user.$id, runId);
+      if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.status !== "awaiting_confirmation") {
+        return c.json({ error: "Nothing is waiting for approval." }, 409);
+      }
+      if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
+      const run = await updateRun(databases, runId, { status: "running", error: "" });
+      scheduleAgentTurn({
+        databases,
+        user,
+        run: { ...existing, status: "running" },
+        resume: { decision: "deny" },
+      });
+      return c.json({ data: run });
+    } catch (error) {
+      console.error("[agent] failed to deny run", error);
+      return c.json({ error: "Failed to deny the action." }, 500);
     }
   })
   .delete("/runs/:runId", sessionMiddleware, async (c) => {
@@ -451,7 +507,7 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
-      if (existing.status === "running") {
+      if (existing.status === "running" || existing.status === "awaiting_confirmation") {
         cancelAgentTurn(runId);
       }
       await deleteRun(databases, user.$id, runId);

@@ -1,5 +1,5 @@
 import type { AgentContext, AgentHarness, AgentRun, AgentSpecialistId, McpConfig } from "../types";
-import { AGENT_SPECIALISTS, buildContextGraph, formatContextGraph, specialistById } from "./graph";
+import { AGENT_SPECIALISTS, specialistById } from "./graph";
 import { matchingAutomations, rankKnowledge } from "./search";
 
 export function buildSystemPrompt(params: {
@@ -9,11 +9,8 @@ export function buildSystemPrompt(params: {
   mcp: McpConfig;
   specialist?: AgentSpecialistId;
 }): string {
-  const { harness, context, run, mcp } = params;
+  const { harness, context, run } = params;
   const specialist = specialistById(params.specialist || "orchestrator");
-  const specialistDef = AGENT_SPECIALISTS.find((item) => item.id === specialist) ?? AGENT_SPECIALISTS[0]!;
-  const enabledSkills = harness.skills.filter((skill) => skill.enabled);
-  const enabledPatterns = harness.workPatterns.filter((pattern) => pattern.enabled);
   const workspace =
     context.workspaces.find((item) => item.id === run.workspaceId) ??
     context.workspaces.find((item) => item.id === harness.settings.defaultWorkspaceId) ??
@@ -21,94 +18,45 @@ export function buildSystemPrompt(params: {
   const project =
     context.projects.find((item) => item.id === run.projectId) ??
     context.projects.find((item) => item.id === harness.settings.defaultProjectId);
-  const graph = buildContextGraph({ harness, context, run, mcp });
   const lastUser = [...run.messages].reverse().find((message) => message.role === "user");
   const query = lastUser?.content || run.prompt || "";
-  const knowledge = rankKnowledge(query, harness, 8);
-  const automations = matchingAutomations(harness, query);
-  const mcpNames = Object.entries(mcp.mcpServers ?? {})
-    .filter(([, server]) => !server.disabled)
-    .map(([name, server]) => `${name} (${server.transport || "http"})`);
-  const staged = harness.gitStaging.items.filter((item) => item.status === "staged");
+  const knowledge = rankKnowledge(query, harness, 3);
+  const automations = matchingAutomations(harness, query).slice(0, 3);
+  const role = workspace?.role ? ` Role: ${workspace.role}.` : "";
 
   const lines = [
-    "You are the Fairlx Agent harness — a multi-agent system that plans, inspects, and ships work across Fairlx workspaces, projects, and work items.",
-    `Active specialist: ${specialistDef.name}. ${specialistDef.role}`,
-    `Mode: ${run.mode === "agent" ? "Agent (tools enabled)" : "Manual (chat only, no tools)"}.`,
-    `Session mode: ${harness.settings.sessionMode || "agent"}. ${
-      harness.settings.sessionMode === "plan"
-        ? "Write a plan; do not edit."
-        : harness.settings.sessionMode === "debug"
-          ? "Debug the attached failure."
-          : harness.settings.sessionMode === "multitask"
-            ? "Delegate specialists when work spans roles."
-            : harness.settings.sessionMode === "ask"
-              ? "Answer without tools unless asked to act."
-              : "Inspect, then act."
-    }`,
-    `User: ${context.user.name} <${context.user.email}>.`,
-    workspace ? `Current workspace: ${workspace.name} (${workspace.id}).` : "No workspace selected.",
-    project ? `Current project: ${project.name} (${project.id}).` : "No project selected.",
-    context.workspaces.length
-      ? `Workspaces: ${context.workspaces.map((item) => `${item.name} (${item.id})`).join(", ")}.`
-      : "The user has no workspaces yet.",
+    "You are the Fairlx Agent. Talk to the user in plain language.",
+    `Mode: ${run.mode === "agent" ? "tools on" : "chat only"}.`,
+    workspace ? `Workspace: ${workspace.name}.${role}` : "No workspace selected.",
+    project ? `Project: ${project.name}${project.key ? ` (${project.key})` : ""}.` : "No project selected.",
     "",
-    "Hard rules:",
-    "- Prefer Fairlx data from tools over guessing. Do not invent work items, projects, or credentials.",
-    "- Use tools when they will improve the answer. Call mcp_call for Fairlx and personal MCP instead of restating stale context.",
-    "- Never claim you executed a shell command or git binary on the Fairlx host. Terminal and git tools only record planned work.",
-    "- Ask before destructive actions. Creating a project in a named workspace is allowed when the user asked for it.",
-    "- Be concise and actionable. Match Cursor / Antigravity agent behavior: inspect, plan, then act.",
-    "- Personal content (skills, knowledge, rules, automations, chats, staging) lives on the always-on fairlx-personal MCP.",
-    "",
-    "Context graph:",
-    formatContextGraph({ ...graph, specialist }),
+    "Rules:",
+    "- Call tools silently. Never mention tools, MCP, function calls, XML, JSON arguments, or document IDs.",
+    "- Do not narrate lookups. Do not say you are checking, searching, or calling anything.",
+    "- Never print internal IDs, workspace IDs, or raw tool syntax. Use names, keys, and roles.",
+    "- List tools return complete rows including names. Answer from the list. Do not call get once per row.",
+    "- When asked to change a member's role, update it with their name (or email) and the new role. Wait for Accept. Do not send the user to the Members page.",
+    "- Do not invent members, work items, or projects. Use tools, then answer.",
+    "- Create, update, and delete wait for the user to Accept or Deny in the UI. Do not ask them to type confirm.",
+    "- Stay inside this user's workspace role. If a tool is not allowed, say they do not have permission.",
+    "- Be concise. Answer the question; skip process talk.",
   ];
 
-  if (enabledPatterns.length) {
-    lines.push("", "Rules / work patterns:");
-    for (const pattern of enabledPatterns) {
-      lines.push(`- ${pattern.name}: ${pattern.instructions}`);
-    }
-  }
-  if (enabledSkills.length) {
-    lines.push("", "Enabled skills:");
-    for (const skill of enabledSkills) {
-      lines.push(`- ${skill.name}: ${skill.description}. Instructions: ${skill.instructions}`);
+  if (knowledge.length) {
+    lines.push("", "Notes:");
+    for (const item of knowledge) {
+      lines.push(`- ${item.title}: ${item.content.slice(0, 180)}`);
     }
   }
   if (automations.length) {
-    lines.push("", "Automations that apply to this turn:");
-    for (const item of automations.slice(0, 8)) {
-      lines.push(`- ${item.name}: when "${item.trigger}" → ${item.action}`);
-    }
-  }
-  if (knowledge.length) {
-    lines.push("", "Ranked knowledge:");
-    for (const item of knowledge) {
-      lines.push(`- ${item.title}: ${item.content.slice(0, 400)}`);
-    }
-  }
-  if (mcpNames.length) {
-    lines.push("", `Connected MCP servers: ${mcpNames.join(", ")}.`);
-    lines.push("Use mcp_list / mcp_resources / mcp_call. fairlx is the platform MCP. fairlx-personal is this user's harness.");
-  }
-  if (staged.length) {
-    lines.push("", "Staged changes:");
-    for (const item of staged.slice(0, 12)) {
-      lines.push(`- ${item.path}: ${item.summary}`);
+    lines.push("", "Automations:");
+    for (const item of automations) {
+      lines.push(`- ${item.name}: ${item.action}`);
     }
   }
   if (specialist !== "orchestrator") {
-    lines.push(
-      "",
-      `You are acting as the ${specialistDef.name} specialist. Stay in that role. Return findings the orchestrator can use.`,
-    );
-  } else {
-    lines.push(
-      "",
-      "If the task spans planning, research, building, git, or review, use delegate_agent for a specialist pass, then synthesize.",
-    );
+    const specialistDef = AGENT_SPECIALISTS.find((item) => item.id === specialist);
+    lines.push("", `Stay in the ${specialistDef?.name ?? specialist} specialist role and return findings only.`);
   }
   return lines.join("\n");
 }

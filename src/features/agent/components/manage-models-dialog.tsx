@@ -20,7 +20,6 @@ import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useUpdateAgentAiConfig } from "../api/use-update-agent-ai-config";
 import {
   DEEPSEEK_FLASH_MODEL_ID,
-  GROK_46_MODEL_ID,
   PROVIDER_CATALOG,
   getProviderCatalogItem,
 } from "../constants";
@@ -78,7 +77,7 @@ function newId(prefix: string) {
 function emptyAiDraft(): AiDraft {
   return {
     mode: "auto",
-    selectedModelId: GROK_46_MODEL_ID,
+    selectedModelId: DEEPSEEK_FLASH_MODEL_ID,
     providers: [],
     models: [],
   };
@@ -218,7 +217,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
   const handleSave = () => {
     const payload: AgentAiConfigInput = {
       mode: draft.mode,
-      selectedModelId: draft.mode === "auto" ? GROK_46_MODEL_ID : draft.selectedModelId,
+      selectedModelId: draft.mode === "auto" ? DEEPSEEK_FLASH_MODEL_ID : draft.selectedModelId,
       providers: draft.providers.map((provider) => ({
         id: provider.id,
         provider: provider.provider,
@@ -246,7 +245,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
         <DialogHeader>
           <DialogTitle>Manage Models</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Auto uses Grok 4.6 and DeepSeek V4 Flash. Add BYOK providers from the catalog.
+            Auto uses DeepSeek V4 Flash. Add BYOK providers from the catalog.
           </DialogDescription>
         </DialogHeader>
 
@@ -259,7 +258,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
               type="button"
               size="sm"
               variant={draft.mode === "auto" ? "primary" : "outline"}
-              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: GROK_46_MODEL_ID })}
+              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: DEEPSEEK_FLASH_MODEL_ID })}
             >
               Auto
             </Button>
@@ -274,7 +273,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
           </div>
           {draft.mode === "auto" && (
             <p className="text-xs text-muted-foreground">
-              Routes with Grok 4.6 (`{GROK_46_MODEL_ID}`) and DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
+              Routes with DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
             </p>
           )}
         </div>

@@ -2,7 +2,7 @@ import { invalidParams, notFoundError } from "../protocol/errors";
 import type { McpToolResult } from "../protocol/types";
 import type { AuthContext } from "../auth/context";
 import { PERMISSIONS, type McpQuery, type McpRuntime } from "../runtime/types";
-import { compactWorkItem, toolResult, withId, wrapUntrusted } from "../runtime/output";
+import { compactWorkItem, hydrateMembers, toolResult, withId, wrapUntrusted } from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem } from "../runtime/tenant";
 import { listQuery, optionalString, requireString, redactGithubRepo } from "./helpers";
@@ -186,7 +186,7 @@ async function projectMembersList(
       ]
     );
   }
-  return toolResult({ members: members.documents.map((m) => withId(m)) });
+  return toolResult({ members: await hydrateMembers(runtime, members.documents) });
 }
 
 async function workItemList(
@@ -501,7 +501,7 @@ async function workspaceMembersList(
     listQuery(args, [{ type: "equal", field: "workspaceId", value: workspaceId }])
   );
   return toolResult({
-    members: result.documents.map((m) => withId(m)),
+    members: await hydrateMembers(runtime, result.documents),
     total: result.total,
   });
 }
@@ -520,7 +520,7 @@ async function workspaceMemberGet(
   }
   const workspaceId = String(member.workspaceId ?? "");
   assertWorkspaceBound(auth, workspaceId);
-  return toolResult({ member: withId(member) });
+  return toolResult({ member: (await hydrateMembers(runtime, [member]))[0] });
 }
 
 async function workspaceGet(
@@ -685,7 +685,7 @@ async function projectTeamMembersList(
     listQuery(args, [{ type: "equal", field: "teamId", value: teamId }])
   );
   return toolResult({
-    members: result.documents.map((d) => withId(d)),
+    members: await hydrateMembers(runtime, result.documents),
     total: result.total,
   });
 }

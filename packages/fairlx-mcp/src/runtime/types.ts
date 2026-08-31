@@ -93,6 +93,13 @@ export interface McpTokenRecord {
   tokenHash?: string;
 }
 
+export type McpUserProfile = {
+  id: string;
+  name: string;
+  email: string;
+  profileImageUrl?: string | null;
+};
+
 export interface McpRuntime {
   collections: McpCollections;
   store: McpStore;
@@ -120,6 +127,13 @@ export interface McpRuntime {
   getIdempotencyResult: (eventKey: string) => Promise<unknown | null>;
   now: () => string;
   logAudit?: (entry: Record<string, unknown>) => Promise<void>;
+  /**
+   * Batch-resolve Appwrite user profiles so member list/get tools can return
+   * the same name and email the Fairlx UI shows. Optional for test runtimes.
+   */
+  lookupUsers?: (userIds: string[]) => Promise<McpUserProfile[]>;
+  /** Drop member/permission caches after a workspace role change. */
+  onMembershipChanged?: (info: { userId: string; workspaceId: string }) => Promise<void>;
 }
 
 export const PERMISSIONS = {

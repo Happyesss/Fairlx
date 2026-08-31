@@ -15,7 +15,7 @@ import {
 } from "@/config";
 import type { AgentContext } from "../types";
 
-type MemberDoc = Models.Document & { workspaceId: string };
+type MemberDoc = Models.Document & { workspaceId: string; role?: string };
 type WorkspaceDoc = Models.Document & { name: string; imageUrl?: string; inviteCode?: string };
 type ProjectDoc = Models.Document & {
   name: string;
@@ -56,8 +56,15 @@ export async function loadAgentContext(
     Query.equal("userId", user.$id),
     Query.limit(100),
   ]);
+  const memberships = members.documents as MemberDoc[];
+  const roleByWorkspace = new Map<string, string>();
+  for (const membership of memberships) {
+    if (membership.workspaceId && membership.role && !roleByWorkspace.has(membership.workspaceId)) {
+      roleByWorkspace.set(membership.workspaceId, membership.role);
+    }
+  }
   const workspaceIds = Array.from(
-    new Set(members.documents.map((doc) => (doc as MemberDoc).workspaceId).filter(Boolean)),
+    new Set(memberships.map((doc) => doc.workspaceId).filter(Boolean)),
   ).slice(0, 100);
 
   const workspaces = workspaceIds.length
@@ -132,6 +139,7 @@ export async function loadAgentContext(
       name: workspace.name,
       imageUrl: workspace.imageUrl,
       inviteCode: workspace.inviteCode,
+      role: roleByWorkspace.get(workspace.$id),
     })),
     projects: projects.map((project) => ({
       id: project.$id,

@@ -15,8 +15,6 @@ import {
   Square,
   RotateCcw,
   Pencil,
-  Globe,
-  FolderKanban,
   Server,
   GitBranch,
   ExternalLink,
@@ -24,8 +22,13 @@ import {
   ChevronUp,
   ChevronRight,
   Check,
+  Copy,
 } from "lucide-react";
 import { RiAddCircleFill } from "react-icons/ri";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -43,9 +46,11 @@ import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
-import { AGENT_CONTEXT_QUERY_KEY, isInternalMcpServer } from "../constants";
+import { isInternalMcpServer } from "../constants";
 import {
+  useConfirmAgentRun,
   useContinueAgentRun,
+  useDenyAgentRun,
   useDeleteAgentRun,
   useGetAgentRun,
   usePatchAgentRun,
@@ -56,6 +61,8 @@ import { selectedModelLabel } from "../lib/client-defaults";
 import { clockTime, relativeTime } from "../lib/agent-ui";
 import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
+import { sanitizeAssistantVisible } from "../lib/visible-content";
+import { findPendingConfirmation } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
 import { useAgentUi } from "./agent-ui-context";
@@ -84,8 +91,131 @@ function UserBubble({ message }: { message: AgentChatMessage }) {
   );
 }
 
+function CodeBlock({
+  className,
+  children,
+  ...props
+}: {
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || "");
+  const codeString = String(children).replace(/\n$/, "");
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (match) {
+    return (
+      <div className="relative group my-3 rounded-lg overflow-hidden border border-border bg-[#1e1e1e]">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/60 border-b border-border text-[11px] text-muted-foreground font-mono">
+          <span>{match[1]}</span>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+        <SyntaxHighlighter
+          style={vscDarkPlus}
+          language={match[1]}
+          PreTag="div"
+          customStyle={{ margin: 0, padding: "12px", fontSize: "12px", background: "transparent" }}
+        >
+          {codeString}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+
+  return (
+    <code className={cn("bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground", className)} {...props}>
+      {children}
+    </code>
+  );
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed text-sm">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code: CodeBlock,
+          p({ children }) {
+            return <p className="mb-2.5 last:mb-0 leading-relaxed text-sm text-foreground">{children}</p>;
+          },
+          strong({ children }) {
+            return <strong className="font-semibold text-foreground">{children}</strong>;
+          },
+          ul({ children }) {
+            return <ul className="list-disc pl-5 my-2 space-y-1 text-sm text-foreground">{children}</ul>;
+          },
+          ol({ children }) {
+            return <ol className="list-decimal pl-5 my-2 space-y-1 text-sm text-foreground">{children}</ol>;
+          },
+          li({ children }) {
+            return <li className="leading-relaxed">{children}</li>;
+          },
+          h1({ children }) {
+            return <h1 className="text-base font-bold my-2 text-foreground">{children}</h1>;
+          },
+          h2({ children }) {
+            return <h2 className="text-sm font-bold my-2 text-foreground">{children}</h2>;
+          },
+          h3({ children }) {
+            return <h3 className="text-sm font-semibold my-1.5 text-foreground">{children}</h3>;
+          },
+          blockquote({ children }) {
+            return (
+              <blockquote className="border-l-2 border-primary/60 pl-3 italic text-muted-foreground my-2">
+                {children}
+              </blockquote>
+            );
+          },
+          a({ href, children }) {
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline font-medium"
+              >
+                {children}
+              </a>
+            );
+          },
+          table({ children }) {
+            return (
+              <div className="overflow-x-auto my-3 rounded-lg border border-border">
+                <table className="min-w-full divide-y divide-border text-xs">{children}</table>
+              </div>
+            );
+          },
+          th({ children }) {
+            return <th className="bg-muted/50 px-3 py-2 text-left font-semibold text-foreground">{children}</th>;
+          },
+          td({ children }) {
+            return <td className="px-3 py-2 border-t border-border">{children}</td>;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 function AgentBubble({ message }: { message: AgentChatMessage }) {
-  if (!message.content?.trim()) return null;
+  const visible = sanitizeAssistantVisible(message.content);
+  if (!visible) return null;
   return (
     <div className="flex gap-3.5">
       <div className="size-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">
@@ -97,7 +227,9 @@ function AgentBubble({ message }: { message: AgentChatMessage }) {
           <span>•</span>
           <span>{clockTime(message.createdAt)}</span>
         </div>
-        <p className="text-foreground leading-relaxed max-w-3xl whitespace-pre-wrap text-sm">{message.content}</p>
+        <div className="max-w-3xl">
+          <MarkdownContent content={visible} />
+        </div>
       </div>
     </div>
   );
@@ -107,15 +239,18 @@ function StepsCard({
   lead,
   steps,
   running,
+  awaiting,
 }: {
   lead?: AgentChatMessage;
   steps: TranscriptStep[];
   running: boolean;
+  awaiting?: boolean;
 }) {
   const [open, setOpen] = useState(true);
-  const failed = steps.some((step) => !summarizeToolResult(step.call.name, step.result?.content).ok);
+  const failed = steps.some((step) => step.result && !summarizeToolResult(step.call.name, step.result?.content).ok);
   const last = steps[steps.length - 1];
-  const inProgress = running && last && !last.result;
+  const inProgress = (running || awaiting) && last && !last.result;
+  const leadVisible = sanitizeAssistantVisible(lead?.content ?? "");
 
   return (
     <div className="flex gap-3.5">
@@ -132,8 +267,10 @@ function StepsCard({
             </>
           ) : null}
         </div>
-        {lead?.content ? (
-          <p className="text-foreground leading-relaxed max-w-3xl whitespace-pre-wrap text-sm">{lead.content}</p>
+        {leadVisible ? (
+          <div className="max-w-3xl">
+            <MarkdownContent content={leadVisible} />
+          </div>
         ) : null}
         <div className="bg-card border border-border rounded-xl overflow-hidden max-w-4xl shadow-sm mt-1">
           <button
@@ -150,7 +287,13 @@ function StepsCard({
                 <CheckCircle2 className="size-4 text-green-500" />
               )}
               <span className="font-medium text-foreground text-sm">
-                {inProgress ? "Working on it..." : failed ? "Finished with errors" : "Finished"}
+                {awaiting
+                  ? "Waiting for approval"
+                  : inProgress
+                    ? "Working…"
+                    : failed
+                      ? "Finished with errors"
+                      : "Finished"}
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -187,14 +330,16 @@ function StepsCard({
                         {toolLabel(step.call.name)}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {step.event?.title || summary.detail}
+                        {awaiting && !step.result
+                          ? "Needs your approval"
+                          : sanitizeAssistantVisible(step.event?.title || summary.detail)}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs shrink-0">
                       {active ? (
                         <span className="text-primary font-medium flex items-center gap-1.5">
                           <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-                          In progress
+                          {awaiting ? "Pending" : "In progress"}
                         </span>
                       ) : summary.ok ? (
                         <span className="text-green-500 font-medium">Completed</span>
@@ -209,46 +354,6 @@ function StepsCard({
           ) : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-function ContextRow({
-  icon: Icon,
-  iconClass,
-  label,
-  value,
-  href,
-  onClick,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  iconClass?: string;
-  label: string;
-  value: string;
-  href?: string;
-  onClick?: () => void;
-}) {
-  const inner = (
-    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-sidebar-accent cursor-pointer border border-transparent hover:border-sidebar-border group transition-colors">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <Icon className={cn("size-4 shrink-0", iconClass ?? "text-muted-foreground")} />
-        <span className="text-foreground text-xs font-medium group-hover:text-primary transition-colors truncate">{value}</span>
-      </div>
-      <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-foreground shrink-0 transition-colors" />
-    </div>
-  );
-  return (
-    <div>
-      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">{label}</div>
-      {href ? (
-        <Link href={href}>{inner}</Link>
-      ) : onClick ? (
-        <button type="button" className="w-full text-left" onClick={onClick}>
-          {inner}
-        </button>
-      ) : (
-        inner
-      )}
     </div>
   );
 }
@@ -634,6 +739,8 @@ function WorkflowViewInner() {
   const sendMessage = useSendAgentMessage();
   const stopRun = useStopAgentRun();
   const continueRun = useContinueAgentRun();
+  const confirmRun = useConfirmAgentRun();
+  const denyRun = useDenyAgentRun();
   const deleteRun = useDeleteAgentRun();
   const patchRun = usePatchAgentRun();
   const { data: harness } = useGetAgentHarness();
@@ -650,10 +757,12 @@ function WorkflowViewInner() {
   }, [run?.title]);
 
   useEffect(() => {
-    if (!run || run.status !== "running") return;
+    if (!run) return;
     if (continuedRef.current === run.id) return;
     continuedRef.current = run.id;
-    continueRun.mutate({ runId: run.id });
+    // Recover a refresh mid-turn. Accept/Deny starts its own turn — do not
+    // continue when this chat loaded already waiting for approval.
+    if (run.status === "running") continueRun.mutate({ runId: run.id });
   }, [run, continueRun]);
 
   useEffect(() => {
@@ -704,6 +813,8 @@ function WorkflowViewInner() {
   }
 
   const running = run.status === "running";
+  const awaiting = run.status === "awaiting_confirmation";
+  const pending = findPendingConfirmation(run.events ?? []);
   const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
   const project = context?.projects.find((item) => item.id === run.projectId);
   const linkedRepo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
@@ -750,7 +861,7 @@ function WorkflowViewInner() {
               <span
                 className={cn(
                   "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium text-[11px]",
-                  running
+                  running || awaiting
                     ? "bg-blue-500/10 text-blue-500"
                     : run.status === "completed"
                       ? "bg-green-500/10 text-green-500"
@@ -760,17 +871,17 @@ function WorkflowViewInner() {
                 <span
                   className={cn(
                     "size-1.5 rounded-full",
-                    running ? "bg-blue-500 animate-pulse" : run.status === "completed" ? "bg-green-500" : "bg-destructive"
+                    running || awaiting ? "bg-blue-500 animate-pulse" : run.status === "completed" ? "bg-green-500" : "bg-destructive"
                   )}
                 />
-                <span className="capitalize">{running ? "Running" : run.status}</span>
+                <span className="capitalize">{running ? "Running" : awaiting ? "Needs approval" : run.status}</span>
               </span>
               <span className="text-muted-foreground">• Started {relativeTime(run.createdAt)}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {running ? (
+            {running || awaiting ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -867,9 +978,37 @@ function WorkflowViewInner() {
                     lead={block.lead}
                     steps={block.steps}
                     running={running}
+                    awaiting={awaiting}
                   />
                 );
               })}
+
+              {awaiting ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <p className="text-sm text-foreground flex-1">
+                    {pending?.summary || "The agent wants to create, update, or delete something in this workspace."}
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={denyRun.isPending || confirmRun.isPending}
+                      onClick={() => denyRun.mutate({ runId: run.id })}
+                    >
+                      Deny
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8"
+                      disabled={confirmRun.isPending || denyRun.isPending}
+                      onClick={() => confirmRun.mutate({ runId: run.id })}
+                    >
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               {run.error ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive font-medium">
@@ -883,8 +1022,8 @@ function WorkflowViewInner() {
             <AgentCommandInput
               variant="followup"
               showQuickActions={false}
-              submitting={sendMessage.isPending}
-              placeholder="Ask anything, @ to mention, / for actions"
+              submitting={sendMessage.isPending || awaiting || running}
+              placeholder={awaiting ? "Accept or deny the pending action first" : "Ask anything, @ to mention, / for actions"}
               onFollowUp={(content) => {
                 sendMessage.mutate({ param: { runId: run.id }, json: { content } });
               }}

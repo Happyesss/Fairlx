@@ -32,10 +32,23 @@ export function tokenToAuthContext(
   };
 }
 
-export function jwtToAuthContext(userId: string): AuthContext {
+export function jwtToAuthContext(
+  userId: string,
+  options?: {
+    workspaceId?: string;
+    projectId?: string;
+    organizationId?: string;
+    scopes?: string[];
+    projectPermissions?: string[];
+  }
+): AuthContext {
   return {
     actorUserId: userId,
-    scopes: [...ALL_SCOPES],
+    workspaceId: options?.workspaceId,
+    projectId: options?.projectId,
+    organizationId: options?.organizationId,
+    scopes: options?.scopes?.length ? options.scopes : [...ALL_SCOPES],
+    projectPermissions: options?.projectPermissions,
     authType: "jwt",
   };
 }

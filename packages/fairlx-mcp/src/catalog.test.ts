@@ -53,8 +53,8 @@ function toolNames(permissions: string[], isOwner = false) {
 }
 
 describe("MCP surface counts", () => {
-  it("exposes 73 tools, 10 resource templates, 7 prompts, 7 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(73);
+  it("exposes 74 tools, 10 resource templates, 7 prompts, 7 skills", () => {
+    expect(TOOL_CATALOG).toHaveLength(74);
     expect(RESOURCE_TEMPLATES).toHaveLength(10);
     expect(PROMPT_CATALOG).toHaveLength(7);
     expect(SKILLS).toHaveLength(7);
@@ -83,9 +83,15 @@ describe("listToolsForClient role filter", () => {
     expect(names).not.toContain("fairlx_project_delete");
   });
 
-  it("gives owners the full catalog including project delete", () => {
+  it("gives owners the full catalog including project delete and member role updates", () => {
     const names = toolNames([], true);
-    expect(names).toHaveLength(68);
+    expect(names).toHaveLength(74);
     expect(names).toContain("fairlx_project_delete");
+    expect(names).toContain("fairlx_workspace_member_update");
+  });
+
+  it("gives admins member role updates but not regular members", () => {
+    expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_workspace_member_update");
+    expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_workspace_member_update");
   });
 });

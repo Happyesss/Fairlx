@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FolderKanban, Briefcase, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { useCurrent } from "@/features/auth/api/use-current";
+import { WorkspaceAvatar } from "@/features/workspaces/components/workspace-avatar";
+import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentRuns } from "../api/use-agent-runs";
@@ -56,7 +58,7 @@ export function AgentHome() {
                     className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors group flex flex-col justify-between shadow-sm"
                   >
                     <div className="flex items-center gap-2.5">
-                      <Briefcase className="size-4 text-primary shrink-0" />
+                      <WorkspaceAvatar name={workspace.name} image={workspace.imageUrl} className="size-6 shrink-0" />
                       <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                         {workspace.name}
                       </div>
@@ -89,7 +91,7 @@ export function AgentHome() {
                     className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors group flex flex-col justify-between shadow-sm"
                   >
                     <div className="flex items-center gap-2.5">
-                      <FolderKanban className="size-4 text-blue-500 shrink-0" />
+                      <ProjectAvatar name={project.name} image={project.imageUrl} className="size-6 shrink-0" />
                       <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                         {project.name}
                       </div>

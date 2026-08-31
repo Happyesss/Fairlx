@@ -44,7 +44,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_project_members_list",
-    description: "List members of a project",
+    description:
+      "List project members with display name, email, and role. Complete in one call — do not fetch each member separately.",
     inputSchema: { type: "object", properties: { projectId: id }, required: ["projectId"] },
     riskTier: 1,
     rateClass: "read",
@@ -611,7 +612,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   // ── Workspace Members ──
   {
     name: "fairlx_workspace_members_list",
-    description: "List all members of a workspace",
+    description:
+      "List workspace members with display name, email, role, and status (same data as the Members page). Complete in one call — do not follow up with fairlx_workspace_member_get for each member. To change a role, call fairlx_workspace_member_update.",
     inputSchema: {
       type: "object",
       properties: { workspaceId: id, limit: { type: "number" }, cursorAfter: { type: "string" } },
@@ -624,12 +626,31 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_workspace_member_get",
-    description: "Get a specific workspace member's details by member document ID",
+    description:
+      "Get one workspace member by membership document ID. Prefer fairlx_workspace_members_list when you need everyone — that list already includes name and email.",
     inputSchema: { type: "object", properties: { memberId: id }, required: ["memberId"] },
     riskTier: 1,
     rateClass: "read",
     scopes: ["members:read"],
     permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+  {
+    name: "fairlx_workspace_member_update",
+    description:
+      "Change a workspace member's role (ADMIN, MEMBER, or OWNER). Find them by name or email — the same people as the Members page. Use this instead of sending the user to the Members UI.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: id,
+        name: { type: "string", description: "Display name as shown on the Members page" },
+        email: { type: "string", description: "Email if the name is ambiguous" },
+        role: { type: "string", description: "ADMIN, MEMBER, or OWNER" },
+      },
+      required: ["role"],
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
   },
 
   // ── Workspace Details ──

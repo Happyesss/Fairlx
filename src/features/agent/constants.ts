@@ -49,20 +49,6 @@ export const PROVIDER_CATALOG: Array<{
 // Public Azure resource URLs only. API keys live in server env (AGENT_*_AZURE_API_KEY).
 export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
   {
-    id: PLATFORM_XAI_PROVIDER_ID,
-    provider: "azure",
-    displayName: "Azure Grok (Fairlx)",
-    baseUrl: "https://personal-use-g1-resource.openai.azure.com",
-    extra: {
-      vendor: "azure",
-      deployment: "grok-4.6",
-      openaiPath: "/openai/v1",
-      authHeader: "api-key",
-    },
-    isEnabled: true,
-    isPlatform: true,
-  },
-  {
     id: PLATFORM_DEEPSEEK_PROVIDER_ID,
     provider: "azure",
     displayName: "Azure DeepSeek (Fairlx)",
@@ -81,26 +67,17 @@ export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
 
 export const PLATFORM_MODELS: AgentModel[] = [
   {
-    id: GROK_46_MODEL_ID,
-    providerId: PLATFORM_XAI_PROVIDER_ID,
-    modelId: "grok-4.6",
-    displayName: "Grok 4.6",
+    id: DEEPSEEK_FLASH_MODEL_ID,
+    providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
+    modelId: "DeepSeek-V4-Flash",
+    displayName: "DeepSeek V4 Flash",
     role: "default",
     isEnabled: true,
     isPlatform: true,
     toolCalling: true,
     vision: true,
-    maxInputTokens: 72000,
-    maxOutputTokens: 128000,
-  },
-  {
-    id: DEEPSEEK_FLASH_MODEL_ID,
-    providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
-    modelId: "DeepSeek-V4-Flash",
-    displayName: "DeepSeek V4 Flash",
-    role: "flash",
-    isEnabled: true,
-    isPlatform: true,
+    maxInputTokens: 64000,
+    maxOutputTokens: 8192,
   },
 ];
 
@@ -124,7 +101,6 @@ export function getProviderCatalogItem(type: AgentProviderType) {
 export const AGENT_NAV = [
   { href: "/agent/dashboard", label: "Agent Home", icon: "fa-solid fa-house-chimney", shortcut: "⌘H" },
   { href: "/agent/chats", label: "Chats", icon: "fa-regular fa-comments" },
-  { href: "/agent/search", label: "Search", icon: "fa-solid fa-magnifying-glass", shortcut: "⌘K" },
   { href: "/agent/projects", label: "Projects", icon: "fa-solid fa-folder" },
   { href: "/agent/workspaces", label: "Workspaces", icon: "fa-solid fa-briefcase" },
   { href: "/agent/git", label: "Git & staging", icon: "fa-solid fa-code-merge" },

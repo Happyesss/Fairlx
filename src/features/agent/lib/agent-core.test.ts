@@ -116,10 +116,12 @@ describe("graph and prompt", () => {
       run: run("New high-priority bug on login"),
       mcp: { mcpServers: { "fairlx-personal": { url: "in-process://personal" } } },
     });
-    expect(prompt).toContain("Fairlx Agent harness");
+    expect(prompt).toContain("Fairlx Agent");
     expect(prompt).toContain("Triage bugs");
     expect(prompt).toContain("Release checklist");
-    expect(prompt).toContain("fairlx-personal");
+    expect(prompt).not.toContain("(w1)");
+    expect(prompt).not.toMatch(/Use mcp_list/);
+    expect(prompt).toMatch(/change a member's role/i);
   });
 });
 
