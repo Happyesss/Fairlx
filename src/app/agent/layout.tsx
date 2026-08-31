@@ -1,4 +1,5 @@
 import React from 'react';
+import { AgentAppShell } from "@/features/agent/components/agent-app-shell";
 import { AgentShell } from "@/features/agent/components/agent-ui-context";
 
 export default function AgentLayout({
@@ -7,7 +8,7 @@ export default function AgentLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="h-screen w-full">
+        <div className="h-screen w-full dark bg-fairlx-bg text-fairlx-text font-sans antialiased">
             <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
             <style dangerouslySetInnerHTML={{ __html: `
@@ -29,7 +30,9 @@ export default function AgentLayout({
                     border-radius: 20px;
                 }
             `}} />
-            <AgentShell>{children}</AgentShell>
+            <AgentShell>
+                <AgentAppShell>{children}</AgentAppShell>
+            </AgentShell>
         </div>
     );
 }

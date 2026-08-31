@@ -1,7 +1,7 @@
 /**
  * Targeted, non-interactive setup for Fairlx Agent collections.
  *
- * Creates (or updates) `agent_mcp_configs` and `agent_ai_configs` without
+ * Creates (or updates) agent MCP, AI, runs, and harness collections without
  * running the full interactive `npm run db:setup`.
  *
  * Usage: npm run db:setup:agent
@@ -12,6 +12,8 @@ dotenv.config({ path: '.env.local' });
 import { getDatabases } from './lib/appwrite-client';
 import { setupAgentMcpConfigs } from './collections/agent-mcp-configs';
 import { setupAgentAiConfigs } from './collections/agent-ai-configs';
+import { setupAgentRuns } from './collections/agent-runs';
+import { setupAgentHarness } from './collections/agent-harness';
 import { printSummary } from './lib/logger';
 
 async function main() {
@@ -22,6 +24,8 @@ async function main() {
 
     await setupAgentMcpConfigs(databases, databaseId);
     await setupAgentAiConfigs(databases, databaseId);
+    await setupAgentRuns(databases, databaseId);
+    await setupAgentHarness(databases, databaseId);
 
     printSummary();
 }

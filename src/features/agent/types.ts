@@ -103,3 +103,196 @@ export type AgentAiConfigStored = {
   providers: AgentProviderStored[];
   models: AgentModel[];
 };
+
+export type AgentRunStatus = "idle" | "running" | "completed" | "failed" | "stopped";
+export type AgentRunMode = "agent" | "manual";
+export type AgentChatRole = "user" | "assistant" | "tool";
+
+export type AgentToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+};
+
+export type AgentChatMessage = {
+  id: string;
+  role: AgentChatRole;
+  content: string;
+  toolCalls?: AgentToolCall[];
+  toolCallId?: string;
+  toolName?: string;
+  createdAt: string;
+};
+
+export type AgentToolEventType =
+  | "code_inspect"
+  | "terminal"
+  | "file_search"
+  | "web_search"
+  | "database_query"
+  | "use_skill"
+  | "list_workspaces"
+  | "list_projects"
+  | "list_work_items"
+  | "mcp_list"
+  | "thought"
+  | "error";
+
+export type AgentToolEvent = {
+  id: string;
+  type: AgentToolEventType;
+  title: string;
+  detail?: string;
+  payload?: unknown;
+  createdAt: string;
+  runId: string;
+};
+
+export type AgentRun = {
+  id: string;
+  userId: string;
+  title: string;
+  prompt: string;
+  status: AgentRunStatus;
+  mode: AgentRunMode;
+  workspaceId?: string;
+  projectId?: string;
+  modelId?: string;
+  messages: AgentChatMessage[];
+  events: AgentToolEvent[];
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentSkill = {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  enabled: boolean;
+  createdAt: string;
+};
+
+export type AgentAutomation = {
+  id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  action: string;
+  enabled: boolean;
+  createdAt: string;
+};
+
+export type AgentKnowledgeItem = {
+  id: string;
+  title: string;
+  content: string;
+  source?: string;
+  createdAt: string;
+};
+
+export type AgentWorkPattern = {
+  id: string;
+  name: string;
+  instructions: string;
+  enabled: boolean;
+  createdAt: string;
+};
+
+export type AgentHarnessSettings = {
+  mode: AgentRunMode;
+  enabledTools: string[];
+  defaultWorkspaceId?: string;
+  defaultProjectId?: string;
+};
+
+export type AgentHarness = {
+  id: string;
+  userId: string;
+  skills: AgentSkill[];
+  automations: AgentAutomation[];
+  knowledge: AgentKnowledgeItem[];
+  workPatterns: AgentWorkPattern[];
+  settings: AgentHarnessSettings;
+  updatedAt: string;
+};
+
+export type AgentContextWorkspace = {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  inviteCode?: string;
+};
+
+export type AgentContextProject = {
+  id: string;
+  name: string;
+  workspaceId: string;
+  description?: string;
+  status?: string;
+  key?: string;
+};
+
+export type AgentContextWorkItem = {
+  id: string;
+  key?: string;
+  title: string;
+  type?: string;
+  status?: string;
+  priority?: string;
+  workspaceId?: string;
+  projectId?: string;
+};
+
+export type AgentContextNotification = {
+  id: string;
+  title?: string;
+  message?: string;
+  isRead?: boolean;
+  workspaceId?: string;
+  createdAt: string;
+};
+
+export type AgentContextRepo = {
+  id: string;
+  repositoryName?: string;
+  owner?: string;
+  githubUrl?: string;
+  workspaceId?: string;
+  projectId?: string;
+  branch?: string;
+};
+
+export type AgentContextIntegration = {
+  id: string;
+  provider?: string;
+  projectId?: string;
+  workspaceId?: string;
+  name?: string;
+};
+
+export type AgentContextDoc = {
+  id: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  projectId?: string;
+  workspaceId?: string;
+  category?: string;
+};
+
+export type AgentContext = {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  workspaces: AgentContextWorkspace[];
+  projects: AgentContextProject[];
+  workItems: AgentContextWorkItem[];
+  notifications: AgentContextNotification[];
+  githubRepos: AgentContextRepo[];
+  integrations: AgentContextIntegration[];
+  docs: AgentContextDoc[];
+};

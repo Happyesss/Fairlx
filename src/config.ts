@@ -207,6 +207,10 @@ export const AGENT_MCP_CONFIGS_ID =
   process.env.NEXT_PUBLIC_APPWRITE_AGENT_MCP_CONFIGS_ID || "agent_mcp_configs";
 export const AGENT_AI_CONFIGS_ID =
   process.env.NEXT_PUBLIC_APPWRITE_AGENT_AI_CONFIGS_ID || "agent_ai_configs";
+export const AGENT_RUNS_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_AGENT_RUNS_ID || "agent_runs";
+export const AGENT_HARNESS_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_AGENT_HARNESS_ID || "agent_harness";
 
 // ===============================
 // Landing Page Supabase (GitHub Star Rewards)

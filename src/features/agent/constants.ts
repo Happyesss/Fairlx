@@ -1,7 +1,16 @@
-import type { AgentModel, AgentProviderStored, AgentProviderType } from "./types";
+import type {
+  AgentModel,
+  AgentProviderStored,
+  AgentProviderType,
+  AgentSkill,
+  AgentWorkPattern,
+} from "./types";
 
 export const AGENT_MCP_QUERY_KEY = ["agent-mcp-config"] as const;
 export const AGENT_AI_QUERY_KEY = ["agent-ai-config"] as const;
+export const AGENT_RUNS_QUERY_KEY = ["agent-runs"] as const;
+export const AGENT_HARNESS_QUERY_KEY = ["agent-harness"] as const;
+export const AGENT_CONTEXT_QUERY_KEY = ["agent-context"] as const;
 
 export const PLATFORM_XAI_PROVIDER_ID = "platform-xai";
 export const PLATFORM_DEEPSEEK_PROVIDER_ID = "platform-deepseek";
@@ -101,3 +110,126 @@ export function getMcpServerIcon(name: string): { kind: "icon" | "badge"; value:
 export function getProviderCatalogItem(type: AgentProviderType) {
   return PROVIDER_CATALOG.find((item) => item.type === type);
 }
+
+export const AGENT_NAV = [
+  { href: "/agent/dashboard", label: "Agent Home", icon: "fa-solid fa-house", shortcut: "⌘H" },
+  { href: "/agent/projects", label: "Projects", icon: "fa-regular fa-folder" },
+  { href: "/agent/workspaces", label: "Workspaces", icon: "fa-solid fa-border-all" },
+  { href: "/agent/skills", label: "Skills", icon: "fa-solid fa-bullseye" },
+  { href: "/agent/tools", label: "Tools", icon: "fa-solid fa-wrench" },
+  { href: "/agent/mcp", label: "MCP Servers", icon: "fa-solid fa-server" },
+  { href: "/agent/automations", label: "Automations", icon: "fa-solid fa-bolt" },
+  { href: "/agent/integrations", label: "Integrations", icon: "fa-solid fa-puzzle-piece" },
+  { href: "/agent/knowledge", label: "Knowledge Base", icon: "fa-regular fa-book" },
+  { href: "/agent/settings", label: "Settings", icon: "fa-solid fa-gear" },
+] as const;
+
+export const AGENT_SETTINGS_NAV = [
+  { href: "/agent/settings#reset", label: "Reset", icon: "fa-solid fa-rotate-left" },
+  { href: "/agent/settings#work-patterns", label: "Work patterns", icon: "fa-solid fa-diagram-project" },
+] as const;
+
+export const AGENT_TOOL_CATALOG = [
+  {
+    id: "code_inspect",
+    name: "Code inspector",
+    icon: "fa-solid fa-code",
+    description: "Inspect work items, repositories, and docs.",
+  },
+  {
+    id: "terminal",
+    name: "Terminal",
+    icon: "fa-solid fa-terminal",
+    description: "Record planned shell commands. Never executed on the Fairlx host.",
+  },
+  {
+    id: "file_search",
+    name: "File search",
+    icon: "fa-solid fa-file-magnifying-glass",
+    description: "Search Fairlx docs and work items.",
+  },
+  {
+    id: "web_search",
+    name: "Web search",
+    icon: "fa-solid fa-globe",
+    description: "Search the public web via DuckDuckGo.",
+  },
+  {
+    id: "database_query",
+    name: "Database queries",
+    icon: "fa-solid fa-database",
+    description: "Query Fairlx workspaces, projects, items, and docs.",
+  },
+  {
+    id: "use_skill",
+    name: "Skills",
+    icon: "fa-solid fa-bullseye",
+    description: "Apply a saved skill from the harness.",
+  },
+  {
+    id: "list_workspaces",
+    name: "List workspaces",
+    icon: "fa-solid fa-border-all",
+    description: "List your Fairlx workspaces.",
+  },
+  {
+    id: "list_projects",
+    name: "List projects",
+    icon: "fa-regular fa-folder",
+    description: "List projects in your workspaces.",
+  },
+  {
+    id: "list_work_items",
+    name: "List work items",
+    icon: "fa-regular fa-square-check",
+    description: "List work items assigned to you.",
+  },
+  {
+    id: "mcp_list",
+    name: "MCP servers",
+    icon: "fa-solid fa-server",
+    description: "List configured MCP servers.",
+  },
+] as const;
+
+export const DEFAULT_ENABLED_TOOLS = AGENT_TOOL_CATALOG.map((tool) => tool.id);
+
+export const STARTER_SKILLS: Omit<AgentSkill, "id" | "createdAt">[] = [
+  {
+    name: "Frontend",
+    description: "UI, React, Next.js, and Tailwind in Fairlx.",
+    instructions:
+      "Prefer existing Fairlx UI components and fairlx-* tokens. Keep screens dynamic with live data. Avoid mock content and inaccessible markup.",
+    enabled: true,
+  },
+  {
+    name: "Backend",
+    description: "Hono routes, Appwrite, and Fairlx domain APIs.",
+    instructions:
+      "Use existing Fairlx collections and RPC patterns. Validate input, return { data } or { error }, and never leak secrets. Prefer session-aware queries.",
+    enabled: true,
+  },
+  {
+    name: "DevOps",
+    description: "Deployments, env, and operational safety.",
+    instructions:
+      "Do not execute host shell commands. Record planned commands instead. Never commit .env.local or secrets. Prefer existing setup scripts.",
+    enabled: true,
+  },
+];
+
+export const STARTER_WORK_PATTERNS: Omit<AgentWorkPattern, "id" | "createdAt">[] = [
+  {
+    name: "Ship small PRs",
+    instructions: "Prefer small, reviewable changes. Summarize what changed and why.",
+    enabled: true,
+  },
+  {
+    name: "Ask before destructive actions",
+    instructions: "Never delete, overwrite, or reset data without an explicit user request.",
+    enabled: true,
+  },
+];
+
+export const AGENT_FIELD_CLASS =
+  "border-fairlx-border bg-fairlx-bg text-fairlx-text placeholder:text-fairlx-text-muted";

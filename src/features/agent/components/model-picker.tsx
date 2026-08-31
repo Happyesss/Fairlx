@@ -47,15 +47,15 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
         type="button"
         disabled={isPending}
         className={cn(
-          "w-full flex items-center justify-between p-2 rounded-md hover:bg-gray-850 cursor-pointer border border-transparent hover:border-gray-800 group transition-colors text-left",
+          "w-full flex items-center justify-between p-2 rounded-md hover:bg-fairlx-surface-hover cursor-pointer border border-transparent hover:border-fairlx-border group transition-colors text-left",
           className
         )}
       >
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-bolt text-yellow-500" />
-          <span className="text-gray-300 text-sm group-hover:text-gray-200">{label}</span>
+          <span className="text-fairlx-text text-sm group-hover:text-white">{label}</span>
         </div>
-        <i className="fa-solid fa-chevron-down text-gray-600 text-xs group-hover:text-gray-400" />
+        <i className="fa-solid fa-chevron-down text-fairlx-text-muted text-xs group-hover:text-fairlx-text" />
       </button>
     );
 
