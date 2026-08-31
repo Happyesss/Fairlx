@@ -19,12 +19,12 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
 import { useUpdateAgentMcpConfig } from "../api/use-update-agent-mcp-config";
-import { getMcpServerIcon } from "../constants";
+import { getMcpServerIcon, isInternalMcpServer } from "../constants";
 import { defaultMcpConfig } from "../lib/client-defaults";
 import type { McpConfig, McpServerConfig, McpTransport } from "../types";
 
 const fieldClass =
-  "border-fairlx-border bg-fairlx-bg text-fairlx-text placeholder:text-fairlx-text-muted";
+  "border-border bg-background text-foreground placeholder:text-muted-foreground";
 
 type ManageMcpDialogProps = {
   open: boolean;
@@ -47,6 +47,32 @@ function cloneConfig(config: McpConfig): McpConfig {
   return JSON.parse(JSON.stringify(config)) as McpConfig;
 }
 
+function getCustomMcpConfig(config: McpConfig): McpConfig {
+  const custom: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(config.mcpServers ?? {})) {
+    if (!isInternalMcpServer(name, server)) {
+      custom[name] = server;
+    }
+  }
+  return { ...config, mcpServers: custom };
+}
+
+function mergeWithInternalServers(custom: McpConfig, source: McpConfig): McpConfig {
+  const internal: Record<string, McpServerConfig> = {};
+  for (const [name, server] of Object.entries(source.mcpServers ?? {})) {
+    if (isInternalMcpServer(name, server)) {
+      internal[name] = server;
+    }
+  }
+  return {
+    ...custom,
+    mcpServers: {
+      ...internal,
+      ...(custom.mcpServers ?? {}),
+    },
+  };
+}
+
 function recordToLines(record?: Record<string, string>): string {
   if (!record) return "";
   return Object.entries(record)
@@ -58,12 +84,14 @@ function linesToRecord(lines: string): Record<string, string> | undefined {
   const result: Record<string, string> = {};
   for (const line of lines.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    result[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1);
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx === -1) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    if (key) result[key] = value;
   }
-  return Object.keys(result).length > 0 ? result : undefined;
+  return Object.keys(result).length ? result : undefined;
 }
 
 function emptyForm(): ServerForm {
@@ -86,42 +114,39 @@ function serverToForm(name: string, server: McpServerConfig): ServerForm {
     name,
     transport: server.transport || (server.url ? "http" : "stdio"),
     command: server.command || "",
-    argsText: (server.args || []).join("\n"),
+    argsText: (server.args ?? []).join("\n"),
     url: server.url || "",
-    envText: recordToLines(server.env as Record<string, string> | undefined),
-    headersText: recordToLines(server.headers as Record<string, string> | undefined),
+    envText: recordToLines(server.env),
+    headersText: recordToLines(server.headers),
     disabled: Boolean(server.disabled),
   };
 }
 
-function applyForm(draft: McpConfig, form: ServerForm): McpConfig | string {
+function applyForm(current: McpConfig, form: ServerForm): McpConfig | string {
   const name = form.name.trim();
   if (!name) return "Server name is required.";
-  if (form.transport === "stdio" && !form.command.trim()) {
-    return "Command is required for stdio servers.";
-  }
-  if (form.transport !== "stdio" && !form.url.trim()) {
-    return "URL is required for HTTP/SSE servers.";
-  }
+  const next = cloneConfig(current);
+  if (!next.mcpServers) next.mcpServers = {};
 
-  const next = cloneConfig(draft);
   if (form.originalName && form.originalName !== name) {
     delete next.mcpServers[form.originalName];
   }
 
   const server: McpServerConfig = {
     transport: form.transport,
-    disabled: form.disabled,
   };
+  if (form.disabled) server.disabled = true;
 
   if (form.transport === "stdio") {
+    if (!form.command.trim()) return "Command is required for stdio transport.";
     server.command = form.command.trim();
     const args = form.argsText
       .split("\n")
-      .map((arg) => arg.trim())
+      .map((s) => s.trim())
       .filter(Boolean);
-    if (args.length > 0) server.args = args;
+    if (args.length) server.args = args;
   } else {
+    if (!form.url.trim()) return "URL is required for HTTP/SSE transport.";
     server.url = form.url.trim();
   }
 
@@ -138,27 +163,28 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
   const { data, isLoading } = useGetAgentMcpConfig();
   const { mutate, isPending } = useUpdateAgentMcpConfig();
   const [draft, setDraft] = useState<McpConfig>(defaultMcpConfig());
-  const [jsonText, setJsonText] = useState("");
   const [view, setView] = useState<"list" | "json">("list");
+  const [jsonText, setJsonText] = useState("");
   const [form, setForm] = useState<ServerForm | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const next = cloneConfig(data ?? defaultMcpConfig());
-    setDraft(next);
-    setJsonText(JSON.stringify(next, null, 2));
-    setView("list");
-    setForm(null);
-  }, [open, data]);
+    if (data) {
+      setDraft(data);
+      setJsonText(JSON.stringify(getCustomMcpConfig(data), null, 2));
+    }
+  }, [data]);
 
   const servers = useMemo(
-    () => Object.entries(draft.mcpServers ?? {}),
+    () =>
+      Object.entries(draft.mcpServers ?? {}).filter(
+        ([name, server]) => !isInternalMcpServer(name, server)
+      ),
     [draft]
   );
 
   const persistDraft = (next: McpConfig) => {
     setDraft(next);
-    setJsonText(JSON.stringify(next, null, 2));
+    setJsonText(JSON.stringify(getCustomMcpConfig(next), null, 2));
   };
 
   const handleSave = () => {
@@ -166,17 +192,12 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
     if (view === "json") {
       try {
         const parsed = JSON.parse(jsonText) as McpConfig;
-        if (!parsed?.mcpServers || typeof parsed.mcpServers !== "object") {
-          toast.error("JSON must include an mcpServers object.");
-          return;
-        }
-        payload = parsed;
+        payload = mergeWithInternalServers(parsed, draft);
       } catch {
-        toast.error("Invalid MCP JSON.");
+        toast.error("Invalid JSON. Fix syntax before saving.");
         return;
       }
     }
-
     mutate(
       { json: payload },
       {
@@ -198,11 +219,11 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Manage MCP Servers</DialogTitle>
-          <DialogDescription className="text-fairlx-text-muted">
-            Per-account MCP config.json. Secrets stay masked after save.
+          <DialogDescription className="text-muted-foreground">
+            Connect external MCP servers (GitHub, PostgreSQL, Linear, etc.) to extend your Agent&apos;s tool capabilities.
           </DialogDescription>
         </DialogHeader>
 
@@ -211,11 +232,11 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
             type="button"
             size="sm"
             variant={view === "list" ? "primary" : "outline"}
-            className={view === "list" ? "" : "border-fairlx-border bg-transparent text-fairlx-text"}
             onClick={() => {
               if (view === "json") {
                 try {
-                  persistDraft(JSON.parse(jsonText) as McpConfig);
+                  const parsed = JSON.parse(jsonText) as McpConfig;
+                  persistDraft(mergeWithInternalServers(parsed, draft));
                 } catch {
                   toast.error("Fix JSON before switching views.");
                   return;
@@ -230,9 +251,8 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
             type="button"
             size="sm"
             variant={view === "json" ? "primary" : "outline"}
-            className={view === "json" ? "" : "border-fairlx-border bg-transparent text-fairlx-text"}
             onClick={() => {
-              setJsonText(JSON.stringify(draft, null, 2));
+              setJsonText(JSON.stringify(getCustomMcpConfig(draft), null, 2));
               setView("json");
               setForm(null);
             }}
@@ -251,49 +271,49 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
           <div className="space-y-4">
             <div className="space-y-1">
               {isLoading && (
-                <p className="text-sm text-fairlx-text-muted">Loading MCP servers…</p>
+                <p className="text-sm text-muted-foreground">Loading MCP servers…</p>
               )}
               {servers.map(([name, server]) => {
                 const icon = getMcpServerIcon(name);
                 return (
                   <div
                     key={name}
-                    className="flex items-center justify-between rounded-lg border border-fairlx-border px-3 py-2"
+                    className="flex items-center justify-between rounded-lg border border-border bg-card p-3 shadow-sm"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {icon.kind === "badge" ? (
-                        <div className="w-5 h-5 bg-white text-black rounded flex items-center justify-center font-bold text-xs">
+                        <div className="size-5 bg-foreground text-background rounded flex items-center justify-center font-bold text-xs">
                           {icon.value}
                         </div>
                       ) : (
                         <i className={`${icon.value} ${icon.className ?? ""} w-5 text-center`} />
                       )}
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{name}</div>
-                        <div className="text-xs text-fairlx-text-muted">
+                        <div className="text-sm font-semibold truncate text-foreground">{name}</div>
+                        <div className="text-xs text-muted-foreground">
                           {server.transport || (server.url ? "http" : "stdio")}
                           {server.url ? ` · ${server.url}` : server.command ? ` · ${server.command}` : ""}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs ${server.disabled ? "text-fairlx-text-muted" : "text-green-500"}`}>
+                      <span className={`text-xs font-medium ${server.disabled ? "text-muted-foreground" : "text-green-500"}`}>
                         {server.disabled ? "Disconnected" : "Connected"}
                       </span>
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
-                        className="text-fairlx-text-muted"
+                        className="text-muted-foreground hover:text-foreground h-8 text-xs"
                         onClick={() => setForm(serverToForm(name, server))}
                       >
                         Edit
                       </Button>
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
-                        className="text-red-400"
+                        className="text-destructive hover:text-destructive h-8 text-xs"
                         onClick={() => {
                           const next = cloneConfig(draft);
                           delete next.mcpServers[name];
@@ -308,17 +328,22 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
                 );
               })}
               {servers.length === 0 && !isLoading && (
-                <p className="text-sm text-fairlx-text-muted">No MCP servers yet.</p>
+                <div className="py-6 px-4 text-center rounded-lg border border-dashed border-border bg-muted/20">
+                  <p className="text-sm font-medium text-foreground">No external MCP servers configured</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Built-in workspace and personal tools are active in the background. Click &quot;Add server&quot; below to connect external tools (e.g. GitHub, PostgreSQL, Linear).
+                  </p>
+                </div>
               )}
             </div>
 
             {form ? (
-              <div className="rounded-lg border border-fairlx-border p-4 space-y-3">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold">
+                  <h4 className="text-sm font-semibold text-foreground">
                     {form.originalName ? `Edit ${form.originalName}` : "Add MCP server"}
                   </h4>
-                  <Button type="button" size="xs" variant="ghost" onClick={() => setForm(null)}>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setForm(null)}>
                     Cancel
                   </Button>
                 </div>
@@ -399,7 +424,7 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between pt-2">
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={!form.disabled}
@@ -416,7 +441,6 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
               <Button
                 type="button"
                 variant="outline"
-                className="border-fairlx-border bg-transparent text-fairlx-text"
                 onClick={() => setForm(emptyForm())}
               >
                 Add server
@@ -429,7 +453,6 @@ export function ManageMcpDialog({ open, onOpenChange }: ManageMcpDialogProps) {
           <Button
             type="button"
             variant="outline"
-            className="border-fairlx-border bg-transparent text-fairlx-text"
             onClick={() => onOpenChange(false)}
           >
             Cancel

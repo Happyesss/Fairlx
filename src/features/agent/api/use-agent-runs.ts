@@ -39,6 +39,12 @@ async function readError(response: Response, fallback: string): Promise<never> {
 
 export const agentRunQueryKey = (runId: string) => ["agent-run", runId] as const;
 
+export function shouldPollAgentRun(status?: string): boolean {
+  return status === "running" || status === "awaiting_confirmation";
+}
+
+const STALE_APPROVAL_ERROR = "Nothing is waiting for approval.";
+
 export const useGetAgentRuns = () => {
   return useQuery({
     queryKey: AGENT_RUNS_QUERY_KEY,
@@ -61,7 +67,7 @@ export const useGetAgentRun = (runId?: string) => {
     enabled: Boolean(runId),
     staleTime: 0,
     gcTime: QUERY_CONFIG.REALTIME.gcTime,
-    refetchInterval: (query) => (query.state.data?.status === "running" ? 1000 : false),
+    refetchInterval: (query) => (shouldPollAgentRun(query.state.data?.status) ? 1000 : false),
     queryFn: async () => {
       const response = await client.api.agent.runs[":runId"].$get({
         param: { runId: runId! },
@@ -87,7 +93,11 @@ export const useCreateAgentRun = () => {
       return (await response.json()) as CreateRunResponse;
     },
     onSuccess: (result) => {
-      queryClient.setQueryData(agentRunQueryKey(result.data.id), result.data);
+      queryClient.setQueryData(agentRunQueryKey(result.data.id), {
+        ...result.data,
+        status: "running",
+      });
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(result.data.id) });
       queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
     },
     onError: (error) => {
@@ -108,7 +118,11 @@ export const useSendAgentMessage = () => {
       return (await response.json()) as SendMessageResponse;
     },
     onSuccess: (result) => {
-      queryClient.setQueryData(agentRunQueryKey(result.data.id), result.data);
+      queryClient.setQueryData(agentRunQueryKey(result.data.id), {
+        ...result.data,
+        status: "running",
+      });
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(result.data.id) });
       queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
     },
     onError: (error) => {
@@ -136,6 +150,66 @@ export const useContinueAgentRun = () => {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to continue agent run.");
+    },
+  });
+};
+
+export const useConfirmAgentRun = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ data: { id: string } } | ContinueRunResponse, Error, { runId: string }>({
+    mutationFn: async ({ runId }) => {
+      const response = await client.api.agent.runs[":runId"].confirm.$post({
+        param: { runId },
+      });
+      if (!response.ok) {
+        await readError(response, "Failed to accept the action.");
+      }
+      return (await response.json()) as ContinueRunResponse;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(agentRunQueryKey(result.data.id), {
+        ...result.data,
+        status: "running",
+      });
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(result.data.id) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error, variables) => {
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(variables.runId) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+      if (error.message === STALE_APPROVAL_ERROR) return;
+      toast.error(error.message || "Failed to accept the action.");
+    },
+  });
+};
+
+export const useDenyAgentRun = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<ContinueRunResponse, Error, { runId: string }>({
+    mutationFn: async ({ runId }) => {
+      const response = await client.api.agent.runs[":runId"].deny.$post({
+        param: { runId },
+      });
+      if (!response.ok) {
+        await readError(response, "Failed to deny the action.");
+      }
+      return (await response.json()) as ContinueRunResponse;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(agentRunQueryKey(result.data.id), {
+        ...result.data,
+        status: "running",
+      });
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(result.data.id) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error, variables) => {
+      queryClient.invalidateQueries({ queryKey: agentRunQueryKey(variables.runId) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+      if (error.message === STALE_APPROVAL_ERROR) return;
+      toast.error(error.message || "Failed to deny the action.");
     },
   });
 };

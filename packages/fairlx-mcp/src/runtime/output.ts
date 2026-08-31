@@ -1,4 +1,5 @@
 import type { McpToolResult } from "../protocol/types";
+import type { McpRuntime, McpUserProfile } from "./types";
 
 export function wrapUntrusted(label: string, value: unknown): string {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
@@ -39,4 +40,33 @@ export function compactWorkItem(doc: Record<string, unknown>): Record<string, un
 
 export function withId<T extends Record<string, unknown>>(doc: T): T & { id: string } {
   return { ...doc, id: String(doc.$id ?? doc.id) };
+}
+
+export function compactMember(
+  doc: Record<string, unknown>,
+  profile?: McpUserProfile
+): {
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+} {
+  const email = String(profile?.email || doc.email || "").trim();
+  const name = String(profile?.name || doc.name || "").trim() || email || "Unknown member";
+  return {
+    name,
+    email,
+    role: String(doc.role ?? "MEMBER"),
+    status: String(doc.status ?? "ACTIVE"),
+  };
+}
+
+export async function hydrateMembers(
+  runtime: Pick<McpRuntime, "lookupUsers">,
+  docs: Record<string, unknown>[]
+): Promise<ReturnType<typeof compactMember>[]> {
+  const userIds = docs.map((doc) => String(doc.userId ?? "")).filter(Boolean);
+  const profiles = runtime.lookupUsers ? await runtime.lookupUsers(userIds) : [];
+  const byId = new Map(profiles.map((profile) => [profile.id, profile]));
+  return docs.map((doc) => compactMember(doc, byId.get(String(doc.userId ?? ""))));
 }

@@ -44,15 +44,15 @@ export function InviteMembersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-lg">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Invite members</DialogTitle>
-          <DialogDescription className="text-fairlx-text-muted">
+          <DialogDescription className="text-muted-foreground">
             Copy a workspace invite link. Recipients join with the existing Fairlx invite flow.
           </DialogDescription>
         </DialogHeader>
         {workspaces.length === 0 ? (
-          <p className="text-sm text-fairlx-text-muted">Create a workspace first to invite members.</p>
+          <p className="text-sm text-muted-foreground">Create a workspace first to invite members.</p>
         ) : (
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -116,10 +116,10 @@ export function NewWorkspaceDialog({
         if (!next) setName("");
       }}
     >
-      <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-md">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
-          <DialogDescription className="text-fairlx-text-muted">
+          <DialogDescription className="text-muted-foreground">
             Create a Fairlx workspace the Agent can use as context.
           </DialogDescription>
         </DialogHeader>
@@ -146,7 +146,7 @@ export function NewWorkspaceDialog({
               id="workspace-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Acme"
+              placeholder="Acme Corp"
               className={AGENT_FIELD_CLASS}
               autoFocus
             />
@@ -195,10 +195,10 @@ export function SearchDialog({
         if (!next) setQuery("");
       }}
     >
-      <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-xl max-h-[80vh] overflow-hidden">
+      <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Search</DialogTitle>
-          <DialogDescription className="text-fairlx-text-muted">
+          <DialogDescription className="text-muted-foreground">
             Find chats, workspaces, projects, skills, knowledge, automations, and git staging.
           </DialogDescription>
         </DialogHeader>
@@ -221,7 +221,7 @@ export function SearchDialog({
               router.push("/agent/search");
             }}
           >
-            Open search
+            Open full search
           </Button>
         </DialogFooter>
       </DialogContent>

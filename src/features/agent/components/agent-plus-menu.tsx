@@ -1,12 +1,30 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import {
+  Plus,
+  Image as ImageIcon,
+  Sliders,
+  BookOpen,
+  Server,
+  CheckSquare,
+  FolderKanban,
+  Briefcase,
+  FileText,
+  Lightbulb,
+  Check,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  Settings,
+} from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
+import { isInternalMcpServer } from "../constants";
 import { AGENT_SESSION_MODES, chipKey, runModeForSession } from "../lib/session-context";
 import type { AgentContextChip, AgentSessionMode } from "../types";
 import { useAgentUi } from "./agent-ui-context";
@@ -21,22 +39,30 @@ export function AgentPlusMenu({
   onAdd: (chip: AgentContextChip) => void;
 }) {
   const { openMcp, openModels, openNewWorkspace } = useAgentUi();
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<MenuView>("root");
+  const [query, setQuery] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
   const { data: mcp } = useGetAgentMcpConfig();
   const updateHarness = useUpdateAgentHarness();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [view, setView] = useState<MenuView>("root");
-  const selected = new Set(chips.map(chipKey));
+
+  const selected = useMemo(() => new Set(chips.map(chipKey)), [chips]);
   const sessionMode = harness?.settings.sessionMode || "agent";
   const q = query.trim().toLowerCase();
 
   const workItems = useMemo(() => context?.workItems ?? [], [context?.workItems]);
   const skills = useMemo(() => harness?.skills ?? [], [harness?.skills]);
   const knowledge = useMemo(() => harness?.knowledge ?? [], [harness?.knowledge]);
-  const servers = useMemo(() => Object.entries(mcp?.mcpServers ?? {}), [mcp?.mcpServers]);
+  const servers = useMemo(
+    () =>
+      Object.entries(mcp?.mcpServers ?? {}).filter(
+        ([name, server]) => !isInternalMcpServer(name, server)
+      ),
+    [mcp?.mcpServers]
+  );
   const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
   const projects = useMemo(() => context?.projects ?? [], [context?.projects]);
   const docs = useMemo(() => context?.docs ?? [], [context?.docs]);
@@ -80,23 +106,23 @@ export function AgentPlusMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="h-7 w-7 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-white/10 flex items-center justify-center transition-colors"
+          className="size-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors shadow-sm border border-border/40"
           title="Add agents, context, tools"
         >
-          <i className="fa-solid fa-plus text-[11px]" />
+          <Plus className="size-3.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
         side="top"
-        className="dark w-80 p-0 bg-[#1c1d21] border-white/10 text-zinc-200 shadow-2xl"
+        className="w-80 p-0 bg-popover border-border text-popover-foreground shadow-2xl rounded-xl"
       >
-        <div className="px-3 py-2 border-b border-white/10">
+        <div className="px-3 py-2 border-b border-border">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Add agents, context, tools..."
-            className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
             autoFocus
           />
         </div>
@@ -107,30 +133,29 @@ export function AgentPlusMenu({
                 key={mode.id}
                 type="button"
                 onClick={() => setMode(mode.id)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
               >
-                <i className={`${mode.icon} w-4 text-center text-zinc-400`} />
-                <span className="flex-1">{mode.label}</span>
-                {sessionMode === mode.id ? <i className="fa-solid fa-check text-xs text-blue-400" /> : null}
+                <span className="flex-1 font-medium">{mode.label}</span>
+                {sessionMode === mode.id ? <Check className="size-3.5 text-primary" /> : null}
               </button>
             ))}
-            <div className="h-px bg-white/10 my-1" />
+            <div className="h-px bg-border my-1" />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+              className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left font-medium"
             >
-              <i className="fa-regular fa-image w-4 text-center text-zinc-400" />
-              Image, markdown, PDF
+              <ImageIcon className="size-4 text-muted-foreground" />
+              <span>Image, markdown, PDF</span>
             </button>
-            <Row icon="fa-solid fa-cube" label="Models" onClick={() => { setOpen(false); openModels(); }} nested />
-            <Row icon="fa-solid fa-book" label="Skills" onClick={() => setView("skills")} nested />
-            <Row icon="fa-solid fa-server" label="MCP Servers" onClick={() => setView("mcp")} nested />
-            <Row icon="fa-solid fa-clipboard-list" label="Work items" onClick={() => setView("work_items")} nested />
-            <Row icon="fa-solid fa-folder" label="Projects" onClick={() => setView("projects")} nested />
-            <Row icon="fa-solid fa-briefcase" label="Workspaces" onClick={() => setView("workspaces")} nested />
-            <Row icon="fa-regular fa-file-lines" label="Docs" onClick={() => setView("docs")} nested />
-            <Row icon="fa-solid fa-plus" label="New workspace" onClick={() => { setOpen(false); openNewWorkspace(); }} />
+            <Row icon={Sliders} label="Models" onClick={() => { setOpen(false); openModels(); }} nested />
+            <Row icon={BookOpen} label="Skills" onClick={() => setView("skills")} nested />
+            <Row icon={Server} label="MCP Servers" onClick={() => setView("mcp")} nested />
+            <Row icon={CheckSquare} label="Work items" onClick={() => setView("work_items")} nested />
+            <Row icon={FolderKanban} label="Projects" onClick={() => setView("projects")} nested />
+            <Row icon={Briefcase} label="Workspaces" onClick={() => setView("workspaces")} nested />
+            <Row icon={FileText} label="Docs" onClick={() => setView("docs")} nested />
+            <Row icon={Plus} label="New workspace" onClick={() => { setOpen(false); openNewWorkspace(); }} />
           </div>
         ) : view === "mcp" ? (
           <ListShell title="MCP Servers" onBack={() => setView("root")}>
@@ -141,14 +166,14 @@ export function AgentPlusMenu({
                   key={name}
                   type="button"
                   onClick={() => add({ kind: "mcp", id: name, label: name, meta: String(server.transport || "http") })}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                 >
-                  <i className="fa-solid fa-server w-4 text-center text-zinc-400" />
-                  <span className="flex-1 truncate">{name}</span>
-                  {server.disabled ? <span className="text-[10px] text-zinc-500">off</span> : null}
+                  <Server className="size-4 text-muted-foreground" />
+                  <span className="flex-1 truncate font-medium text-foreground">{name}</span>
+                  {server.disabled ? <span className="text-[10px] text-muted-foreground">off</span> : null}
                 </button>
               ))}
-            <Row icon="fa-solid fa-gear" label="Manage MCP" onClick={() => { setOpen(false); openMcp(); }} />
+            <Row icon={Settings} label="Manage MCP" onClick={() => { setOpen(false); openMcp(); }} />
           </ListShell>
         ) : (
           <ListShell
@@ -178,10 +203,10 @@ export function AgentPlusMenu({
                         meta: [item.key, item.status].filter(Boolean).join(" · "),
                       })
                     }
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                   >
-                    <i className="fa-regular fa-square-check w-4 text-center text-zinc-400" />
-                    <span className="flex-1 truncate">{item.title}</span>
+                    <CheckSquare className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium text-foreground">{item.title}</span>
                   </button>
                 ))
               : null}
@@ -191,10 +216,10 @@ export function AgentPlusMenu({
                     key={item.id}
                     type="button"
                     onClick={() => add({ kind: "skill", id: item.id, label: item.name, meta: item.description })}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                   >
-                    <i className="fa-solid fa-book w-4 text-center text-zinc-400" />
-                    <span className="flex-1 truncate">{item.name}</span>
+                    <BookOpen className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium text-foreground">{item.name}</span>
                   </button>
                 ))
               : null}
@@ -204,10 +229,10 @@ export function AgentPlusMenu({
                     key={item.id}
                     type="button"
                     onClick={() => add({ kind: "project", id: item.id, label: item.name, meta: item.key })}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                   >
-                    <i className="fa-solid fa-folder w-4 text-center text-zinc-400" />
-                    <span className="flex-1 truncate">{item.name}</span>
+                    <FolderKanban className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium text-foreground">{item.name}</span>
                   </button>
                 ))
               : null}
@@ -217,10 +242,10 @@ export function AgentPlusMenu({
                     key={item.id}
                     type="button"
                     onClick={() => add({ kind: "workspace", id: item.id, label: item.name })}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                   >
-                    <i className="fa-solid fa-briefcase w-4 text-center text-zinc-400" />
-                    <span className="flex-1 truncate">{item.name}</span>
+                    <Briefcase className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium text-foreground">{item.name}</span>
                   </button>
                 ))
               : null}
@@ -232,10 +257,10 @@ export function AgentPlusMenu({
                     onClick={() =>
                       add({ kind: "doc", id: item.id, label: item.title || item.name || "Doc" })
                     }
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                   >
-                    <i className="fa-regular fa-file-lines w-4 text-center text-zinc-400" />
-                    <span className="flex-1 truncate">{item.title || item.name}</span>
+                    <FileText className="size-4 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium text-foreground">{item.title || item.name}</span>
                   </button>
                 ))
               : null}
@@ -247,15 +272,15 @@ export function AgentPlusMenu({
                       key={item.id}
                       type="button"
                       onClick={() => add({ kind: "knowledge", id: item.id, label: item.title })}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
                     >
-                      <i className="fa-solid fa-lightbulb w-4 text-center text-zinc-400" />
-                      <span className="flex-1 truncate">{item.title}</span>
+                      <Lightbulb className="size-4 text-muted-foreground" />
+                      <span className="flex-1 truncate font-medium text-foreground">{item.title}</span>
                     </button>
                   ))
               : null}
             {filtered.length === 0 && view !== "skills" ? (
-              <p className="px-3 py-4 text-xs text-zinc-500">Nothing matches.</p>
+              <p className="px-3 py-4 text-xs text-muted-foreground">Nothing matches.</p>
             ) : null}
           </ListShell>
         )}
@@ -285,21 +310,25 @@ export function AgentPlusMenu({
 }
 
 function Row({
-  icon,
+  icon: Icon,
   label,
   onClick,
   nested,
 }: {
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
   nested?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 text-left">
-      <i className={`${icon} w-4 text-center text-zinc-400`} />
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left font-medium text-foreground"
+    >
+      <Icon className="size-4 text-muted-foreground" />
       <span className="flex-1 truncate">{label}</span>
-      {nested ? <i className="fa-solid fa-chevron-right text-[10px] text-zinc-500" /> : null}
+      {nested ? <ChevronRight className="size-3 text-muted-foreground" /> : null}
     </button>
   );
 }
@@ -315,8 +344,12 @@ function ListShell({
 }) {
   return (
     <div className="py-1 max-h-80 overflow-y-auto custom-scrollbar">
-      <button type="button" onClick={onBack} className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-200">
-        <i className="fa-solid fa-chevron-left text-[10px]" />
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground hover:text-foreground font-semibold"
+      >
+        <ChevronLeft className="size-3.5" />
         {title}
       </button>
       {children}
@@ -337,11 +370,11 @@ export function ContextChips({
       {chips.map((chip) => (
         <span
           key={chipKey(chip)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-zinc-300"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-[11px] text-foreground font-medium shadow-sm"
         >
           <span className="truncate max-w-[160px]">{chip.label}</span>
-          <button type="button" onClick={() => onRemove(chip)} className="text-zinc-500 hover:text-zinc-200">
-            <i className="fa-solid fa-xmark text-[9px]" />
+          <button type="button" onClick={() => onRemove(chip)} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="size-3" />
           </button>
         </span>
       ))}

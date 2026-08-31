@@ -1,4 +1,5 @@
 import type { Databases } from "node-appwrite";
+import type { AuthContext } from "@fairlx/mcp-server";
 
 import type {
   AgentContext,
@@ -36,6 +37,9 @@ export type ToolExecutionContext = {
   mcp: McpConfig;
   databases?: Databases;
   runs?: AgentRun[];
+  workspaceId?: string;
+  projectId?: string;
+  mcpAuth?: AuthContext;
 };
 
 export type ToolExecutionResult = {
@@ -246,6 +250,27 @@ export function openaiToolsForMode(mode: AgentRunMode, enabledTools: string[]): 
   }));
 }
 
+export function openaiToolsForTurn(params: {
+  mode: AgentRunMode;
+  enabledTools: string[];
+  mcpTools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
+}): OpenAiTool[] {
+  const harness = openaiToolsForMode(params.mode, params.enabledTools);
+  if (params.mode !== "agent") return harness;
+  const existing = new Set(harness.map((tool) => tool.function.name));
+  const mcp = (params.mcpTools ?? [])
+    .filter((tool) => !existing.has(tool.name))
+    .map((tool) => ({
+      type: "function" as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema?.type ? tool.inputSchema : { type: "object", properties: tool.inputSchema ?? {} },
+      },
+    }));
+  return [...harness, ...mcp];
+}
+
 function parseArgs(args: unknown): Record<string, unknown> {
   if (typeof args === "string") {
     try {
@@ -281,6 +306,16 @@ function event(
   };
 }
 
+function applyScopeDefaults(args: Record<string, unknown>, ctx: ToolExecutionContext): Record<string, unknown> {
+  const next = { ...args };
+  if (!asString(next.workspaceId) && ctx.workspaceId) next.workspaceId = ctx.workspaceId;
+  if (!asString(next.projectId) && ctx.projectId) next.projectId = ctx.projectId;
+  if (next.arguments && typeof next.arguments === "object") {
+    next.arguments = applyScopeDefaults(next.arguments as Record<string, unknown>, ctx);
+  }
+  return next;
+}
+
 function matchesQuery(haystack: string, query: string): boolean {
   if (!query.trim()) return true;
   return haystack.toLowerCase().includes(query.toLowerCase());
@@ -309,10 +344,25 @@ export async function executeTool(
   args: unknown,
   ctx: ToolExecutionContext,
 ): Promise<ToolExecutionResult> {
-  const parsed = parseArgs(args);
+  const parsed = applyScopeDefaults(parseArgs(args), ctx);
+  if (name.startsWith("fairlx_")) {
+    return executeTool(
+      "mcp_call",
+      { server: "fairlx", tool: name, arguments: parsed },
+      ctx,
+    );
+  }
   const query = asString(parsed.query || parsed.q || parsed.search);
   const { context, harness, mcp, runId } = ctx;
   const publicMcp = toPublicMcpConfig(ensurePersonalMcp(mcp));
+  const mcpCtx = {
+    userId: ctx.userId,
+    mcp,
+    harness,
+    runs: ctx.runs,
+    databases: ctx.databases,
+    auth: ctx.mcpAuth,
+  };
 
   switch (name) {
     case "code_inspect": {
@@ -456,7 +506,9 @@ export async function executeTool(
       };
     }
     case "list_workspaces": {
-      const payload = { workspaces: context.workspaces };
+      const payload = {
+        workspaces: context.workspaces.map(({ inviteCode: _inviteCode, ...rest }) => rest),
+      };
       return {
         content: JSON.stringify(payload),
         event: event(runId, "list_workspaces", `${context.workspaces.length} workspaces`, undefined, payload),
@@ -522,31 +574,26 @@ export async function executeTool(
         const result = await callMcpServerTool({
           server,
           tool,
-          args: callArgs,
-          ctx: { userId: ctx.userId, mcp, harness, runs: ctx.runs, databases: ctx.databases },
+          args: applyScopeDefaults(callArgs, ctx),
+          ctx: mcpCtx,
         });
         const payload = { server, tool, result };
         return {
           content: JSON.stringify(payload),
-          event: event(runId, "mcp_call", `${server}.${tool}`, undefined, payload),
+          event: event(runId, "mcp_call", tool.replace(/^fairlx_/, "").replaceAll("_", " "), undefined, payload),
         };
       } catch (error) {
         const payload = { server, tool, error: error instanceof Error ? error.message : "MCP call failed" };
         return {
           content: JSON.stringify(payload),
-          event: event(runId, "error", `${server}.${tool} failed`, payload.error, payload),
+          event: event(runId, "error", `${tool.replace(/^fairlx_/, "").replaceAll("_", " ")} failed`, payload.error, payload),
         };
       }
     }
     case "mcp_resources": {
       const server = asString(parsed.server) || "fairlx-personal";
       try {
-        const result = await listMcpResourcesForServer(server, {
-          userId: ctx.userId,
-          mcp,
-          harness,
-          runs: ctx.runs,
-        });
+        const result = await listMcpResourcesForServer(server, mcpCtx);
         return {
           content: JSON.stringify(result),
           event: event(runId, "mcp_resources", `Resources: ${server}`, undefined, result),

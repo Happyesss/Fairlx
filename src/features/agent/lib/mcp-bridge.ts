@@ -1,4 +1,4 @@
-import { callTool, jwtToAuthContext, listResources, listToolsForClient } from "@fairlx/mcp-server";
+import { callTool, jwtToAuthContext, listResources, listToolsForClient, type AuthContext } from "@fairlx/mcp-server";
 import type { Databases } from "node-appwrite";
 
 import { createMcpRuntime } from "@/features/mcp/bind-runtime";
@@ -88,7 +88,12 @@ export type McpBridgeContext = {
   harness: AgentHarness;
   runs?: AgentRun[];
   databases?: Databases;
+  auth?: AuthContext;
 };
+
+function authFor(ctx: McpBridgeContext): AuthContext {
+  return ctx.auth ?? jwtToAuthContext(ctx.userId);
+}
 
 export async function listMcpToolsForServer(name: string, ctx: McpBridgeContext): Promise<unknown> {
   const config = ensurePersonalMcp(ctx.mcp);
@@ -106,7 +111,7 @@ export async function listMcpToolsForServer(name: string, ctx: McpBridgeContext)
   }
 
   if (isFairlxPlatform(name, server)) {
-    const auth = jwtToAuthContext(ctx.userId);
+    const auth = authFor(ctx);
     return { server: name, tools: listToolsForClient(auth) };
   }
 
@@ -132,7 +137,7 @@ export async function listMcpResourcesForServer(name: string, ctx: McpBridgeCont
   }
 
   if (isFairlxPlatform(name, server)) {
-    const auth = jwtToAuthContext(ctx.userId);
+    const auth = authFor(ctx);
     return { server: name, resources: listResources(auth) };
   }
 
@@ -170,7 +175,7 @@ export async function callMcpServerTool(params: {
 
   if (isFairlxPlatform(serverName, server)) {
     const runtime = await createMcpRuntime();
-    const auth = jwtToAuthContext(params.ctx.userId);
+    const auth = authFor(params.ctx);
     const result = await callTool(params.tool, params.args ?? {}, runtime, auth);
     return result;
   }

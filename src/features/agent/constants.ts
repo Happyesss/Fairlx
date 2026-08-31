@@ -4,6 +4,7 @@ import type {
   AgentProviderType,
   AgentSkill,
   AgentWorkPattern,
+  McpServerConfig,
 } from "./types";
 
 export const AGENT_MCP_QUERY_KEY = ["agent-mcp-config"] as const;
@@ -20,6 +21,13 @@ export const DEEPSEEK_FLASH_MODEL_ID = "deepseek-flash";
 export const DEFAULT_FAIRLX_MCP_SERVER_NAME = "fairlx";
 export const PERSONAL_MCP_SERVER_NAME = "fairlx-personal";
 export const PERSONAL_MCP_URL = "in-process://personal";
+
+export function isInternalMcpServer(name: string, server?: McpServerConfig): boolean {
+  if (name === DEFAULT_FAIRLX_MCP_SERVER_NAME || name === PERSONAL_MCP_SERVER_NAME) return true;
+  const url = String(server?.url || "");
+  if (url === PERSONAL_MCP_URL || url === "/api/mcp" || url.endsWith("/api/mcp")) return true;
+  return false;
+}
 
 export const PROVIDER_CATALOG: Array<{
   type: AgentProviderType;
@@ -41,20 +49,6 @@ export const PROVIDER_CATALOG: Array<{
 // Public Azure resource URLs only. API keys live in server env (AGENT_*_AZURE_API_KEY).
 export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
   {
-    id: PLATFORM_XAI_PROVIDER_ID,
-    provider: "azure",
-    displayName: "Azure Grok (Fairlx)",
-    baseUrl: "https://personal-use-g1-resource.openai.azure.com",
-    extra: {
-      vendor: "azure",
-      deployment: "grok-4.6",
-      openaiPath: "/openai/v1",
-      authHeader: "api-key",
-    },
-    isEnabled: true,
-    isPlatform: true,
-  },
-  {
     id: PLATFORM_DEEPSEEK_PROVIDER_ID,
     provider: "azure",
     displayName: "Azure DeepSeek (Fairlx)",
@@ -73,40 +67,31 @@ export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
 
 export const PLATFORM_MODELS: AgentModel[] = [
   {
-    id: GROK_46_MODEL_ID,
-    providerId: PLATFORM_XAI_PROVIDER_ID,
-    modelId: "grok-4.6",
-    displayName: "Grok 4.6",
+    id: DEEPSEEK_FLASH_MODEL_ID,
+    providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
+    modelId: "DeepSeek-V4-Flash",
+    displayName: "DeepSeek V4 Flash",
     role: "default",
     isEnabled: true,
     isPlatform: true,
     toolCalling: true,
     vision: true,
-    maxInputTokens: 72000,
-    maxOutputTokens: 128000,
-  },
-  {
-    id: DEEPSEEK_FLASH_MODEL_ID,
-    providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
-    modelId: "DeepSeek-V4-Flash",
-    displayName: "DeepSeek V4 Flash",
-    role: "flash",
-    isEnabled: true,
-    isPlatform: true,
+    maxInputTokens: 64000,
+    maxOutputTokens: 8192,
   },
 ];
 
 export function getMcpServerIcon(name: string): { kind: "icon" | "badge"; value: string; className?: string } {
   const key = name.toLowerCase();
-  if (key.includes("github")) return { kind: "icon", value: "fa-brands fa-github", className: "text-white" };
+  if (key.includes("github")) return { kind: "icon", value: "fa-brands fa-github", className: "text-foreground" };
   if (key.includes("postgres") || key.includes("pgsql") || key.includes("database")) {
-    return { kind: "icon", value: "fa-solid fa-database", className: "text-blue-400" };
+    return { kind: "icon", value: "fa-solid fa-database", className: "text-blue-500" };
   }
-  if (key.includes("slack")) return { kind: "icon", value: "fa-brands fa-slack", className: "text-white" };
-  if (key.includes("linear")) return { kind: "icon", value: "fa-solid fa-chart-gantt", className: "text-white" };
+  if (key.includes("slack")) return { kind: "icon", value: "fa-brands fa-slack", className: "text-foreground" };
+  if (key.includes("linear")) return { kind: "icon", value: "fa-solid fa-chart-gantt", className: "text-foreground" };
   if (key.includes("notion")) return { kind: "badge", value: "N" };
-  if (key.includes("fairlx") || key.includes("personal")) return { kind: "icon", value: "fa-solid fa-cube", className: "text-fairlx-primary" };
-  return { kind: "icon", value: "fa-solid fa-server", className: "text-fairlx-text-muted" };
+  if (key.includes("fairlx") || key.includes("personal")) return { kind: "icon", value: "fa-solid fa-cube", className: "text-primary" };
+  return { kind: "icon", value: "fa-solid fa-server", className: "text-muted-foreground" };
 }
 
 export function getProviderCatalogItem(type: AgentProviderType) {
@@ -116,7 +101,6 @@ export function getProviderCatalogItem(type: AgentProviderType) {
 export const AGENT_NAV = [
   { href: "/agent/dashboard", label: "Agent Home", icon: "fa-solid fa-house-chimney", shortcut: "⌘H" },
   { href: "/agent/chats", label: "Chats", icon: "fa-regular fa-comments" },
-  { href: "/agent/search", label: "Search", icon: "fa-solid fa-magnifying-glass", shortcut: "⌘K" },
   { href: "/agent/projects", label: "Projects", icon: "fa-solid fa-folder" },
   { href: "/agent/workspaces", label: "Workspaces", icon: "fa-solid fa-briefcase" },
   { href: "/agent/git", label: "Git & staging", icon: "fa-solid fa-code-merge" },
@@ -323,4 +307,4 @@ export const STARTER_WORK_PATTERNS: Omit<AgentWorkPattern, "id" | "createdAt">[]
 ];
 
 export const AGENT_FIELD_CLASS =
-  "border-fairlx-border bg-fairlx-bg text-fairlx-text placeholder:text-fairlx-text-muted";
+  "border-border bg-background text-foreground placeholder:text-muted-foreground";

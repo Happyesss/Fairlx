@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toolResult, wrapUntrusted } from "./output";
+import { compactMember, hydrateMembers, toolResult, wrapUntrusted } from "./output";
 
 describe("output envelope", () => {
   it("wraps payloads as text content", () => {
@@ -14,5 +14,46 @@ describe("output envelope", () => {
     expect(wrapped).toContain("<fairlx_untrusted_content");
     expect(wrapped).toContain('label="title"');
     expect(wrapped).toContain("user text");
+  });
+});
+
+describe("compactMember", () => {
+  it("uses Appwrite user profiles for name and email like the Members page", () => {
+    expect(
+      compactMember(
+        { userId: "u1", role: "OWNER", status: "ACTIVE", name: null, email: null },
+        { id: "u1", name: "Surendra Mattaparthi", email: "surendram.dev@gmail.com" },
+      ),
+    ).toEqual({
+      name: "Surendra Mattaparthi",
+      email: "surendram.dev@gmail.com",
+      role: "OWNER",
+      status: "ACTIVE",
+    });
+  });
+
+  it("falls back to email when the profile has no name", () => {
+    expect(compactMember({ role: "MEMBER" }, { id: "u2", name: "", email: "ada@fairlx.dev" }).name).toBe(
+      "ada@fairlx.dev",
+    );
+  });
+});
+
+describe("hydrateMembers", () => {
+  it("batch-fills names from lookupUsers instead of leaving them null", async () => {
+    const members = await hydrateMembers(
+      {
+        lookupUsers: async () => [
+          { id: "u1", name: "Ada", email: "ada@fairlx.dev" },
+          { id: "u2", name: "Sam", email: "sam@fairlx.dev" },
+        ],
+      },
+      [
+        { userId: "u1", role: "ADMIN", status: "ACTIVE", name: null, email: null },
+        { userId: "u2", role: "MEMBER", status: "ACTIVE" },
+      ],
+    );
+    expect(members.map((member) => member.name)).toEqual(["Ada", "Sam"]);
+    expect(members.map((member) => member.email)).toEqual(["ada@fairlx.dev", "sam@fairlx.dev"]);
   });
 });

@@ -1,23 +1,47 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  Bot,
+  MessageSquare,
+  Search,
+  FolderKanban,
+  Briefcase,
+  GitMerge,
+  Wrench,
+  Cpu,
+  Server,
+  Zap,
+  Layers,
+  BookOpen,
+  Settings,
+  Plus,
+  ChevronRight,
+  Menu,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useCurrent } from "@/features/auth/api/use-current";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ModeToggle } from "@/components/mode-toggle";
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { UserButton } from "@/features/auth/components/user-button";
+import { NotificationBell } from "@/features/notifications";
+import { BugReportPopover } from "@/features/bug-reports/components/bug-report-popover";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentRuns } from "../api/use-agent-runs";
-import { AGENT_NAV, AGENT_SETTINGS_NAV } from "../constants";
-import { relativeTime, userInitials } from "../lib/agent-ui";
+import { relativeTime } from "../lib/agent-ui";
 import type { AgentRunMode } from "../types";
 import { useAgentUi } from "./agent-ui-context";
 import { ModelPicker } from "./model-picker";
 
 export function AgentPageFrame({ children }: { children: ReactNode }) {
-  return <div className="h-full overflow-y-auto p-8 custom-scrollbar">{children}</div>;
+  return <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar">{children}</div>;
 }
 
 function navActive(pathname: string, href: string, hash: string) {
@@ -30,22 +54,210 @@ function navActive(pathname: string, href: string, hash: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+const NAV_SECTIONS = [
+  {
+    title: "Agent Core",
+    items: [
+      { href: "/agent/dashboard", label: "Agent Home", icon: Bot, shortcut: "⌘H" },
+      { href: "/agent/chats", label: "Chats", icon: MessageSquare },
+    ],
+  },
+  {
+    title: "Workspace & Code",
+    items: [
+      { href: "/agent/projects", label: "Projects", icon: FolderKanban },
+      { href: "/agent/workspaces", label: "Workspaces", icon: Briefcase },
+      { href: "/agent/git", label: "Git & Staging", icon: GitMerge },
+    ],
+  },
+  {
+    title: "Agent Tools",
+    items: [
+      { href: "/agent/skills", label: "Skills", icon: Wrench },
+      { href: "/agent/tools", label: "Tools", icon: Cpu },
+      { href: "/agent/mcp", label: "MCP Servers", icon: Server },
+      { href: "/agent/automations", label: "Automations", icon: Zap },
+      { href: "/agent/integrations", label: "Integrations", icon: Layers },
+      { href: "/agent/knowledge", label: "Knowledge Base", icon: BookOpen },
+      { href: "/agent/settings", label: "Settings", icon: Settings },
+    ],
+  },
+];
+
+function AgentSidebarNav({
+  pathname,
+  hash,
+  runs,
+  activeRunId,
+  openSearch,
+  openRecentWork,
+  onNavigate,
+}: {
+  pathname: string;
+  hash: string;
+  runs: Array<{ id: string; title: string; status: string; updatedAt: string }> | undefined;
+  activeRunId: string;
+  openSearch: () => void;
+  openRecentWork: () => void;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full w-full">
+      {/* Top Logo Header */}
+      <div className="flex items-center w-full h-[73px] px-6 border-b border-sidebar-border flex-shrink-0">
+        <Link href="/agent/dashboard" onClick={onNavigate} className="flex items-center">
+          <Image src="/Logo.png" className="object-contain" alt="Fairlx Logo" width={80} height={90} priority />
+        </Link>
+      </div>
+
+      {/* Scrollable Navigation Body */}
+      <div className="flex flex-col flex-1 overflow-hidden overflow-y-auto px-3 py-3 gap-4 custom-scrollbar">
+        {/* Quick Actions: New Agent & Search */}
+        <div className="flex flex-col gap-1.5 px-0.5">
+          <Link
+            href="/agent/dashboard"
+            onClick={onNavigate}
+            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 rounded-md py-2 px-3 flex items-center justify-between transition-colors shadow-sm font-medium text-xs"
+          >
+            <div className="flex items-center gap-2">
+              <Plus className="size-3.5" />
+              <span>New Agent</span>
+            </div>
+            <div className="flex items-center gap-0.5 opacity-75 text-[10px]">
+              <span>⌘</span>
+              <span>H</span>
+            </div>
+          </Link>
+          <button
+            type="button"
+            onClick={openSearch}
+            className="w-full flex items-center justify-between px-3 py-1.5 rounded-md border border-sidebar-border bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors text-xs"
+          >
+            <div className="flex items-center gap-2">
+              <Search className="size-3.5" />
+              <span>Search</span>
+            </div>
+            <span className="text-[10px] opacity-75">⌘K</span>
+          </button>
+        </div>
+
+        {/* Categorized Navigation */}
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.title} className="flex flex-col gap-0.5">
+            <p className="text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50 pl-2.5 mb-1.5">
+              {section.title}
+            </p>
+            {section.items.map((item) => {
+              const isActive = navActive(pathname, item.href, hash);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-[12px] tracking-tight transition",
+                    isActive
+                      ? "bg-sidebar-accent shadow-sm text-sidebar-foreground font-semibold"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  )}
+                >
+                  <Icon className={cn("size-[17px]", isActive && "text-primary")} />
+                  <span className="flex-1 truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Recent Runs Section */}
+        <div className="flex flex-col gap-1 pt-1">
+          <div className="flex items-center justify-between px-2.5 mb-1">
+            <p className="text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50">
+              Recent Runs
+            </p>
+            <button
+              type="button"
+              onClick={openRecentWork}
+              className="text-[11px] font-medium text-primary hover:underline"
+            >
+              All
+            </button>
+          </div>
+          {(runs ?? []).slice(0, 4).map((run) => {
+            const running = run.status === "running";
+            const active = activeRunId === run.id;
+            return (
+              <Link
+                key={run.id}
+                href={`/agent/workflow?runId=${run.id}`}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] transition truncate",
+                  running || active
+                    ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full shrink-0",
+                      running ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
+                    )}
+                  />
+                  <span className="truncate">{run.title}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground shrink-0 pl-1">
+                  {relativeTime(run.updatedAt)}
+                </span>
+              </Link>
+            );
+          })}
+          {(runs ?? []).length === 0 ? (
+            <p className="px-2.5 text-xs text-muted-foreground">No runs yet.</p>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Bottom Left: Workspace Switcher */}
+      <div className="flex-shrink-0 border-t border-sidebar-border">
+        <WorkspaceSwitcher />
+      </div>
+    </div>
+  );
+}
+
 export function AgentAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { openRecentWork, openInvite, openSearch } = useAgentUi();
-  const { data: user } = useCurrent();
+  const searchParams = useSearchParams();
+  const { openRecentWork, openSearch } = useAgentUi();
   const { data: runs } = useGetAgentRuns();
   const { data: harness } = useGetAgentHarness();
   const { data: context } = useGetAgentContext();
   const updateHarness = useUpdateAgentHarness();
   const [hash, setHash] = useState("");
-  const [notesOpen, setNotesOpen] = useState(false);
   const [activeRunId, setActiveRunId] = useState("");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const mode: AgentRunMode = harness?.settings.mode === "manual" ? "manual" : "agent";
-  const initials = userInitials(user?.name, user?.email);
-  const unread = (context?.notifications ?? []).filter((item) => !item.isRead).length;
-  const isWorkflow = pathname.startsWith("/agent/workflow");
+
+  const runId = searchParams.get("runId");
+  const activeRun = (runs ?? []).find((r) => r.id === (runId || activeRunId));
+
+  const activeWorkspace = useMemo(() => {
+    if (activeRun?.workspaceId) {
+      return (context?.workspaces ?? []).find((w) => w.id === activeRun.workspaceId);
+    }
+    if (harness?.settings.defaultWorkspaceId) {
+      return (context?.workspaces ?? []).find((w) => w.id === harness.settings.defaultWorkspaceId);
+    }
+    return context?.workspaces?.[0];
+  }, [activeRun, context, harness]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const sync = () => {
@@ -88,247 +300,146 @@ export function AgentAppShell({ children }: { children: ReactNode }) {
     updateHarness.mutate({ json: { settings: { mode: next } } });
   };
 
+  // Determine breadcrumb page title
+  const pageTitle = useMemo(() => {
+    if (pathname === "/agent/dashboard") return "Dashboard";
+    if (pathname.startsWith("/agent/workflow")) return activeRun?.title || "Workflow";
+    if (pathname === "/agent/chats") return "Chats";
+    if (pathname === "/agent/search") return "Search";
+    if (pathname === "/agent/projects") return "Projects";
+    if (pathname === "/agent/workspaces") return "Workspaces";
+    if (pathname === "/agent/git") return "Git & Staging";
+    if (pathname === "/agent/skills") return "Skills";
+    if (pathname === "/agent/tools") return "Tools";
+    if (pathname === "/agent/mcp") return "MCP Servers";
+    if (pathname === "/agent/automations") return "Automations";
+    if (pathname === "/agent/integrations") return "Integrations";
+    if (pathname === "/agent/knowledge") return "Knowledge Base";
+    if (pathname === "/agent/settings") return "Settings";
+    return "Agent";
+  }, [pathname, activeRun]);
+
   return (
-    <div className="relative flex h-full min-h-0 w-full bg-gray-950 text-fairlx-text text-sm">
-      <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
-        <div className="h-14 flex items-center px-4 shrink-0">
-          <Link href="/agent/dashboard" className="flex items-center gap-2 text-blue-500 font-bold text-xl tracking-tight">
-            <i className="fa-solid fa-cube" />
-            <span>fairlx</span>
-          </Link>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-4 flex flex-col gap-6 min-h-0">
-          <div className="flex flex-col gap-2">
-            <Link
-              href="/agent/dashboard"
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-md py-2 px-3 flex items-center justify-between transition-colors"
-            >
-              <div className="flex items-center gap-2 font-medium">
-                <i className="fa-solid fa-plus text-xs" />
-                New Agent
-              </div>
-              <div className="flex items-center gap-1 opacity-70 text-xs">
-                <span className="text-[10px]">⌘</span>H
-              </div>
-            </Link>
-            <button type="button" onClick={openSearch} className="relative w-full text-left">
-              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none" />
-              <span className="block w-full bg-gray-850 border border-gray-800 rounded-md py-1.5 pl-8 pr-12 text-gray-500 text-sm">
-                Search
-              </span>
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-gray-500 text-xs">
-                ⌘K
-              </span>
-            </button>
-          </div>
-          <nav className="flex flex-col gap-1">
-            {AGENT_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-2 py-2 rounded-md transition-colors",
-                  navActive(pathname, item.href, hash)
-                    ? "bg-gray-800 text-blue-400 font-medium"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-850",
-                )}
-              >
-                <i className={`${item.icon} w-4 text-center`} />
-                <span className="flex-1 truncate">{item.label}</span>
-              </Link>
-            ))}
-            <div className="pt-3 pb-1 px-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Settings
-            </div>
-            {AGENT_SETTINGS_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-2 py-2 rounded-md transition-colors",
-                  navActive(pathname, item.href, hash)
-                    ? "bg-gray-800 text-blue-400 font-medium"
-                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-850",
-                )}
-              >
-                <i className={`${item.icon} w-4 text-center`} />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <div>
-            <div className="flex items-center justify-between px-2 mb-2">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recent Work Items</h3>
-              <button type="button" onClick={openRecentWork} className="text-blue-500 text-xs hover:underline">
-                See all
-              </button>
-            </div>
-            <div className="flex flex-col gap-1">
-              {(runs ?? []).slice(0, 5).map((run) => {
-                const running = run.status === "running";
-                const active = activeRunId === run.id;
-                return (
-                  <Link
-                    key={run.id}
-                    href={`/agent/workflow?runId=${run.id}`}
-                    className={cn(
-                      "flex flex-col gap-1 px-2 py-2 rounded-md transition-colors",
-                      running || active
-                        ? "bg-gray-800 border border-gray-700"
-                        : "hover:bg-gray-850 text-gray-400",
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <i
-                        className={cn(
-                          "text-xs",
-                          running
-                            ? "fa-regular fa-square-check text-blue-500"
-                            : run.status === "failed"
-                              ? "fa-solid fa-triangle-exclamation text-red-400"
-                              : "fa-regular fa-comments text-gray-500",
-                        )}
-                      />
-                      <span className={cn("truncate", running || active ? "font-medium text-gray-200" : "")}>
-                        {run.title}
-                      </span>
-                    </div>
-                    {running ? (
-                      <div className="flex items-center gap-1.5 pl-5 text-xs text-blue-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                        Running
-                      </div>
-                    ) : (
-                      <span className="pl-5 text-xs text-gray-500">{relativeTime(run.updatedAt)}</span>
-                    )}
-                  </Link>
-                );
-              })}
-              {(runs ?? []).length === 0 ? (
-                <p className="px-2 text-xs text-gray-500">No runs yet.</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="p-4 border-t border-gray-800 shrink-0">
-          <Link
-            href="/agent/settings"
-            className="w-full flex items-center justify-between p-2 rounded-md hover:bg-gray-800 border border-gray-800 bg-gray-850 transition-colors mb-2"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 font-medium shrink-0">
-                {initials[0] || "U"}
-              </div>
-              <div className="text-left min-w-0">
-                <div className="font-medium text-gray-200 truncate">
-                  {user?.name?.split(/\s+/)[0] || user?.email?.split("@")[0] || "Account"}
-                </div>
-                <div className="text-xs text-gray-500 truncate">{user?.email || "Account"}</div>
-              </div>
-            </div>
-            <i className="fa-solid fa-chevron-down text-gray-500 text-xs" />
-          </Link>
-          <button
-            type="button"
-            onClick={openInvite}
-            className="w-full flex items-center justify-center gap-2 p-2 rounded-md border border-gray-800 hover:bg-gray-800 text-gray-400 transition-colors text-xs"
-          >
-            <i className="fa-solid fa-user-plus" />
-            Invite Members
-          </button>
-        </div>
+    <div className="relative flex h-full min-h-0 w-full bg-background text-foreground text-sm overflow-hidden">
+      {/* Desktop Left Sidebar */}
+      <aside className="hidden lg:flex w-[264px] bg-sidebar border-r border-sidebar-border flex-col flex-shrink-0 h-full">
+        <AgentSidebarNav
+          pathname={pathname}
+          hash={hash}
+          runs={runs}
+          activeRunId={activeRunId}
+          openSearch={openSearch}
+          openRecentWork={openRecentWork}
+        />
       </aside>
 
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-gray-950">
-        {isWorkflow ? null : (
-          <header className="h-14 border-b border-gray-800 flex items-center justify-between px-6 shrink-0 bg-gray-950">
-            <div className="inline-flex rounded-md border border-gray-800 bg-gray-900 p-0.5">
+      {/* Mobile / Tablet Left Sidebar Drawer */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] bg-sidebar border-sidebar-border flex flex-col h-full text-foreground">
+          <SheetTitle className="sr-only">Agent Navigation</SheetTitle>
+          <AgentSidebarNav
+            pathname={pathname}
+            hash={hash}
+            runs={runs}
+            activeRunId={activeRunId}
+            openSearch={() => {
+              setMobileNavOpen(false);
+              openSearch();
+            }}
+            openRecentWork={() => {
+              setMobileNavOpen(false);
+              openRecentWork();
+            }}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-background">
+        {/* Top Navbar Header */}
+        <header className="h-[73px] px-3 sm:px-6 flex items-center border-b border-border sticky top-0 z-10 bg-background justify-between w-full shrink-0 gap-2 sm:gap-4">
+          {/* Breadcrumbs on Left + Mobile Hamburger Button */}
+          <div className="flex items-center gap-1.5 sm:gap-2 text-sm min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMobileNavOpen(true)}
+              className="lg:hidden size-9 text-muted-foreground hover:text-foreground shrink-0 -ml-1"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="size-5" />
+            </Button>
+            <span className="font-semibold text-foreground truncate max-w-[100px] sm:max-w-[180px] text-xs sm:text-sm">
+              {activeWorkspace?.name || "Fairlx Workspace"}
+            </span>
+            <ChevronRight className="size-3.5 sm:size-4 text-muted-foreground shrink-0" />
+            <Link href="/agent/dashboard" className="text-muted-foreground hover:text-foreground font-medium text-xs sm:text-sm">
+              Agent
+            </Link>
+            {pageTitle !== "Dashboard" ? (
+              <>
+                <ChevronRight className="size-3.5 sm:size-4 text-muted-foreground shrink-0" />
+                <span className="font-medium text-foreground truncate max-w-[100px] sm:max-w-[240px] text-xs sm:text-sm">
+                  {pageTitle}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          {/* Right Action Bar */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* Mode Switcher */}
+            <div className="hidden sm:inline-flex rounded-lg border border-border bg-muted/50 p-0.5">
               {(["manual", "agent"] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setMode(value)}
                   className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded capitalize",
-                    mode === value ? "bg-blue-600/15 text-blue-400" : "text-gray-400 hover:text-gray-200",
+                    "px-2.5 py-1 text-xs font-medium rounded-md capitalize transition-colors",
+                    mode === value
+                      ? "bg-background text-foreground shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   {value}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-3">
-              {context?.workspaces.length ? (
-                <select
-                  value={harness?.settings.defaultWorkspaceId || ""}
-                  onChange={(event) => {
-                    const nextWorkspace = event.target.value;
-                    const projectStillValid = (context.projects ?? []).some(
-                      (project) =>
-                        project.id === harness?.settings.defaultProjectId && project.workspaceId === nextWorkspace,
-                    );
-                    updateHarness.mutate({
-                      json: {
-                        settings: {
-                          defaultWorkspaceId: nextWorkspace || undefined,
-                          defaultProjectId: projectStillValid ? harness?.settings.defaultProjectId : undefined,
-                        },
-                      },
-                    });
-                  }}
-                  className="h-8 max-w-[180px] rounded-md border border-gray-800 bg-gray-900 px-2 text-xs text-gray-300 outline-none"
-                  title="Workspace"
-                >
-                  <option value="">Workspace</option>
-                  {(context.workspaces ?? []).map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              <ModelPicker variant="chip" className="hidden md:flex bg-transparent border-0 px-2" />
-              <button
-                type="button"
-                onClick={() => setNotesOpen((open) => !open)}
-                className="text-gray-400 hover:text-gray-200 relative"
-                title="Notifications"
+
+            {/* Model Picker */}
+            <ModelPicker variant="chip" className="hidden md:flex" />
+
+            {/* Switch back to Fairlx Main App */}
+            <Link href="/">
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden sm:flex text-primary border-primary hover:bg-primary/10 h-8 text-xs font-medium"
               >
-                <i className="fa-regular fa-bell text-lg" />
-                {unread > 0 ? (
-                  <span className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border border-gray-950" />
-                ) : null}
-              </button>
-              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 font-medium border border-gray-600">
-                {initials[0] || "U"}
-              </div>
-            </div>
-          </header>
-        )}
-        {notesOpen ? (
-          <div className="absolute right-8 top-16 z-20 w-80 rounded-xl border border-gray-800 bg-gray-900 shadow-xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-white">Notifications</p>
-              <button type="button" className="text-xs text-gray-500" onClick={() => setNotesOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar">
-              {(context?.notifications ?? []).length === 0 ? (
-                <p className="text-sm text-gray-500 py-6 text-center">No notifications.</p>
-              ) : (
-                (context?.notifications ?? []).slice(0, 12).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-800 px-3 py-2">
-                    <p className="text-sm text-white">{item.title || "Notification"}</p>
-                    {item.message ? <p className="text-xs text-gray-500 mt-1">{item.message}</p> : null}
-                    <p className="text-[11px] text-gray-500 mt-1">{relativeTime(item.createdAt)}</p>
-                  </div>
-                ))
-              )}
-            </div>
+                Back to App
+              </Button>
+            </Link>
+
+            {/* Theme Toggle */}
+            <ModeToggle />
+
+            {/* Bug Report Popover */}
+            <BugReportPopover />
+
+            {/* Notifications */}
+            <NotificationBell />
+
+            {/* Account Profile at Top Right */}
+            <UserButton />
           </div>
-        ) : null}
-        <main className="relative flex-1 min-h-0 overflow-hidden">{children}</main>
+        </header>
+
+        {/* Content Outlet */}
+        <main className="relative flex-1 min-h-0 overflow-hidden bg-background">
+          {children}
+        </main>
       </div>
     </div>
   );

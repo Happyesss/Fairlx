@@ -2,6 +2,15 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Lightbulb,
+  Bug,
+  Code,
+  FlaskConical,
+  FileText,
+  ArrowUp,
+  Loader2,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -16,27 +25,27 @@ import { ModelPicker } from "./model-picker";
 
 const QUICK_ACTIONS = [
   {
-    icon: "fa-solid fa-lightbulb",
+    icon: Lightbulb,
     label: "Plan new feature",
     prompt: "Plan a new feature for the current Fairlx workspace.",
   },
   {
-    icon: "fa-solid fa-bug",
+    icon: Bug,
     label: "Fix a bug",
     prompt: "Help me investigate and fix a bug in the current Fairlx project.",
   },
   {
-    icon: "fa-solid fa-code",
+    icon: Code,
     label: "Refactor code",
     prompt: "Propose a focused refactor for the current Fairlx project.",
   },
   {
-    icon: "fa-solid fa-vial",
+    icon: FlaskConical,
     label: "Write tests",
     prompt: "Write tests for the current Fairlx work.",
   },
   {
-    icon: "fa-regular fa-file-lines",
+    icon: FileText,
     label: "Add docs",
     prompt: "Draft documentation for the current Fairlx work.",
   },
@@ -108,7 +117,7 @@ export function AgentCommandInput({
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
       <AgentScopeBar />
       <form
-        className="rounded-[22px] border border-white/10 bg-[#1a1b1e] shadow-[0_12px_40px_rgba(0,0,0,0.55)] flex flex-col"
+        className="rounded-[22px] border border-border bg-card shadow-lg flex flex-col transition-all focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50"
         onSubmit={(event) => {
           event.preventDefault();
           submit(prompt);
@@ -134,33 +143,33 @@ export function AgentCommandInput({
           placeholder={placeholder}
           rows={1}
           disabled={busy}
-          className="w-full bg-transparent text-[15px] text-zinc-100 leading-6 px-4 pt-3.5 pb-1.5 resize-none focus:outline-none placeholder:text-zinc-500 min-h-[44px] max-h-40"
+          className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-6 px-4 pt-3.5 pb-1.5 resize-none focus:outline-none placeholder:text-muted-foreground min-h-[44px] max-h-40"
         />
-        <div className="flex items-center gap-1 px-2 pb-2 pt-1">
+        <div className="flex items-center gap-1.5 px-3 pb-2.5 pt-1">
           <AgentPlusMenu
             chips={chips}
             onAdd={(chip) => setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])}
           />
           <ModelPicker variant="chip" />
           {sessionMode !== "agent" ? (
-            <span className="text-[10px] uppercase tracking-wide text-zinc-500 px-1">{sessionMode}</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground px-1 font-semibold">{sessionMode}</span>
           ) : null}
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="ml-auto flex items-center gap-1">
             <button
               type="submit"
               disabled={!canSend}
               className={cn(
-                "h-7 w-7 rounded-full flex items-center justify-center transition-colors",
+                "size-7 rounded-full flex items-center justify-center transition-colors shadow-sm",
                 canSend
-                  ? "bg-white text-zinc-900 hover:bg-zinc-200"
-                  : "bg-zinc-700/80 text-zinc-400 cursor-default",
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground cursor-default",
               )}
               title="Send"
             >
               {busy ? (
-                <i className="fa-solid fa-circle-notch fa-spin text-[10px]" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <i className="fa-solid fa-arrow-up text-[11px]" />
+                <ArrowUp className="size-3.5" />
               )}
             </button>
           </div>
@@ -168,18 +177,21 @@ export function AgentCommandInput({
       </form>
       {showQuickActions && variant === "create" ? (
         <div className="flex flex-wrap gap-2 px-1">
-          {QUICK_ACTIONS.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              disabled={busy}
-              onClick={() => submit(action.prompt)}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06]"
-            >
-              <i className={action.icon} />
-              {action.label}
-            </button>
-          ))}
+          {QUICK_ACTIONS.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.label}
+                type="button"
+                disabled={busy}
+                onClick={() => submit(action.prompt)}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card hover:bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm font-medium"
+              >
+                <Icon className="size-3.5 text-primary" />
+                <span>{action.label}</span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>

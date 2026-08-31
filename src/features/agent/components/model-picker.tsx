@@ -1,5 +1,6 @@
 "use client";
 
+import { Zap, Sliders, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -34,28 +35,28 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
         type="button"
         disabled={isPending}
         className={cn(
-          "flex items-center gap-1.5 h-7 px-2 rounded-full text-xs text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-colors",
+          "flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border/50 shadow-sm",
           className
         )}
       >
-        <i className="fa-solid fa-bolt text-[10px]" />
-        <span className="max-w-[160px] truncate">{label}</span>
-        <i className="fa-solid fa-chevron-down text-[9px] opacity-70" />
+        <Zap className="size-3 text-amber-500 fill-amber-500" />
+        <span className="max-w-[150px] truncate">{label}</span>
+        <ChevronDown className="size-3 opacity-60" />
       </button>
     ) : (
       <button
         type="button"
         disabled={isPending}
         className={cn(
-          "w-full flex items-center justify-between p-2 rounded-md hover:bg-fairlx-surface-hover cursor-pointer border border-transparent hover:border-fairlx-border group transition-colors text-left",
+          "w-full flex items-center justify-between p-2 rounded-lg hover:bg-sidebar-accent cursor-pointer border border-transparent hover:border-sidebar-border group transition-colors text-left",
           className
         )}
       >
-        <div className="flex items-center gap-2">
-          <i className="fa-solid fa-bolt text-yellow-500" />
-          <span className="text-fairlx-text text-sm group-hover:text-white">{label}</span>
+        <div className="flex items-center gap-2.5">
+          <Zap className="size-4 text-amber-500 fill-amber-500" />
+          <span className="text-foreground text-xs font-medium group-hover:text-primary transition-colors">{label}</span>
         </div>
-        <i className="fa-solid fa-chevron-down text-fairlx-text-muted text-xs group-hover:text-fairlx-text" />
+        <ChevronDown className="size-3 text-muted-foreground group-hover:text-foreground transition-colors" />
       </button>
     );
 
@@ -64,30 +65,32 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border w-64"
+        className="w-64 bg-popover border-border text-popover-foreground shadow-xl rounded-xl"
       >
-        <DropdownMenuLabel>Models</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Models
+        </DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => mutate({ json: { mode: "auto" } })}
-          className="flex items-center justify-between"
+          className="flex items-center justify-between text-xs font-medium cursor-pointer"
         >
           <span>Auto</span>
-          {selectedId === "auto" && <i className="fa-solid fa-check text-xs text-fairlx-primary" />}
+          {selectedId === "auto" && <Check className="size-3.5 text-primary" />}
         </DropdownMenuItem>
         {models.map((model) => (
           <DropdownMenuItem
             key={model.id}
             onClick={() => mutate({ json: { mode: "manual", selectedModelId: model.id } })}
-            className="flex items-center justify-between"
+            className="flex items-center justify-between text-xs font-medium cursor-pointer"
           >
             <span>{model.displayName}</span>
-            {selectedId === model.id && <i className="fa-solid fa-check text-xs text-fairlx-primary" />}
+            {selectedId === model.id && <Check className="size-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator className="bg-fairlx-border" />
-        <DropdownMenuItem onClick={openModels}>
-          <i className="fa-solid fa-sliders" />
-          Manage Models
+        <DropdownMenuSeparator className="bg-border" />
+        <DropdownMenuItem onClick={openModels} className="text-xs font-medium cursor-pointer gap-2">
+          <Sliders className="size-3.5" />
+          <span>Manage Models</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

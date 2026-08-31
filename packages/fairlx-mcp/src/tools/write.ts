@@ -1,8 +1,9 @@
-import { invalidParams, notFoundError } from "../protocol/errors";
+import { forbiddenError, invalidParams, notFoundError } from "../protocol/errors";
 import type { McpToolResult } from "../protocol/types";
 import type { AuthContext } from "../auth/context";
+import { hasScope } from "../auth/scopes";
 import { PERMISSIONS, type McpRuntime } from "../runtime/types";
-import { toolResult, withId } from "../runtime/output";
+import { hydrateMembers, toolResult, withId } from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem } from "../runtime/tenant";
 import { withIdempotency } from "../runtime/idempotency";
@@ -16,6 +17,12 @@ import {
   requireString,
   wouldCreateCycle,
 } from "./helpers";
+import {
+  isWorkspaceAdminRole,
+  matchWorkspaceMember,
+  normalizeMemberRole,
+  type NamedMember,
+} from "./member-match";
 
 export async function handleWriteTool(
   name: string,
@@ -71,6 +78,8 @@ export async function handleWriteTool(
       return savedViewCreate(args, runtime, auth);
     case "fairlx_sprint_update":
       return sprintUpdate(args, runtime, auth);
+    case "fairlx_workspace_member_update":
+      return workspaceMemberUpdate(args, runtime, auth);
     default:
       throw invalidParams(`Unknown write tool: ${name}`);
   }
@@ -893,5 +902,148 @@ async function sprintUpdate(
     resourceId: sprintId,
   });
   return toolResult({ sprint: withId(updated) });
+}
+
+async function listAllWorkspaceMembers(
+  runtime: McpRuntime,
+  workspaceId: string
+): Promise<Record<string, unknown>[]> {
+  const documents: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const queries = [
+      { type: "equal" as const, field: "workspaceId", value: workspaceId },
+      { type: "limit" as const, value: 100 },
+      { type: "orderDesc" as const, field: "$createdAt" },
+      ...(cursor ? [{ type: "cursorAfter" as const, value: cursor }] : []),
+    ];
+    const page = await runtime.store.list<Record<string, unknown>>(
+      runtime.collections.members,
+      queries
+    );
+    documents.push(...page.documents);
+    if (page.documents.length === 0 || documents.length >= page.total) break;
+    const last = page.documents[page.documents.length - 1];
+    cursor = String(last?.$id ?? last?.id ?? "");
+    if (!cursor) break;
+  }
+  return documents;
+}
+
+async function requireWorkspaceAdmin(
+  runtime: McpRuntime,
+  auth: AuthContext,
+  workspaceId: string
+): Promise<{ role: string }> {
+  assertWorkspaceBound(auth, workspaceId);
+  if (!hasScope(auth.scopes, ["admin:manage"])) {
+    throw forbiddenError("Insufficient MCP scope");
+  }
+  const membership = await runtime.store.list<Record<string, unknown>>(runtime.collections.members, [
+    { type: "equal", field: "userId", value: auth.actorUserId },
+    { type: "equal", field: "workspaceId", value: workspaceId },
+    { type: "limit", value: 1 },
+  ]);
+  const actor = membership.documents[0];
+  if (!actor) throw notFoundError("Not found");
+  const role = String(actor.role ?? "");
+  if (!isWorkspaceAdminRole(role)) {
+    throw forbiddenError("Only workspace admins can change member roles");
+  }
+  return { role: role.toUpperCase() };
+}
+
+async function workspaceMemberUpdate(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  const actor = await requireWorkspaceAdmin(runtime, auth, workspaceId);
+  let role: "OWNER" | "ADMIN" | "MEMBER";
+  try {
+    role = normalizeMemberRole(requireString(args, "role"));
+  } catch (error) {
+    throw invalidParams(error instanceof Error ? error.message : "Invalid role");
+  }
+  if (role === "OWNER" && actor.role !== "OWNER") {
+    throw forbiddenError("Only the workspace owner can grant owner");
+  }
+
+  const docs = await listAllWorkspaceMembers(runtime, workspaceId);
+  const hydrated = await hydrateMembers(runtime, docs);
+  const named: NamedMember[] = docs.map((doc, index) => ({
+    id: String(doc.$id ?? doc.id ?? ""),
+    name: hydrated[index]?.name ?? "",
+    email: hydrated[index]?.email ?? "",
+    role: hydrated[index]?.role ?? String(doc.role ?? "MEMBER"),
+    status: hydrated[index]?.status ?? String(doc.status ?? "ACTIVE"),
+  }));
+
+  const query = optionalString(args, "email") || optionalString(args, "name") || "";
+  if (!query) throw invalidParams("Provide the member's name or email");
+  const matched = matchWorkspaceMember(query, named);
+  if (matched.kind === "none") {
+    return toolResult(
+      {
+        error: `No member matches "${query}".`,
+        members: named.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+      true
+    );
+  }
+  if (matched.kind === "many") {
+    return toolResult(
+      {
+        error: "Several people match. Say which one.",
+        matches: matched.members.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+      true
+    );
+  }
+
+  const target = matched.member;
+  const targetDoc = docs.find((doc) => String(doc.$id ?? doc.id ?? "") === target.id);
+  if (!targetDoc) throw notFoundError("Not found");
+  const currentRole = String(targetDoc.role ?? target.role);
+  if (currentRole === "OWNER" && actor.role !== "OWNER") {
+    throw forbiddenError("Only the workspace owner can change the owner's role");
+  }
+  if (docs.length === 1 && role !== "OWNER" && currentRole === "OWNER") {
+    throw invalidParams("Cannot downgrade the only member");
+  }
+  if (currentRole === role) {
+    return toolResult({
+      member: { name: target.name, email: target.email, role, status: target.status },
+      unchanged: true,
+    });
+  }
+
+  await runtime.store.update(runtime.collections.members, target.id, { role });
+  try {
+    await runtime.onMembershipChanged?.({ userId: String(targetDoc.userId ?? ""), workspaceId });
+  } catch {
+    // Cache invalidation must never fail the role change.
+  }
+  await audit(runtime, {
+    workspaceId,
+    userId: auth.actorUserId,
+    action: "mcp.workspace_member.update_role",
+    resourceType: "member",
+    resourceId: target.id,
+    resourceName: target.name,
+    metadata: { from: currentRole, to: role },
+  });
+  return toolResult({
+    member: { name: target.name, email: target.email, role, status: target.status },
+  });
 }
 

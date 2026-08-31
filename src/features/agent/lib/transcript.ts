@@ -90,7 +90,10 @@ function asRecord(raw: string): Record<string, unknown> | null {
 }
 
 export function toolLabel(name: string) {
-  return AGENT_TOOL_CATALOG.find((tool) => tool.id === name)?.name ?? name.replaceAll("_", " ");
+  const catalog = AGENT_TOOL_CATALOG.find((tool) => tool.id === name);
+  if (catalog) return catalog.name;
+  const mcp = name.startsWith("fairlx_") ? name.slice("fairlx_".length) : name;
+  return mcp.replaceAll("_", " ");
 }
 
 export function summarizeToolResult(name: string, content?: string): { ok: boolean; detail: string } {
@@ -112,15 +115,16 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     return { ok: true, detail: `${repos} repos · ${staged} staged` };
   }
   if (name === "mcp_call") {
-    const server = String(parsed.server || "mcp");
-    const tool = String(parsed.tool || "tool");
+    const tool = String(parsed.tool || "tool").replace(/^fairlx_/, "").replaceAll("_", " ");
     const result = parsed.result;
     const nestedError =
       result && typeof result === "object" && "error" in result
         ? String((result as { error?: unknown }).error || "")
         : "";
-    if (nestedError) return { ok: false, detail: `${server}.${tool}: ${nestedError}` };
-    return { ok: true, detail: `${server}.${tool}` };
+    if (nestedError) return { ok: false, detail: nestedError };
+    const denied = typeof parsed.error === "string" && /denied/i.test(parsed.error);
+    if (denied) return { ok: false, detail: "Denied" };
+    return { ok: true, detail: tool };
   }
   if (name === "list_work_items" || name === "list_projects" || name === "list_workspaces") {
     const key = name === "list_workspaces" ? "workspaces" : name === "list_projects" ? "projects" : "workItems";

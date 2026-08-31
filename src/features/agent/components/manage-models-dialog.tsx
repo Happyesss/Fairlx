@@ -20,7 +20,6 @@ import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useUpdateAgentAiConfig } from "../api/use-update-agent-ai-config";
 import {
   DEEPSEEK_FLASH_MODEL_ID,
-  GROK_46_MODEL_ID,
   PROVIDER_CATALOG,
   getProviderCatalogItem,
 } from "../constants";
@@ -35,7 +34,7 @@ import type {
 } from "../types";
 
 const fieldClass =
-  "border-fairlx-border bg-fairlx-bg text-fairlx-text placeholder:text-fairlx-text-muted";
+  "border-border bg-background text-foreground placeholder:text-muted-foreground";
 
 type ManageModelsDialogProps = {
   open: boolean;
@@ -78,7 +77,7 @@ function newId(prefix: string) {
 function emptyAiDraft(): AiDraft {
   return {
     mode: "auto",
-    selectedModelId: GROK_46_MODEL_ID,
+    selectedModelId: DEEPSEEK_FLASH_MODEL_ID,
     providers: [],
     models: [],
   };
@@ -218,7 +217,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
   const handleSave = () => {
     const payload: AgentAiConfigInput = {
       mode: draft.mode,
-      selectedModelId: draft.mode === "auto" ? GROK_46_MODEL_ID : draft.selectedModelId,
+      selectedModelId: draft.mode === "auto" ? DEEPSEEK_FLASH_MODEL_ID : draft.selectedModelId,
       providers: draft.providers.map((provider) => ({
         id: provider.id,
         provider: provider.provider,
@@ -242,15 +241,15 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Manage Models</DialogTitle>
-          <DialogDescription className="text-fairlx-text-muted">
-            Auto uses Grok 4.6 and DeepSeek V4 Flash. Add BYOK providers from the catalog.
+          <DialogDescription className="text-muted-foreground">
+            Auto uses DeepSeek V4 Flash. Add BYOK providers from the catalog.
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading && <p className="text-sm text-fairlx-text-muted">Loading models…</p>}
+        {isLoading && <p className="text-sm text-muted-foreground">Loading models…</p>}
 
         <div className="space-y-2">
           <Label>Mode</Label>
@@ -259,8 +258,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
               type="button"
               size="sm"
               variant={draft.mode === "auto" ? "primary" : "outline"}
-              className={draft.mode === "auto" ? "" : "border-fairlx-border bg-transparent text-fairlx-text"}
-              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: GROK_46_MODEL_ID })}
+              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: DEEPSEEK_FLASH_MODEL_ID })}
             >
               Auto
             </Button>
@@ -268,15 +266,14 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
               type="button"
               size="sm"
               variant={draft.mode === "manual" ? "primary" : "outline"}
-              className={draft.mode === "manual" ? "" : "border-fairlx-border bg-transparent text-fairlx-text"}
               onClick={() => setDraft({ ...draft, mode: "manual" })}
             >
               Manual
             </Button>
           </div>
           {draft.mode === "auto" && (
-            <p className="text-xs text-fairlx-text-muted">
-              Routes with Grok 4.6 (`{GROK_46_MODEL_ID}`) and DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
+            <p className="text-xs text-muted-foreground">
+              Routes with DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
             </p>
           )}
         </div>
@@ -289,10 +286,10 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                 key={item.type}
                 type="button"
                 onClick={() => startAddProvider(item.type)}
-                className="flex items-center gap-2 rounded-lg border border-fairlx-border bg-fairlx-bg px-3 py-2 text-left text-sm hover:border-fairlx-primary transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs font-medium hover:border-primary transition-colors"
               >
-                <i className={`${item.icon} text-fairlx-text-muted`} />
-                {item.label}
+                <i className={`${item.icon} text-muted-foreground`} />
+                <span>{item.label}</span>
               </button>
             ))}
           </div>
@@ -300,23 +297,23 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
 
         <div className="space-y-2">
           <Label>Providers</Label>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {draft.providers.map((provider) => {
               const catalog = catalogByType[provider.provider];
               return (
                 <div
                   key={provider.id}
-                  className="flex items-center justify-between rounded-lg border border-fairlx-border px-3 py-2 gap-3"
+                  className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 gap-3"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      {catalog && <i className={`${catalog.icon} text-fairlx-text-muted`} />}
-                      <span className="text-sm font-medium truncate">{provider.displayName}</span>
+                      {catalog && <i className={`${catalog.icon} text-muted-foreground`} />}
+                      <span className="text-sm font-medium truncate text-foreground">{provider.displayName}</span>
                       {provider.isPlatform && (
-                        <span className="text-[10px] uppercase tracking-wide text-fairlx-primary">Platform</span>
+                        <span className="text-[10px] uppercase tracking-wide text-primary font-semibold">Platform</span>
                       )}
                     </div>
-                    <div className="text-xs text-fairlx-text-muted">{keySourceLabel(provider)}</div>
+                    <div className="text-xs text-muted-foreground">{keySourceLabel(provider)}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Switch
@@ -330,15 +327,15 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                         }))
                       }
                     />
-                    <Button type="button" size="xs" variant="ghost" onClick={() => startEditProvider(provider)}>
+                    <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => startEditProvider(provider)}>
                       Edit
                     </Button>
                     {!provider.isPlatform && (
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
-                        className="text-red-400"
+                        className="text-destructive hover:text-destructive h-8 text-xs"
                         onClick={() =>
                           setDraft((current) => ({
                             ...current,
@@ -358,12 +355,12 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
         </div>
 
         {providerForm && (
-          <div className="rounded-lg border border-fairlx-border p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">
+              <h4 className="text-sm font-semibold text-foreground">
                 {providerForm.id ? "Edit provider" : `Add ${getProviderCatalogItem(providerForm.provider)?.label}`}
               </h4>
-              <Button type="button" size="xs" variant="ghost" onClick={() => setProviderForm(null)}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setProviderForm(null)}>
                 Cancel
               </Button>
             </div>
@@ -400,7 +397,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                 />
               </div>
             )}
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <Button type="button" size="sm" onClick={applyProviderForm}>
                 Apply
               </Button>
@@ -413,9 +410,8 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
             <Label>Models</Label>
             <Button
               type="button"
-              size="xs"
+              size="sm"
               variant="outline"
-              className="border-fairlx-border bg-transparent text-fairlx-text"
               onClick={() =>
                 setModelForm({
                   providerId: draft.providers[0]?.id ?? "",
@@ -430,17 +426,17 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
               Add model
             </Button>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {draft.models.map((model) => {
               const provider = draft.providers.find((item) => item.id === model.providerId);
               return (
                 <div
                   key={model.id}
-                  className="flex items-center justify-between rounded-lg border border-fairlx-border px-3 py-2 gap-3"
+                  className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 gap-3"
                 >
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{model.displayName}</div>
-                    <div className="text-xs text-fairlx-text-muted">
+                    <div className="text-sm font-medium truncate text-foreground">{model.displayName}</div>
+                    <div className="text-xs text-muted-foreground">
                       {provider?.displayName || model.providerId} · {model.modelId}
                       {model.role ? ` · ${model.role}` : ""}
                     </div>
@@ -459,8 +455,9 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                     />
                     <Button
                       type="button"
-                      size="xs"
+                      size="sm"
                       variant="ghost"
+                      className="h-8 text-xs"
                       onClick={() =>
                         setModelForm({
                           id: model.id,
@@ -478,9 +475,9 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                     {!model.isPlatform && (
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
-                        className="text-red-400"
+                        className="text-destructive hover:text-destructive h-8 text-xs"
                         onClick={() =>
                           setDraft((current) => ({
                             ...current,
@@ -499,10 +496,10 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
         </div>
 
         {modelForm && (
-          <div className="rounded-lg border border-fairlx-border p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">{modelForm.id ? "Edit model" : "Add model"}</h4>
-              <Button type="button" size="xs" variant="ghost" onClick={() => setModelForm(null)}>
+              <h4 className="text-sm font-semibold text-foreground">{modelForm.id ? "Edit model" : "Add model"}</h4>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setModelForm(null)}>
                 Cancel
               </Button>
             </div>
@@ -556,7 +553,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
                 />
               </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <Button type="button" size="sm" onClick={applyModelForm}>
                 Apply
               </Button>
@@ -568,7 +565,6 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
           <Button
             type="button"
             variant="outline"
-            className="border-fairlx-border bg-transparent text-fairlx-text"
             onClick={() => onOpenChange(false)}
           >
             Cancel

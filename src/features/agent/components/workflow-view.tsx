@@ -3,26 +3,66 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Bot,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
+  XCircle,
+  Share2,
+  Bookmark,
+  Trash2,
+  Square,
+  RotateCcw,
+  Pencil,
+  Server,
+  GitBranch,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  ChevronRight,
+  Check,
+  Copy,
+} from "lucide-react";
+import { RiAddCircleFill } from "react-icons/ri";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ProjectAvatar } from "@/features/projects/components/project-avatar";
+import { useCreateProjectModal } from "@/features/projects/hooks/use-create-project-modal";
 
 import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
+import { isInternalMcpServer } from "../constants";
 import {
+  useConfirmAgentRun,
   useContinueAgentRun,
+  useDenyAgentRun,
   useDeleteAgentRun,
   useGetAgentRun,
   usePatchAgentRun,
   useSendAgentMessage,
   useStopAgentRun,
 } from "../api/use-agent-runs";
-import { useCurrent } from "@/features/auth/api/use-current";
 import { selectedModelLabel } from "../lib/client-defaults";
-import { clockTime, relativeTime, userInitials } from "../lib/agent-ui";
+import { clockTime, relativeTime } from "../lib/agent-ui";
 import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
+import { sanitizeAssistantVisible } from "../lib/visible-content";
+import { findPendingConfirmation } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
 import { useAgentUi } from "./agent-ui-context";
@@ -30,8 +70,8 @@ import { ModelPicker } from "./model-picker";
 
 function FloatingComposer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 bg-gradient-to-t from-gray-950 via-gray-950/90 to-transparent pt-16">
-      <div className="pointer-events-auto mx-auto w-full max-w-[720px] px-4 pb-5">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/95 to-transparent pt-16">
+      <div className="pointer-events-auto mx-auto w-full max-w-[760px] px-4 pb-5">
         {children}
       </div>
     </div>
@@ -41,30 +81,155 @@ function FloatingComposer({ children }: { children: React.ReactNode }) {
 function UserBubble({ message }: { message: AgentChatMessage }) {
   return (
     <div className="flex gap-4 justify-end">
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 max-w-2xl text-gray-300 relative group">
-        <div className="text-xs text-gray-500 mb-1">
+      <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 max-w-2xl text-foreground relative group shadow-sm">
+        <div className="text-xs text-muted-foreground mb-1 font-medium">
           You <span className="mx-1">•</span> {clockTime(message.createdAt)}
         </div>
-        <p className="leading-relaxed whitespace-pre-wrap">{displayUserContent(message.content)}</p>
+        <p className="leading-relaxed whitespace-pre-wrap text-sm">{displayUserContent(message.content)}</p>
       </div>
     </div>
   );
 }
 
-function AgentBubble({ message }: { message: AgentChatMessage }) {
-  if (!message.content?.trim()) return null;
+function CodeBlock({
+  className,
+  children,
+  ...props
+}: {
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || "");
+  const codeString = String(children).replace(/\n$/, "");
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (match) {
+    return (
+      <div className="relative group my-3 rounded-lg overflow-hidden border border-border bg-[#1e1e1e]">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-muted/60 border-b border-border text-[11px] text-muted-foreground font-mono">
+          <span>{match[1]}</span>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            {copied ? <Check className="size-3 text-green-500" /> : <Copy className="size-3" />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+        <SyntaxHighlighter
+          style={vscDarkPlus}
+          language={match[1]}
+          PreTag="div"
+          customStyle={{ margin: 0, padding: "12px", fontSize: "12px", background: "transparent" }}
+        >
+          {codeString}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex gap-4">
-      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium shrink-0 mt-1">
-        f
+    <code className={cn("bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-foreground", className)} {...props}>
+      {children}
+    </code>
+  );
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed text-sm">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code: CodeBlock,
+          p({ children }) {
+            return <p className="mb-2.5 last:mb-0 leading-relaxed text-sm text-foreground">{children}</p>;
+          },
+          strong({ children }) {
+            return <strong className="font-semibold text-foreground">{children}</strong>;
+          },
+          ul({ children }) {
+            return <ul className="list-disc pl-5 my-2 space-y-1 text-sm text-foreground">{children}</ul>;
+          },
+          ol({ children }) {
+            return <ol className="list-decimal pl-5 my-2 space-y-1 text-sm text-foreground">{children}</ol>;
+          },
+          li({ children }) {
+            return <li className="leading-relaxed">{children}</li>;
+          },
+          h1({ children }) {
+            return <h1 className="text-base font-bold my-2 text-foreground">{children}</h1>;
+          },
+          h2({ children }) {
+            return <h2 className="text-sm font-bold my-2 text-foreground">{children}</h2>;
+          },
+          h3({ children }) {
+            return <h3 className="text-sm font-semibold my-1.5 text-foreground">{children}</h3>;
+          },
+          blockquote({ children }) {
+            return (
+              <blockquote className="border-l-2 border-primary/60 pl-3 italic text-muted-foreground my-2">
+                {children}
+              </blockquote>
+            );
+          },
+          a({ href, children }) {
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline font-medium"
+              >
+                {children}
+              </a>
+            );
+          },
+          table({ children }) {
+            return (
+              <div className="overflow-x-auto my-3 rounded-lg border border-border">
+                <table className="min-w-full divide-y divide-border text-xs">{children}</table>
+              </div>
+            );
+          },
+          th({ children }) {
+            return <th className="bg-muted/50 px-3 py-2 text-left font-semibold text-foreground">{children}</th>;
+          },
+          td({ children }) {
+            return <td className="px-3 py-2 border-t border-border">{children}</td>;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function AgentBubble({ message }: { message: AgentChatMessage }) {
+  const visible = sanitizeAssistantVisible(message.content);
+  if (!visible) return null;
+  return (
+    <div className="flex gap-3.5">
+      <div className="size-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">
+        <Bot className="size-4" />
       </div>
       <div className="flex-1 flex flex-col gap-2 min-w-0">
-        <div className="text-xs text-gray-500 flex items-center gap-2">
-          <span className="font-medium text-gray-300">fairlx Agent</span>
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <span className="font-semibold text-foreground">fairlx Agent</span>
           <span>•</span>
           <span>{clockTime(message.createdAt)}</span>
         </div>
-        <p className="text-gray-300 leading-relaxed max-w-3xl whitespace-pre-wrap">{message.content}</p>
+        <div className="max-w-3xl">
+          <MarkdownContent content={visible} />
+        </div>
       </div>
     </div>
   );
@@ -74,24 +239,27 @@ function StepsCard({
   lead,
   steps,
   running,
+  awaiting,
 }: {
   lead?: AgentChatMessage;
   steps: TranscriptStep[];
   running: boolean;
+  awaiting?: boolean;
 }) {
   const [open, setOpen] = useState(true);
-  const failed = steps.some((step) => !summarizeToolResult(step.call.name, step.result?.content).ok);
+  const failed = steps.some((step) => step.result && !summarizeToolResult(step.call.name, step.result?.content).ok);
   const last = steps[steps.length - 1];
-  const inProgress = running && last && !last.result;
+  const inProgress = (running || awaiting) && last && !last.result;
+  const leadVisible = sanitizeAssistantVisible(lead?.content ?? "");
 
   return (
-    <div className="flex gap-4">
-      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium shrink-0 mt-1">
-        f
+    <div className="flex gap-3.5">
+      <div className="size-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">
+        <Bot className="size-4" />
       </div>
-      <div className="flex-1 min-w-0 flex flex-col gap-3">
-        <div className="text-xs text-gray-500 flex items-center gap-2">
-          <span className="font-medium text-gray-300">fairlx Agent</span>
+      <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <span className="font-semibold text-foreground">fairlx Agent</span>
           {lead?.createdAt ? (
             <>
               <span>•</span>
@@ -99,36 +267,44 @@ function StepsCard({
             </>
           ) : null}
         </div>
-        {lead?.content ? (
-          <p className="text-gray-300 leading-relaxed max-w-3xl whitespace-pre-wrap">{lead.content}</p>
+        {leadVisible ? (
+          <div className="max-w-3xl">
+            <MarkdownContent content={leadVisible} />
+          </div>
         ) : null}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden max-w-4xl mt-2">
+        <div className="bg-card border border-border rounded-xl overflow-hidden max-w-4xl shadow-sm mt-1">
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="w-full px-4 py-3 border-b border-gray-800 flex items-center justify-between text-left"
+            className="w-full px-4 py-3 border-b border-border flex items-center justify-between text-left hover:bg-muted/40 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {inProgress ? (
-                <i className="fa-solid fa-circle-notch fa-spin text-gray-400" />
+                <Loader2 className="size-4 animate-spin text-primary" />
               ) : failed ? (
-                <i className="fa-solid fa-triangle-exclamation text-red-400" />
+                <AlertTriangle className="size-4 text-destructive" />
               ) : (
-                <i className="fa-solid fa-check text-green-500" />
+                <CheckCircle2 className="size-4 text-green-500" />
               )}
-              <span className="font-medium text-gray-200">
-                {inProgress ? "Working on it..." : failed ? "Finished with errors" : "Finished"}
+              <span className="font-medium text-foreground text-sm">
+                {awaiting
+                  ? "Waiting for approval"
+                  : inProgress
+                    ? "Working…"
+                    : failed
+                      ? "Finished with errors"
+                      : "Finished"}
               </span>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-400">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>
                 {steps.length} {steps.length === 1 ? "step" : "steps"}
               </span>
-              <i className={cn("fa-solid", open ? "fa-chevron-up" : "fa-chevron-down")} />
+              {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
             </div>
           </button>
           {open ? (
-            <div className="flex flex-col">
+            <div className="flex flex-col divide-y divide-border">
               {steps.map((step, index) => {
                 const summary = summarizeToolResult(step.call.name, step.result?.content);
                 const active = inProgress && index === steps.length - 1 && !step.result;
@@ -136,41 +312,39 @@ function StepsCard({
                   <div
                     key={step.call.id}
                     className={cn(
-                      "px-4 py-3 flex items-start gap-4",
-                      index < steps.length - 1 && "border-b border-gray-800",
-                      active && "bg-gray-850 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-blue-500",
+                      "px-4 py-3 flex items-start gap-3.5 transition-colors",
+                      active && "bg-primary/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-primary"
                     )}
                   >
-                    <div className="mt-0.5 w-4 text-center">
+                    <div className="mt-0.5 size-4 text-center shrink-0">
                       {active ? (
-                        <span className="font-mono text-blue-500 text-sm">{index + 1}</span>
+                        <span className="font-mono text-primary text-xs font-bold">{index + 1}</span>
                       ) : summary.ok ? (
-                        <i className="fa-solid fa-check text-green-500" />
+                        <Check className="size-4 text-green-500" />
                       ) : (
-                        <i className="fa-solid fa-xmark text-red-400" />
+                        <XCircle className="size-4 text-destructive" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={cn("font-medium", active ? "text-blue-400" : "text-gray-200")}>
+                      <div className={cn("text-xs font-semibold", active ? "text-primary" : "text-foreground")}>
                         {toolLabel(step.call.name)}
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">
-                        {step.event?.title || summary.detail}
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {awaiting && !step.result
+                          ? "Needs your approval"
+                          : sanitizeAssistantVisible(step.event?.title || summary.detail)}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-xs shrink-0">
+                    <div className="flex items-center gap-1.5 text-xs shrink-0">
                       {active ? (
-                        <span className="text-blue-400 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                          In progress
+                        <span className="text-primary font-medium flex items-center gap-1.5">
+                          <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+                          {awaiting ? "Pending" : "In progress"}
                         </span>
                       ) : summary.ok ? (
-                        <span className="text-green-500">
-                          <i className="fa-regular fa-circle-check mr-1" />
-                          Completed
-                        </span>
+                        <span className="text-green-500 font-medium">Completed</span>
                       ) : (
-                        <span className="text-red-400">Failed</span>
+                        <span className="text-destructive font-medium">Failed</span>
                       )}
                     </div>
                   </div>
@@ -184,42 +358,98 @@ function StepsCard({
   );
 }
 
-function ContextRow({
-  icon,
-  iconClass,
-  label,
-  value,
-  href,
-  onClick,
+function ProjectSelectorRow({
+  run,
+  projects,
+  selectedProject,
 }: {
-  icon: string;
-  iconClass?: string;
-  label: string;
-  value: string;
-  href?: string;
-  onClick?: () => void;
+  run: AgentRun;
+  projects: Array<{ id: string; name: string; workspaceId: string; imageUrl?: string; key?: string; status?: string }>;
+  selectedProject?: { id: string; name: string; workspaceId: string; imageUrl?: string };
+  workspaceId?: string;
 }) {
-  const inner = (
-    <div className="flex items-center justify-between p-2 rounded-md hover:bg-gray-850 cursor-pointer border border-transparent hover:border-gray-800 group transition-colors">
-      <div className="flex items-center gap-2 min-w-0">
-        <i className={`${icon} ${iconClass ?? "text-gray-400"}`} />
-        <span className="text-gray-300 text-sm group-hover:text-gray-200 truncate">{value}</span>
-      </div>
-      <i className="fa-solid fa-chevron-right text-gray-600 text-xs group-hover:text-gray-400" />
-    </div>
-  );
+  const [isExpanded, setIsExpanded] = useState(true);
+  const patchRun = usePatchAgentRun();
+  const updateHarness = useUpdateAgentHarness();
+  const { open: openCreateProject } = useCreateProjectModal();
+
+  const handleSelect = (projId: string | null) => {
+    const nextProject = projects.find((p) => p.id === projId);
+    patchRun.mutate({
+      param: { runId: run.id },
+      json: {
+        projectId: projId || "",
+        ...(nextProject ? { workspaceId: nextProject.workspaceId } : {}),
+      },
+    });
+    updateHarness.mutate({
+      json: {
+        settings: {
+          defaultProjectId: projId || undefined,
+          ...(nextProject ? { defaultWorkspaceId: nextProject.workspaceId } : {}),
+        },
+      },
+    });
+  };
+
   return (
-    <div>
-      <div className="text-xs text-gray-500 mb-2">{label}</div>
-      {href ? (
-        <Link href={href}>{inner}</Link>
-      ) : onClick ? (
-        <button type="button" className="w-full text-left" onClick={onClick}>
-          {inner}
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between mb-1.5 px-1">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1.5 text-[11px] tracking-wider uppercase font-semibold text-sidebar-foreground/50 hover:text-sidebar-foreground/70 transition-colors"
+        >
+          {isExpanded ? (
+            <ChevronDown className="size-3" />
+          ) : (
+            <ChevronRight className="size-3" />
+          )}
+          Projects
         </button>
-      ) : (
-        inner
-      )}
+        <RiAddCircleFill
+          onClick={() => openCreateProject()}
+          className="size-5 text-sidebar-foreground/70 cursor-pointer hover:opacity-75 transition"
+        />
+      </div>
+
+      <div
+        className={`transition-all duration-300 overflow-hidden ${
+          isExpanded ? "max-h-96" : "max-h-0"
+        }`}
+      >
+        <Select
+          onValueChange={(val) => handleSelect(val === "none" ? null : val)}
+          value={selectedProject?.id || "none"}
+        >
+          <SelectTrigger className="w-full p-2 font-medium text-xs bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground/90 h-9">
+            <SelectValue placeholder="No project selected." />
+          </SelectTrigger>
+
+          <SelectContent className="bg-popover border-border max-h-72">
+            <SelectItem value="none">
+              <div className="flex items-center gap-3 font-medium">
+                <div className="size-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground text-xs font-semibold">
+                  —
+                </div>
+                <span className="truncate text-xs text-muted-foreground">No project selected.</span>
+              </div>
+            </SelectItem>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>
+                <div className="flex items-center gap-3 font-medium">
+                  <ProjectAvatar
+                    name={project.name}
+                    image={project.imageUrl}
+                    className="size-6 text-[10px]"
+                  />
+                  <span className="truncate text-xs">{project.name}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }
@@ -241,8 +471,15 @@ function WorkflowSidebar({
   const { data: mcp } = useGetAgentMcpConfig();
   const { data: ai } = useGetAgentAiConfig();
   const workspace = context?.workspaces.find((item) => item.id === run.workspaceId) ?? context?.workspaces[0];
+  const workspaceId = run.workspaceId || harness?.settings.defaultWorkspaceId || workspace?.id;
+  const workspaceProjects = useMemo(
+    () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
+    [context?.projects, workspaceId]
+  );
   const project = context?.projects.find((item) => item.id === run.projectId);
-  const connected = Object.values(mcp?.mcpServers ?? {}).filter((server) => !server.disabled).length;
+  const connected = Object.entries(mcp?.mcpServers ?? {}).filter(
+    ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
+  ).length;
   const staging = harness?.gitStaging?.items ?? [];
   const live = events.slice(-12);
   const repo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
@@ -250,8 +487,9 @@ function WorkflowSidebar({
   const githubUrl = repo?.githubUrl || (repo?.owner && repo.repositoryName ? `https://github.com/${repo.owner}/${repo.repositoryName}` : "");
 
   return (
-    <aside className="hidden lg:flex w-72 bg-gray-900 border-l border-gray-800 flex-col flex-shrink-0">
-      <div className="flex border-b border-gray-800 shrink-0">
+    <aside className="hidden lg:flex w-80 bg-sidebar border-l border-sidebar-border flex-col flex-shrink-0 h-full">
+      {/* Tabs Header at top of Right Sidebar */}
+      <div className="flex border-b border-sidebar-border bg-sidebar shrink-0">
         {(
           [
             ["context", "Context"],
@@ -265,82 +503,76 @@ function WorkflowSidebar({
             type="button"
             onClick={() => onTab(id)}
             className={cn(
-              "flex-1 py-3 text-sm font-medium transition-colors",
+              "flex-1 py-3 text-xs font-semibold transition-colors border-b-2",
               tab === id
-                ? "text-blue-400 border-b-2 border-blue-500 bg-gray-850"
-                : "text-gray-500 hover:text-gray-300",
+                ? "text-primary border-primary bg-sidebar-accent/50"
+                : "text-muted-foreground border-transparent hover:text-foreground hover:bg-sidebar-accent/30"
             )}
           >
             {label}
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-5 flex flex-col gap-6">
+
+      {/* Tabs Body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-5">
         {tab === "context" ? (
           <>
-            <div className="flex flex-col gap-4">
-              <ContextRow
-                icon="fa-solid fa-globe"
-                iconClass="text-green-500"
-                label="Workspace"
-                value={workspace?.name || "No workspace"}
-                href={workspace ? `/workspaces/${workspace.id}` : "/agent/workspaces"}
-              />
-              <ContextRow
-                icon="fa-solid fa-code"
-                iconClass="text-blue-500"
-                label="Project"
-                value={project?.name || "No project"}
-                href={
-                  project
-                    ? `/workspaces/${project.workspaceId}/projects/${project.id}`
-                    : "/agent/projects"
-                }
+            <div className="flex flex-col gap-3">
+              <ProjectSelectorRow
+                run={run}
+                projects={workspaceProjects}
+                selectedProject={project}
+                workspaceId={workspace?.id}
               />
               <div>
-                <div className="text-xs text-gray-500 mb-2">Agent</div>
+                <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Agent</div>
                 <ModelPicker variant="sidebar" />
               </div>
               <button
                 type="button"
                 onClick={openMcp}
-                className="flex items-center justify-between p-2 rounded-md hover:bg-gray-850 cursor-pointer border border-transparent hover:border-gray-800 group transition-colors w-full text-left"
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-sidebar-accent cursor-pointer border border-transparent hover:border-sidebar-border group transition-colors w-full text-left"
               >
-                <div className="flex items-center gap-2">
-                  <i className="fa-solid fa-server text-gray-400" />
-                  <span className="text-gray-300 text-sm group-hover:text-gray-200">MCP Servers</span>
+                <div className="flex items-center gap-2.5">
+                  <Server className="size-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <span className="text-foreground text-xs font-medium group-hover:text-primary transition-colors">MCP Servers</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-green-500">{connected} connected</span>
-                  <i className="fa-solid fa-chevron-right text-gray-600 group-hover:text-gray-400" />
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className={cn("font-medium text-[11px]", connected > 0 ? "text-green-500" : "text-muted-foreground")}>
+                    {connected} connected
+                  </span>
+                  <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
                 </div>
               </button>
               {project && !repo ? (
                 <Link
                   href={`/workspaces/${project.workspaceId}/projects/${project.id}/github`}
-                  className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+                  className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-300 font-medium"
                 >
-                  No GitHub repo linked. Sign in to GitHub to attach code, open branches, and review commits.
+                  No GitHub repo linked. Link GitHub to attach code and inspect commits.
                 </Link>
               ) : null}
             </div>
-            <hr className="border-gray-800" />
+
+            <hr className="border-sidebar-border" />
+
             <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-300">Live Activity</h3>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Live Activity</h3>
                 {run.status === "running" ? (
-                  <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full font-medium">
+                    <span className="size-1.5 rounded-full bg-green-500 animate-pulse" />
                     Live
                   </div>
                 ) : (
-                  <span className="text-xs text-gray-500 capitalize">{run.status}</span>
+                  <span className="text-xs text-muted-foreground capitalize font-medium">{run.status}</span>
                 )}
               </div>
               {live.length === 0 ? (
-                <p className="text-xs text-gray-500">No activity yet.</p>
+                <p className="text-xs text-muted-foreground px-1">No activity yet.</p>
               ) : (
-                <div className="relative pl-3 border-l border-gray-800 flex flex-col gap-3">
+                <div className="relative pl-3 border-l-2 border-sidebar-border flex flex-col gap-3 ml-2">
                   {live.map((event, index) => {
                     const latest = index === live.length - 1 && run.status === "running";
                     const failed = event.type === "error" || /fail/i.test(event.title);
@@ -348,22 +580,22 @@ function WorkflowSidebar({
                       <div key={event.id} className="relative">
                         <div
                           className={cn(
-                            "absolute -left-[17px] top-1.5 w-2 h-2 rounded-full",
+                            "absolute -left-[18px] top-1.5 size-2 rounded-full",
                             latest
-                              ? "bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.5)]"
+                              ? "bg-primary shadow-[0_0_6px_rgba(59,130,246,0.8)]"
                               : failed
-                                ? "bg-red-400"
-                                : "bg-gray-600",
+                                ? "bg-destructive"
+                                : "bg-muted-foreground/50"
                           )}
                         />
                         <div className="flex items-start text-xs">
-                          <span className={cn("w-16 shrink-0", latest ? "text-blue-400" : "text-gray-500")}>
+                          <span className={cn("w-14 shrink-0 text-[11px]", latest ? "text-primary font-medium" : "text-muted-foreground")}>
                             {clockTime(event.createdAt, true)}
                           </span>
                           <span
                             className={cn(
-                              "flex-1 ml-2",
-                              latest ? "text-blue-400 font-medium" : failed ? "text-red-400" : "text-gray-400",
+                              "flex-1 ml-1.5 truncate",
+                              latest ? "text-primary font-medium" : failed ? "text-destructive font-medium" : "text-foreground"
                             )}
                           >
                             {event.title}
@@ -375,47 +607,50 @@ function WorkflowSidebar({
                 </div>
               )}
             </div>
-            <hr className="border-gray-800" />
+
+            <hr className="border-sidebar-border" />
+
             <div>
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Run Settings</h3>
-              <div className="flex flex-col gap-3 text-xs">
-                <div className="flex justify-between gap-3">
-                  <span className="text-gray-500">Model</span>
-                  <span className="text-gray-300 truncate">{selectedModelLabel(ai)}</span>
+              <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 px-1">Run Settings</h3>
+              <div className="flex flex-col gap-2.5 text-xs bg-sidebar-accent/40 border border-sidebar-border rounded-lg p-3">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Model</span>
+                  <span className="text-foreground font-medium truncate">{selectedModelLabel(ai)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Mode</span>
-                  <span className="text-gray-300 capitalize">{run.mode}</span>
+                  <span className="text-muted-foreground">Mode</span>
+                  <span className="text-foreground font-medium capitalize">{run.mode}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Steps</span>
-                  <span className="text-gray-300">{events.length}</span>
+                  <span className="text-muted-foreground">Steps</span>
+                  <span className="text-foreground font-medium">{events.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Started</span>
-                  <span className="text-gray-300">{relativeTime(run.createdAt)}</span>
+                  <span className="text-muted-foreground">Started</span>
+                  <span className="text-foreground font-medium">{relativeTime(run.createdAt)}</span>
                 </div>
               </div>
             </div>
           </>
         ) : null}
+
         {tab === "changes" ? (
           <div className="space-y-3">
             {staging.length === 0 ? (
-              <p className="text-sm text-gray-500">No harness staging yet. Git stays in Fairlx staging — it is never executed on this Mac.</p>
+              <p className="text-xs text-muted-foreground px-1">No harness staging yet. Staged files will appear here.</p>
             ) : (
               staging.map((item) => (
                 <Link
                   key={item.id}
                   href="/agent/git"
-                  className="block rounded-md border border-gray-800 px-3 py-2 hover:bg-gray-850"
+                  className="block rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 hover:bg-sidebar-accent transition-colors"
                 >
-                  <p className="text-sm text-gray-200 truncate">{item.path}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs font-medium text-foreground truncate">{item.path}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
                     {item.status}
                     {item.branch ? ` · ${item.branch}` : ""}
                   </p>
-                  {item.summary ? <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.summary}</p> : null}
+                  {item.summary ? <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.summary}</p> : null}
                 </Link>
               ))
             )}
@@ -424,65 +659,69 @@ function WorkflowSidebar({
                 href={githubUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="block text-xs text-blue-400 hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium px-1"
               >
-                Open {repo.owner}/{repo.repositoryName} on GitHub
+                <GitBranch className="size-3.5" /> Open {repo.owner}/{repo.repositoryName} on GitHub
               </a>
             ) : null}
           </div>
         ) : null}
+
         {tab === "terminal" ? (
           <div className="space-y-2">
             {terminals.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                No recorded commands. The agent logs planned terminal work here — it does not spawn a host shell.
+              <p className="text-xs text-muted-foreground px-1">
+                No recorded commands. The agent logs planned terminal commands here.
               </p>
             ) : (
               terminals.map((event) => (
-                <div key={event.id} className="rounded-md border border-gray-800 bg-black/40 px-3 py-2 font-mono text-[11px] text-zinc-300">
-                  <div className="text-zinc-500 mb-1">{clockTime(event.createdAt, true)}</div>
-                  <div>{event.title}</div>
-                  {event.detail ? <div className="text-zinc-500 mt-1 whitespace-pre-wrap">{event.detail}</div> : null}
+                <div key={event.id} className="rounded-lg border border-sidebar-border bg-card p-3 font-mono text-[11px] text-foreground">
+                  <div className="text-muted-foreground text-[10px] mb-1">{clockTime(event.createdAt, true)}</div>
+                  <div className="font-semibold">{event.title}</div>
+                  {event.detail ? <div className="text-muted-foreground mt-1 whitespace-pre-wrap">{event.detail}</div> : null}
                 </div>
               ))
             )}
           </div>
         ) : null}
+
         {tab === "preview" ? (
           <div className="space-y-3">
             {githubUrl ? (
               <>
-                <p className="text-xs text-gray-500">
-                  Live nginx tunnels are not hosted on Fairlx. Open the linked repo, or use GitHub.dev as a preview.
+                <p className="text-xs text-muted-foreground px-1">
+                  Preview code directly via GitHub repository links.
                 </p>
                 <a
                   href={githubUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="block rounded-md border border-gray-800 px-3 py-2 text-sm text-blue-400 hover:bg-gray-850"
+                  className="flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 text-xs font-medium text-primary hover:bg-sidebar-accent transition-colors"
                 >
-                  Open repository
+                  <span>Open Repository</span>
+                  <ExternalLink className="size-3.5" />
                 </a>
                 {repo?.owner && repo.repositoryName ? (
                   <a
                     href={`https://github.dev/${repo.owner}/${repo.repositoryName}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="block rounded-md border border-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-850"
+                    className="flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 text-xs font-medium text-foreground hover:bg-sidebar-accent transition-colors"
                   >
-                    Open in github.dev
+                    <span>Open in GitHub.dev</span>
+                    <ExternalLink className="size-3.5" />
                   </a>
                 ) : null}
               </>
             ) : project ? (
               <Link
                 href={`/workspaces/${project.workspaceId}/projects/${project.id}/github`}
-                className="block rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+                className="block rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-300 font-medium"
               >
                 Connect GitHub to preview this project&apos;s code.
               </Link>
             ) : (
-              <p className="text-sm text-gray-500">Select a project to preview linked code.</p>
+              <p className="text-xs text-muted-foreground px-1">Select a project to preview linked code.</p>
             )}
           </div>
         ) : null}
@@ -497,10 +736,11 @@ function WorkflowViewInner() {
   const runId = searchParams.get("runId") ?? undefined;
   const { data: run, isLoading, error } = useGetAgentRun(runId);
   const { data: context } = useGetAgentContext();
-  const { data: user } = useCurrent();
   const sendMessage = useSendAgentMessage();
   const stopRun = useStopAgentRun();
   const continueRun = useContinueAgentRun();
+  const confirmRun = useConfirmAgentRun();
+  const denyRun = useDenyAgentRun();
   const deleteRun = useDeleteAgentRun();
   const patchRun = usePatchAgentRun();
   const { data: harness } = useGetAgentHarness();
@@ -510,7 +750,6 @@ function WorkflowViewInner() {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [tab, setTab] = useState<"context" | "changes" | "terminal" | "preview">("context");
-  const [notesOpen, setNotesOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -518,10 +757,12 @@ function WorkflowViewInner() {
   }, [run?.title]);
 
   useEffect(() => {
-    if (!run || run.status !== "running") return;
+    if (!run) return;
     if (continuedRef.current === run.id) return;
     continuedRef.current = run.id;
-    continueRun.mutate({ runId: run.id });
+    // Recover a refresh mid-turn. Accept/Deny starts its own turn — do not
+    // continue when this chat loaded already waiting for approval.
+    if (run.status === "running") continueRun.mutate({ runId: run.id });
   }, [run, continueRun]);
 
   useEffect(() => {
@@ -535,12 +776,12 @@ function WorkflowViewInner() {
 
   if (!runId) {
     return (
-      <div className="relative h-full min-h-0 overflow-hidden bg-gray-950">
-        <div className="absolute inset-0 overflow-y-auto custom-scrollbar px-8 pt-10 pb-40">
+      <div className="relative h-full min-h-0 overflow-hidden bg-background">
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar px-8 pt-12 pb-40">
           <div className="max-w-3xl mx-auto space-y-3">
-            <h1 className="text-2xl font-semibold text-white">Start a run</h1>
-            <p className="text-sm text-zinc-500">
-              Ask the Agent to inspect Fairlx work, search, or ship a change.
+            <h1 className="text-3xl font-bold text-foreground">Start an Agent Run</h1>
+            <p className="text-sm text-muted-foreground">
+              Ask the Agent to inspect Fairlx work, search repositories, plan sprints, or ship code changes.
             </p>
           </div>
         </div>
@@ -553,45 +794,30 @@ function WorkflowViewInner() {
 
   if (isLoading) {
     return (
-      <div className="relative h-full min-h-0 bg-gray-950">
-        <div className="h-full flex items-center justify-center text-sm text-zinc-500 pb-32">
-          Loading run…
-        </div>
-        <FloatingComposer>
-          <AgentCommandInput
-            variant="followup"
-            showQuickActions={false}
-            disabled
-            placeholder="Ask anything, @ to mention, / for actions"
-          />
-        </FloatingComposer>
+      <div className="relative h-full min-h-0 bg-background flex flex-col items-center justify-center text-sm text-muted-foreground pb-32">
+        <Loader2 className="size-6 animate-spin text-primary mb-2" />
+        <span>Loading workflow…</span>
       </div>
     );
   }
 
   if (!run) {
     return (
-      <div className="relative h-full min-h-0 bg-gray-950">
-        <div className="h-full flex flex-col items-center justify-center gap-3 text-sm text-zinc-500 pb-32">
-          <p>{error?.message || "Run not found."}</p>
-          <Link href="/agent/dashboard" className="text-blue-400 hover:underline">
-            Back to Agent Home
-          </Link>
-        </div>
-        <FloatingComposer>
-          <AgentCommandInput showQuickActions={false} placeholder="Ask anything, @ to mention, / for actions" />
-        </FloatingComposer>
+      <div className="relative h-full min-h-0 bg-background flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground pb-32">
+        <p>{error?.message || "Run not found."}</p>
+        <Link href="/agent/dashboard">
+          <Button variant="outline" size="sm">Back to Agent Home</Button>
+        </Link>
       </div>
     );
   }
 
   const running = run.status === "running";
+  const awaiting = run.status === "awaiting_confirmation";
+  const pending = findPendingConfirmation(run.events ?? []);
   const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
-  const workspace = context?.workspaces.find((item) => item.id === run.workspaceId);
   const project = context?.projects.find((item) => item.id === run.projectId);
   const linkedRepo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
-  const unread = (context?.notifications ?? []).filter((item) => !item.isRead).length;
-  const initials = userInitials(user?.name, user?.email);
 
   const saveTitle = () => {
     if (title.trim() && title.trim() !== run.title) {
@@ -601,31 +827,100 @@ function WorkflowViewInner() {
   };
 
   return (
-    <div className="h-full min-h-0 flex overflow-hidden bg-gray-950">
-      <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden bg-gray-950">
-        <header className="h-14 border-b border-gray-800 flex items-center justify-between px-6 shrink-0 bg-gray-950">
-          <div className="flex items-center gap-2 text-sm text-gray-400 min-w-0">
-            <Link href="/agent/dashboard" className="hover:text-gray-200 shrink-0">
-              {workspace?.name || "Agent"}
-            </Link>
-            <span className="text-gray-600">/</span>
-            <span className="text-gray-200 truncate">{run.title}</span>
+    <div className="h-full min-h-0 flex overflow-hidden bg-background">
+      {/* Center Chat & Stream View */}
+      <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
+        {/* Top Run Toolbar */}
+        <div className="h-14 border-b border-border flex items-center justify-between px-6 shrink-0 bg-card/60 backdrop-blur-sm">
+          <div className="flex items-center gap-3 min-w-0">
+            {renaming ? (
+              <input
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+                className="text-base font-semibold text-foreground bg-transparent outline-none border-b border-primary px-1"
+                autoFocus
+              />
+            ) : (
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-base font-semibold text-foreground truncate max-w-[320px]">{run.title}</h2>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                  onClick={() => setRenaming(true)}
+                  title="Rename"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+              </div>
+            )}
+            <div className="hidden sm:flex items-center gap-2 text-xs">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium text-[11px]",
+                  running || awaiting
+                    ? "bg-blue-500/10 text-blue-500"
+                    : run.status === "completed"
+                      ? "bg-green-500/10 text-green-500"
+                      : "bg-destructive/10 text-destructive"
+                )}
+              >
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    running || awaiting ? "bg-blue-500 animate-pulse" : run.status === "completed" ? "bg-green-500" : "bg-destructive"
+                  )}
+                />
+                <span className="capitalize">{running ? "Running" : awaiting ? "Needs approval" : run.status}</span>
+              </span>
+              <span className="text-muted-foreground">• Started {relativeTime(run.createdAt)}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-700 hover:bg-gray-800 text-gray-300 transition-colors text-xs font-medium"
+
+          <div className="flex items-center gap-2 shrink-0">
+            {running || awaiting ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={stopRun.isPending}
+                onClick={() => stopRun.mutate({ runId: run.id })}
+                className="h-8 text-xs font-medium text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5"
+              >
+                <Square className="size-3.5 fill-current" /> Stop
+              </Button>
+            ) : run.status === "failed" || run.status === "stopped" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={continueRun.isPending}
+                onClick={() => continueRun.mutate({ runId: run.id })}
+                className="h-8 text-xs font-medium gap-1.5"
+              >
+                <RotateCcw className="size-3.5" /> Retry
+              </Button>
+            ) : null}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-medium gap-1.5"
               onClick={async () => {
                 await navigator.clipboard.writeText(window.location.href);
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1600);
               }}
             >
-              <i className="fa-solid fa-arrow-up-right-from-square" /> {copied ? "Copied" : "Share"}
-            </button>
-            <button
-              type="button"
-              className="text-xs text-gray-400 hover:text-gray-200 px-2 py-1"
+              <Share2 className="size-3.5" />
+              <span>{copied ? "Copied" : "Share"}</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
               onClick={() => {
                 const current = harness?.chatMeta?.pinnedRunIds ?? [];
                 updateHarness.mutate({
@@ -637,170 +932,98 @@ function WorkflowViewInner() {
                   },
                 });
               }}
+              title={pinned ? "Unpin" : "Pin"}
             >
-              <i className={cn("mr-1", pinned ? "fa-solid fa-thumbtack text-blue-400" : "fa-regular fa-bookmark")} />
-              {pinned ? "Pinned" : "Pin"}
-            </button>
-            <button
-              type="button"
-              className="text-xs text-red-400 hover:text-red-300 px-2 py-1"
+              <Bookmark className={cn("size-4", pinned && "fill-primary text-primary")} />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-destructive"
               disabled={deleteRun.isPending}
               onClick={() => deleteRun.mutate({ runId: run.id }, { onSuccess: () => router.push("/agent/chats") })}
+              title="Delete run"
             >
-              Delete
-            </button>
-            <button
-              type="button"
-              onClick={() => setNotesOpen((open) => !open)}
-              className="text-gray-400 hover:text-gray-200 relative"
-              title="Notifications"
-            >
-              <i className="fa-regular fa-bell text-lg" />
-              {unread > 0 ? (
-                <span className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full border border-gray-950" />
-              ) : null}
-            </button>
-            <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-gray-300 font-medium border border-gray-600">
-              {initials[0] || "U"}
-            </div>
+              <Trash2 className="size-4" />
+            </Button>
           </div>
-        </header>
-        {notesOpen ? (
-          <div className="absolute right-8 top-16 z-20 w-80 rounded-xl border border-gray-800 bg-gray-900 shadow-xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-white">Notifications</p>
-              <button type="button" className="text-xs text-gray-500" onClick={() => setNotesOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar">
-              {(context?.notifications ?? []).length === 0 ? (
-                <p className="text-sm text-gray-500 py-6 text-center">No notifications.</p>
-              ) : (
-                (context?.notifications ?? []).slice(0, 12).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-gray-800 px-3 py-2">
-                    <p className="text-sm text-white">{item.title || "Notification"}</p>
-                    {item.message ? <p className="text-xs text-gray-500 mt-1">{item.message}</p> : null}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        ) : null}
+        </div>
 
+        {/* Messages Stream Scroll Area */}
         <div className="relative flex-1 min-h-0">
           <div ref={scrollerRef} className="absolute inset-0 overflow-y-auto custom-scrollbar px-6 py-6 pb-40">
-            <div className="max-w-3xl mx-auto flex flex-col gap-8">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  {renaming ? (
-                    <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      onBlur={saveTitle}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                      }}
-                      className="text-2xl font-semibold text-gray-100 bg-transparent outline-none border-b border-gray-800 w-full"
-                      autoFocus
-                    />
-                  ) : (
-                    <>
-                      <h1 className="text-2xl font-semibold text-gray-100 truncate">{run.title}</h1>
-                      <button type="button" className="text-gray-500 hover:text-gray-300" onClick={() => setRenaming(true)}>
-                        <i className="fa-solid fa-pen text-sm" />
-                      </button>
-                    </>
-                  )}
+            <div className="max-w-3xl mx-auto flex flex-col gap-6">
+              {project && !linkedRepo ? (
+                <Link
+                  href={`/workspaces/${project.workspaceId}/projects/${project.id}/github`}
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 font-medium"
+                >
+                  This project has no GitHub access linked. Link a repository so the agent can inspect code, suggest branches, and plan commits.
+                </Link>
+              ) : null}
+
+              {activitySummary(run.events ?? []).parts.length ? (
+                <div className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2">
+                  {activitySummary(run.events ?? []).parts.join(" · ")}
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <span
-                    className={cn(
-                      "w-2 h-2 rounded-full",
-                      running ? "bg-blue-500" : run.status === "completed" ? "bg-green-500" : "bg-red-400",
-                    )}
+              ) : null}
+
+              {blocks.map((block, index) => {
+                if (block.kind === "user") return <UserBubble key={block.message.id} message={block.message} />;
+                if (block.kind === "assistant") return <AgentBubble key={block.message.id} message={block.message} />;
+                return (
+                  <StepsCard
+                    key={block.lead?.id ?? `steps-${index}`}
+                    lead={block.lead}
+                    steps={block.steps}
+                    running={running}
+                    awaiting={awaiting}
                   />
-                  <span
-                    className={cn(
-                      "font-medium",
-                      running ? "text-blue-400" : run.status === "completed" ? "text-green-500" : "text-red-400",
-                    )}
-                  >
-                    {running ? "Agent is running" : run.status === "completed" ? "Completed" : run.status}
-                  </span>
-                  <span>•</span>
-                  <span>Started {relativeTime(run.createdAt)}</span>
-                  {project ? (
-                    <>
-                      <span>•</span>
-                      <span>{project.name}</span>
-                    </>
-                  ) : null}
-                </div>
-                {activitySummary(run.events ?? []).parts.length ? (
-                  <p className="text-xs text-zinc-500 mt-2">
-                    {activitySummary(run.events ?? []).parts.join(" · ")}
+                );
+              })}
+
+              {awaiting ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <p className="text-sm text-foreground flex-1">
+                    {pending?.summary || "The agent wants to create, update, or delete something in this workspace."}
                   </p>
-                ) : null}
-              </div>
-              {running ? (
-                <button
-                  type="button"
-                  disabled={stopRun.isPending}
-                  onClick={() => stopRun.mutate({ runId: run.id })}
-                  className="flex items-center gap-2 px-4 py-2 rounded-md border border-gray-700 hover:bg-gray-800 text-gray-300 transition-colors text-sm font-medium bg-gray-900 shrink-0"
-                >
-                  <i className="fa-solid fa-stop" /> Stop
-                </button>
-              ) : run.status === "failed" || run.status === "stopped" ? (
-                <button
-                  type="button"
-                  disabled={continueRun.isPending}
-                  onClick={() => continueRun.mutate({ runId: run.id })}
-                  className="flex items-center gap-2 px-4 py-2 rounded-md border border-gray-700 hover:bg-gray-800 text-gray-300 transition-colors text-sm font-medium bg-gray-900 shrink-0"
-                >
-                  Retry
-                </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={denyRun.isPending || confirmRun.isPending}
+                      onClick={() => denyRun.mutate({ runId: run.id })}
+                    >
+                      Deny
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8"
+                      disabled={confirmRun.isPending || denyRun.isPending}
+                      onClick={() => confirmRun.mutate({ runId: run.id })}
+                    >
+                      Accept
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {run.error ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive font-medium">
+                  {run.error}
+                </div>
               ) : null}
             </div>
-
-            {project && !linkedRepo ? (
-              <Link
-                href={`/workspaces/${project.workspaceId}/projects/${project.id}/github`}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
-              >
-                This project has no GitHub access. Sign in and link a repo so the agent can inspect code, plan branches, and record commits.
-              </Link>
-            ) : null}
-
-            {blocks.map((block, index) => {
-              if (block.kind === "user") return <UserBubble key={block.message.id} message={block.message} />;
-              if (block.kind === "assistant") return <AgentBubble key={block.message.id} message={block.message} />;
-              return (
-                <StepsCard
-                  key={block.lead?.id ?? `steps-${index}`}
-                  lead={block.lead}
-                  steps={block.steps}
-                  running={running}
-                />
-              );
-            })}
-
-            {run.error ? (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                {run.error}
-              </div>
-            ) : null}
-          </div>
           </div>
 
           <FloatingComposer>
             <AgentCommandInput
               variant="followup"
               showQuickActions={false}
-              submitting={sendMessage.isPending}
-              placeholder="Ask anything, @ to mention, / for actions"
+              submitting={sendMessage.isPending || awaiting || running}
+              placeholder={awaiting ? "Accept or deny the pending action first" : "Ask anything, @ to mention, / for actions"}
               onFollowUp={(content) => {
                 sendMessage.mutate({ param: { runId: run.id }, json: { content } });
               }}
@@ -808,6 +1031,8 @@ function WorkflowViewInner() {
           </FloatingComposer>
         </div>
       </div>
+
+      {/* Right Sidebar: Context, Changes, Terminal, Preview (Positioned below navbar on the right side) */}
       <WorkflowSidebar run={run} events={run.events ?? []} tab={tab} onTab={setTab} />
     </div>
   );
@@ -818,7 +1043,7 @@ export function WorkflowView() {
     <div className="h-full min-h-0">
       <Suspense
         fallback={
-          <div className="h-full flex items-center justify-center text-sm text-zinc-500">Loading workflow…</div>
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Loading workflow…</div>
         }
       >
         <WorkflowViewInner />

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Briefcase, Code, Folder, FolderPlus, GitBranch, Plus, Check, ChevronDown } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useCreateProject } from "@/features/projects/api/use-create-project";
@@ -76,7 +77,7 @@ export function AgentScopeBar() {
   };
 
   return (
-    <div className="flex items-center gap-1 text-[11px] text-zinc-500 px-1 pb-1.5">
+    <div className="flex items-center gap-1 text-[11px] text-muted-foreground px-1 pb-1.5">
       <ScopeMenu
         open={workspaceOpen}
         onOpenChange={(next) => {
@@ -84,7 +85,7 @@ export function AgentScopeBar() {
           setSearch("");
         }}
         label={workspace?.name || "Workspace"}
-        icon="fa-solid fa-briefcase"
+        icon={Briefcase}
         searchPlaceholder="Search workspaces..."
         search={search}
         onSearch={setSearch}
@@ -94,27 +95,29 @@ export function AgentScopeBar() {
             key={item.id}
             type="button"
             onClick={() => selectWorkspace(item.id)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-white/5 text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-left"
           >
-            <i className="fa-solid fa-folder text-zinc-500" />
-            <span className="flex-1 truncate text-zinc-200">{item.name}</span>
-            {item.id === workspaceId ? <i className="fa-solid fa-check text-[10px] text-blue-400" /> : null}
+            <Folder className="size-3.5 text-muted-foreground" />
+            <span className="flex-1 truncate text-foreground font-medium">{item.name}</span>
+            {item.id === workspaceId ? <Check className="size-3 text-primary" /> : null}
           </button>
         ))}
-        <div className="h-px bg-white/10 my-1" />
+        <div className="h-px bg-border my-1" />
         <button
           type="button"
           onClick={() => {
             setWorkspaceOpen(false);
             openNewWorkspace();
           }}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-white/5 text-left text-zinc-300"
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-left text-foreground font-medium"
         >
-          <i className="fa-solid fa-plus" />
-          New workspace
+          <Plus className="size-3.5 text-primary" />
+          <span>New workspace</span>
         </button>
       </ScopeMenu>
-      <span className="text-zinc-700">/</span>
+
+      <span className="text-muted-foreground/50">/</span>
+
       <ScopeMenu
         open={projectOpen}
         onOpenChange={(next) => {
@@ -123,7 +126,7 @@ export function AgentScopeBar() {
           setNewName("");
         }}
         label={project?.name || "Project"}
-        icon="fa-solid fa-code"
+        icon={Code}
         searchPlaceholder="Search folders, projects..."
         search={search}
         onSearch={setSearch}
@@ -133,14 +136,14 @@ export function AgentScopeBar() {
             key={item.id}
             type="button"
             onClick={() => selectProject(item.id, item.workspaceId)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-white/5 text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-left"
           >
-            <i className="fa-solid fa-folder text-zinc-500" />
-            <span className="flex-1 truncate text-zinc-200">{item.name}</span>
-            {item.id === projectId ? <i className="fa-solid fa-check text-[10px] text-blue-400" /> : null}
+            <Folder className="size-3.5 text-muted-foreground" />
+            <span className="flex-1 truncate text-foreground font-medium">{item.name}</span>
+            {item.id === projectId ? <Check className="size-3 text-primary" /> : null}
           </button>
         ))}
-        <div className="h-px bg-white/10 my-1" />
+        <div className="h-px bg-border my-1" />
         <form
           className="px-3 py-2 flex items-center gap-2"
           onSubmit={(event) => {
@@ -159,20 +162,21 @@ export function AgentScopeBar() {
             );
           }}
         >
-          <i className="fa-solid fa-folder-plus text-zinc-500" />
+          <FolderPlus className="size-3.5 text-muted-foreground shrink-0" />
           <input
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
             placeholder="New project"
-            className="flex-1 bg-transparent text-xs outline-none placeholder:text-zinc-600"
+            className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground text-foreground"
           />
         </form>
       </ScopeMenu>
+
       {repo ? (
         <>
-          <span className="text-zinc-700">/</span>
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-white/5">
-            <i className="fa-solid fa-code-branch" />
+          <span className="text-muted-foreground/50">/</span>
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-muted transition-colors text-foreground">
+            <GitBranch className="size-3 text-muted-foreground" />
             {repo.branch || "main"}
           </span>
         </>
@@ -185,7 +189,7 @@ function ScopeMenu({
   open,
   onOpenChange,
   label,
-  icon,
+  icon: Icon,
   searchPlaceholder,
   search,
   onSearch,
@@ -194,7 +198,7 @@ function ScopeMenu({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   label: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   searchPlaceholder: string;
   search: string;
   onSearch: (value: string) => void;
@@ -206,21 +210,21 @@ function ScopeMenu({
         <button
           type="button"
           className={cn(
-            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-white/5 hover:text-zinc-200 max-w-[160px]",
+            "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md hover:bg-muted hover:text-foreground max-w-[160px] font-medium transition-colors",
           )}
         >
-          <i className={`${icon} text-[10px]`} />
+          <Icon className="size-3 text-muted-foreground" />
           <span className="truncate">{label}</span>
-          <i className="fa-solid fa-chevron-down text-[8px]" />
+          <ChevronDown className="size-2.5 opacity-60" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" side="top" className="dark w-80 p-0 bg-[#1c1d21] border-white/10 text-zinc-200">
-        <div className="px-3 py-2 border-b border-white/10">
+      <PopoverContent align="start" side="top" className="w-80 p-0 bg-popover border-border text-popover-foreground shadow-xl rounded-xl">
+        <div className="px-3 py-2 border-b border-border">
           <input
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
         <div className="py-1 max-h-64 overflow-y-auto custom-scrollbar">{children}</div>
