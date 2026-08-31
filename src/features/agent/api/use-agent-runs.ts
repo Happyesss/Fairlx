@@ -164,6 +164,30 @@ export const useStopAgentRun = () => {
   });
 };
 
+export const useDeleteAgentRun = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ data: { id: string } }, Error, { runId: string }>({
+    mutationFn: async ({ runId }) => {
+      const response = await client.api.agent.runs[":runId"].$delete({
+        param: { runId },
+      });
+      if (!response.ok) {
+        await readError(response, "Failed to delete agent run.");
+      }
+      return (await response.json()) as { data: { id: string } };
+    },
+    onSuccess: (_result, { runId }) => {
+      toast.success("Chat deleted.");
+      queryClient.removeQueries({ queryKey: agentRunQueryKey(runId) });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete agent run.");
+    },
+  });
+};
+
 export const usePatchAgentRun = () => {
   const queryClient = useQueryClient();
 

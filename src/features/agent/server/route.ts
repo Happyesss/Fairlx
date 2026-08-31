@@ -32,9 +32,12 @@ import {
   resetHarness,
   upsertHarness,
 } from "../lib/harness";
-import { createRun, getRun, listRuns, updateRun } from "../lib/runs";
+import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
+import { ensurePersonalMcp } from "../lib/mcp-bridge";
+import { searchAgentIndex } from "../lib/search";
+import { parseGitStaging, parseChatMeta } from "../lib/git-staging";
 
 const mcpServerSchema = z
   .object({
@@ -158,6 +161,29 @@ const harnessSchema = z.object({
   automations: z.array(automationSchema).optional(),
   knowledge: z.array(knowledgeSchema).optional(),
   workPatterns: z.array(workPatternSchema).optional(),
+  gitStaging: z
+    .object({
+      items: z.array(
+        z.object({
+          id: z.string(),
+          path: z.string(),
+          summary: z.string().optional().default(""),
+          status: z.enum(["unstaged", "staged", "committed"]),
+          repoId: z.string().optional(),
+          branch: z.string().optional(),
+          content: z.string().optional(),
+          createdAt: z.string().optional().default(""),
+        }),
+      ),
+      updatedAt: z.string().optional().default(""),
+    })
+    .optional(),
+  chatMeta: z
+    .object({
+      pinnedRunIds: z.array(z.string()).optional().default([]),
+      archivedRunIds: z.array(z.string()).optional().default([]),
+    })
+    .optional(),
   settings: z
     .object({
       mode: z.enum(["agent", "manual"]).optional(),
@@ -194,13 +220,13 @@ const app = new Hono()
         } catch (error) {
           console.error("[agent] failed to persist default MCP config", error);
         }
-        return c.json({ data: toPublicMcpConfig(defaults) });
+        return c.json({ data: toPublicMcpConfig(ensurePersonalMcp(defaults)) });
       }
 
-      return c.json({ data: toPublicMcpConfig(parseMcpConfig(existing.configJson)) });
+      return c.json({ data: toPublicMcpConfig(ensurePersonalMcp(parseMcpConfig(existing.configJson))) });
     } catch (error) {
       console.error("[agent] failed to load MCP config", error);
-      return c.json({ data: toPublicMcpConfig(defaultMcpConfig()) });
+      return c.json({ data: toPublicMcpConfig(ensurePersonalMcp(defaultMcpConfig())) });
     }
   })
   .put("/mcp", sessionMiddleware, zValidator("json", mcpConfigSchema), async (c) => {
@@ -212,8 +238,8 @@ const app = new Hono()
       const existing = await getMcpDocument(databases, user.$id);
       const previous = existing ? parseMcpConfig(existing.configJson) : defaultMcpConfig();
       const stored = mergeMcpSecrets(incoming, previous);
-      await upsertMcpConfig(databases, user.$id, stored);
-      return c.json({ data: toPublicMcpConfig(stored) });
+      await upsertMcpConfig(databases, user.$id, ensurePersonalMcp(stored));
+      return c.json({ data: toPublicMcpConfig(ensurePersonalMcp(stored)) });
     } catch (error) {
       console.error("[agent] failed to save MCP config", error);
       return encryptionErrorResponse(error, c) ?? c.json({ error: "Failed to save MCP config." }, 500);
@@ -417,6 +443,75 @@ const app = new Hono()
       return c.json({ error: "Failed to stop agent run." }, 500);
     }
   })
+  .delete("/runs/:runId", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const runId = c.req.param("runId");
+    const { databases } = await createAdminClient();
+    try {
+      const existing = await getRun(databases, user.$id, runId);
+      if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.status === "running") {
+        cancelAgentTurn(runId);
+      }
+      await deleteRun(databases, user.$id, runId);
+      return c.json({ data: { id: runId } });
+    } catch (error) {
+      console.error("[agent] failed to delete run", error);
+      return c.json({ error: "Failed to delete agent run." }, 500);
+    }
+  })
+  .get("/search", sessionMiddleware, zValidator("query", z.object({
+    q: z.string().optional(),
+    query: z.string().optional(),
+  })), async (c) => {
+    const user = sessionUser(c);
+    const parsed = c.req.valid("query");
+    const query = (parsed.q || parsed.query || "").trim();
+    const { databases } = await createAdminClient();
+    try {
+      const [runs, harness, context, mcpDoc] = await Promise.all([
+        listRuns(databases, user.$id, 80),
+        getOrCreateHarness(databases, user.$id),
+        loadAgentContext(databases, user),
+        getMcpDocument(databases, user.$id),
+      ]);
+      const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
+      const data = searchAgentIndex({ query, runs, harness, context, mcp, limit: 40 });
+      return c.json({ data, query });
+    } catch (error) {
+      console.error("[agent] failed to search", error);
+      return c.json({ error: "Failed to search the Agent harness." }, 500);
+    }
+  })
+  .post("/harness/automations/:automationId/run", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const automationId = c.req.param("automationId");
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const automation = harness.automations.find((item) => item.id === automationId);
+      if (!automation) return c.json({ error: "Automation not found." }, 404);
+      const prompt = [
+        `Run automation "${automation.name}".`,
+        automation.trigger ? `Trigger: ${automation.trigger}` : "",
+        `Action: ${automation.action || automation.description}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const run = await createRun(databases, {
+        userId: user.$id,
+        prompt,
+        mode: harness.settings.mode,
+        workspaceId: harness.settings.defaultWorkspaceId,
+        projectId: harness.settings.defaultProjectId,
+      });
+      scheduleAgentTurn({ databases, user, run });
+      return c.json({ data: run });
+    } catch (error) {
+      console.error("[agent] failed to run automation", error);
+      return c.json({ error: "Failed to run automation." }, 500);
+    }
+  })
   .get("/harness", sessionMiddleware, async (c) => {
     const user = sessionUser(c);
     const { databases } = await createAdminClient();
@@ -433,7 +528,11 @@ const app = new Hono()
     const json = c.req.valid("json");
     const { databases } = await createAdminClient();
     try {
-      const data = await upsertHarness(databases, user.$id, json);
+      const data = await upsertHarness(databases, user.$id, {
+        ...json,
+        gitStaging: json.gitStaging ? parseGitStaging(json.gitStaging) : undefined,
+        chatMeta: json.chatMeta ? parseChatMeta(json.chatMeta) : undefined,
+      });
       return c.json({ data });
     } catch (error) {
       console.error("[agent] failed to save harness", error);

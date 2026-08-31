@@ -33,6 +33,8 @@ import {
   PROGRAM_MILESTONES_ID,
   PERSONAL_BACKLOG_ID,
   ATTACHMENTS_ID,
+  AGENT_HARNESS_ID,
+  AGENT_RUNS_ID,
 } from "@/config";
 import { hashMcpToken } from "@/features/integrations/lib/helpers";
 import {
@@ -87,6 +89,8 @@ const COLLECTIONS: McpCollections = {
   programMilestones: PROGRAM_MILESTONES_ID,
   personalBacklog: PERSONAL_BACKLOG_ID,
   attachments: ATTACHMENTS_ID,
+  agentHarness: AGENT_HARNESS_ID,
+  agentRuns: AGENT_RUNS_ID,
 };
 
 const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;

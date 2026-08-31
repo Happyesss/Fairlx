@@ -2,16 +2,19 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 
 import {
   useContinueAgentRun,
+  useDeleteAgentRun,
   useGetAgentRun,
+  usePatchAgentRun,
   useSendAgentMessage,
   useStopAgentRun,
 } from "../api/use-agent-runs";
+import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { AGENT_TOOL_CATALOG } from "../constants";
 import { relativeTime } from "../lib/agent-ui";
 import type { AgentChatMessage, AgentRunStatus, AgentToolEvent } from "../types";
@@ -58,14 +61,25 @@ function MessageBubble({ message }: { message: AgentChatMessage }) {
 }
 
 function WorkflowViewInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const runId = searchParams.get("runId") ?? undefined;
   const { data: run, isLoading, error } = useGetAgentRun(runId);
   const sendMessage = useSendAgentMessage();
   const stopRun = useStopAgentRun();
   const continueRun = useContinueAgentRun();
+  const deleteRun = useDeleteAgentRun();
+  const patchRun = usePatchAgentRun();
+  const { data: harness } = useGetAgentHarness();
+  const updateHarness = useUpdateAgentHarness();
   const continuedRef = useRef<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    if (run?.title) setTitle(run.title);
+  }, [run?.title]);
 
   useEffect(() => {
     if (!run || run.status !== "running") return;
@@ -108,6 +122,7 @@ function WorkflowViewInner() {
   }
 
   const running = run.status === "running";
+  const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -118,11 +133,66 @@ function WorkflowViewInner() {
               Agent
             </Link>
             <span className="mx-2">/</span>
-            Workflow
+            <Link href="/agent/chats" className="hover:text-white">
+              Chats
+            </Link>
           </div>
-          <h1 className="text-lg font-semibold text-white truncate">{run.title}</h1>
+          {renaming ? (
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              onBlur={() => {
+                if (title.trim() && title.trim() !== run.title) {
+                  patchRun.mutate({ param: { runId: run.id }, json: { title: title.trim() } });
+                }
+                setRenaming(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="mt-1 w-full bg-transparent text-lg font-semibold text-white outline-none border-b border-fairlx-border"
+              autoFocus
+            />
+          ) : (
+            <h1 className="text-lg font-semibold text-white truncate">{run.title}</h1>
+          )}
         </div>
         <span className={`ml-auto text-xs capitalize ${statusClass(run.status)}`}>{run.status}</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => setRenaming(true)}>
+          Rename
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const current = harness?.chatMeta?.pinnedRunIds ?? [];
+            updateHarness.mutate({
+              json: {
+                chatMeta: {
+                  pinnedRunIds: pinned ? current.filter((id) => id !== run.id) : [...current, run.id],
+                  archivedRunIds: harness?.chatMeta?.archivedRunIds ?? [],
+                },
+              },
+            });
+          }}
+        >
+          {pinned ? "Unpin" : "Pin"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={deleteRun.isPending}
+          onClick={() =>
+            deleteRun.mutate(
+              { runId: run.id },
+              { onSuccess: () => router.push("/agent/chats") },
+            )
+          }
+        >
+          Delete
+        </Button>
         {running ? (
           <Button
             type="button"

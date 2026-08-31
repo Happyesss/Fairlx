@@ -5,6 +5,7 @@ import { assertWorkspaceBound, requireProjectAccess } from "../runtime/rbac";
 import { PERMISSIONS, type McpRuntime } from "../runtime/types";
 import { getSkill } from "../skills/load";
 import { handleReadTool } from "../tools/read";
+import { readPersonalResource } from "../personal/load";
 
 type ResourceContents = {
   contents: Array<{ uri: string; mimeType: string; text: string }>;
@@ -52,6 +53,16 @@ export async function readResource(
   auth: AuthContext,
   uri: string
 ): Promise<ResourceContents> {
+  const personal = /^fairlx:\/\/me\/([^/]+)$/.exec(uri);
+  if (personal) {
+    const text = await readPersonalResource(runtime, auth, personal[1]);
+    try {
+      return jsonContents(uri, JSON.parse(text));
+    } catch {
+      return jsonContents(uri, { text });
+    }
+  }
+
   const skill = /^fairlx:\/\/skills\/([^/]+)$/.exec(uri);
   if (skill) {
     const record = getSkill(skill[1]);

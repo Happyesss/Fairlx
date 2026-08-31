@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -19,9 +18,11 @@ import { Label } from "@/components/ui/label";
 import { useCreateWorkspace } from "@/features/workspaces/api/use-create-workspace";
 
 import { useGetAgentContext } from "../api/use-agent-context";
+import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentRuns } from "../api/use-agent-runs";
 import { AGENT_FIELD_CLASS } from "../constants";
-import { relativeTime } from "../lib/agent-ui";
+import { searchAgentIndex } from "../lib/search";
+import { SearchHits } from "./agent-ops-screens";
 
 function inviteUrl(workspaceId: string, inviteCode?: string) {
   if (!inviteCode || typeof window === "undefined") return "";
@@ -172,48 +173,19 @@ export function SearchDialog({
   const [query, setQuery] = useState("");
   const { data: runs } = useGetAgentRuns();
   const { data: context } = useGetAgentContext();
-  const needle = query.trim().toLowerCase();
+  const { data: harness } = useGetAgentHarness();
 
-  const results = useMemo(() => {
-    const match = (value?: string) => !needle || (value ?? "").toLowerCase().includes(needle);
-    const runHits = (runs ?? [])
-      .filter((run) => match(run.title) || match(run.prompt))
-      .slice(0, 8)
-      .map((run) => ({
-        id: run.id,
-        href: `/agent/workflow?runId=${run.id}`,
-        title: run.title,
-        meta: `Run · ${relativeTime(run.updatedAt)}`,
-      }));
-    const workspaceHits = (context?.workspaces ?? [])
-      .filter((workspace) => match(workspace.name))
-      .slice(0, 6)
-      .map((workspace) => ({
-        id: workspace.id,
-        href: `/workspaces/${workspace.id}`,
-        title: workspace.name,
-        meta: "Workspace",
-      }));
-    const projectHits = (context?.projects ?? [])
-      .filter((project) => match(project.name) || match(project.key))
-      .slice(0, 6)
-      .map((project) => ({
-        id: project.id,
-        href: `/workspaces/${project.workspaceId}/projects/${project.id}`,
-        title: project.name,
-        meta: project.key ? `Project · ${project.key}` : "Project",
-      }));
-    const itemHits = (context?.workItems ?? [])
-      .filter((item) => match(item.title) || match(item.key))
-      .slice(0, 8)
-      .map((item) => ({
-        id: item.id,
-        href: item.workspaceId ? `/workspaces/${item.workspaceId}/tasks/${item.id}` : "/agent/projects",
-        title: item.title,
-        meta: [item.key, item.status].filter(Boolean).join(" · ") || "Work item",
-      }));
-    return [...runHits, ...workspaceHits, ...projectHits, ...itemHits];
-  }, [context, needle, runs]);
+  const results = useMemo(
+    () =>
+      searchAgentIndex({
+        query,
+        runs: runs ?? [],
+        context,
+        harness,
+        limit: 24,
+      }),
+    [context, harness, query, runs],
+  );
 
   return (
     <Dialog
@@ -227,7 +199,7 @@ export function SearchDialog({
         <DialogHeader>
           <DialogTitle>Search</DialogTitle>
           <DialogDescription className="text-fairlx-text-muted">
-            Find runs, workspaces, projects, and assigned work items.
+            Find chats, workspaces, projects, skills, knowledge, automations, and git staging.
           </DialogDescription>
         </DialogHeader>
         <Input
@@ -238,21 +210,7 @@ export function SearchDialog({
           autoFocus
         />
         <div className="max-h-[50vh] overflow-y-auto space-y-1 custom-scrollbar">
-          {results.length === 0 ? (
-            <p className="text-sm text-fairlx-text-muted px-1 py-6 text-center">No matches.</p>
-          ) : (
-            results.map((result) => (
-              <Link
-                key={`${result.meta}-${result.id}`}
-                href={result.href}
-                onClick={() => onOpenChange(false)}
-                className="block rounded-lg px-3 py-2 hover:bg-fairlx-surface-hover"
-              >
-                <div className="text-sm text-white truncate">{result.title}</div>
-                <div className="text-xs text-fairlx-text-muted">{result.meta}</div>
-              </Link>
-            ))
-          )}
+          <SearchHits hits={results} onPick={() => onOpenChange(false)} />
         </div>
         <DialogFooter>
           <Button
@@ -260,10 +218,10 @@ export function SearchDialog({
             variant="outline"
             onClick={() => {
               onOpenChange(false);
-              router.push("/agent/dashboard");
+              router.push("/agent/search");
             }}
           >
-            Agent Home
+            Open search
           </Button>
         </DialogFooter>
       </DialogContent>

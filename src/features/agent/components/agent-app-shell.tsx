@@ -200,6 +200,35 @@ export function AgentAppShell({ children }: { children: ReactNode }) {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {context?.workspaces.length ? (
+              <select
+                value={harness?.settings.defaultWorkspaceId || ""}
+                onChange={(event) => {
+                  const nextWorkspace = event.target.value;
+                  const projectStillValid = (context.projects ?? []).some(
+                    (project) =>
+                      project.id === harness?.settings.defaultProjectId && project.workspaceId === nextWorkspace,
+                  );
+                  updateHarness.mutate({
+                    json: {
+                      settings: {
+                        defaultWorkspaceId: nextWorkspace || undefined,
+                        defaultProjectId: projectStillValid ? harness?.settings.defaultProjectId : undefined,
+                      },
+                    },
+                  });
+                }}
+                className="h-9 max-w-[180px] rounded-md border border-fairlx-border bg-fairlx-surface px-2 text-xs text-fairlx-text outline-none"
+                title="Workspace"
+              >
+                <option value="">Workspace</option>
+                {(context.workspaces ?? []).map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <ModelPicker variant="sidebar" className="hidden md:flex" />
             <button
               type="button"

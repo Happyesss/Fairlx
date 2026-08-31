@@ -1,13 +1,23 @@
+import type { Databases } from "node-appwrite";
+
 import type {
   AgentContext,
   AgentHarness,
+  AgentRun,
   AgentRunMode,
+  AgentSpecialistId,
   AgentToolEvent,
   AgentToolEventType,
   McpConfig,
 } from "../types";
 import { AGENT_TOOL_CATALOG } from "../constants";
+import { specialistById } from "./graph";
+import { commitStaged, stageItem, unstageItem } from "./git-staging";
+import { callMcpServerTool, ensurePersonalMcp, listMcpResourcesForServer } from "./mcp-bridge";
+import { createFairlxProject } from "./mutations";
+import { readPersonalContent } from "./personal";
 import { toPublicMcpConfig } from "./public-mcp";
+import { matchingAutomations, searchAgentIndex } from "./search";
 
 export type OpenAiTool = {
   type: "function";
@@ -24,6 +34,15 @@ export type ToolExecutionContext = {
   context: AgentContext;
   harness: AgentHarness;
   mcp: McpConfig;
+  databases?: Databases;
+  runs?: AgentRun[];
+};
+
+export type ToolExecutionResult = {
+  content: string;
+  event: AgentToolEvent;
+  harnessPatch?: Partial<Pick<AgentHarness, "gitStaging" | "chatMeta">>;
+  delegate?: { agent: AgentSpecialistId; task: string };
 };
 
 const TOOL_PARAMETERS: Record<string, { description: string; parameters: Record<string, unknown> }> = {
@@ -110,6 +129,108 @@ const TOOL_PARAMETERS: Record<string, { description: string; parameters: Record<
     description: "List configured MCP servers without leaking secrets.",
     parameters: { type: "object", properties: {} },
   },
+  mcp_call: {
+    description: "Call a tool on an MCP server. Use server=fairlx for platform tools, fairlx-personal for this user's harness.",
+    parameters: {
+      type: "object",
+      properties: {
+        server: { type: "string" },
+        tool: { type: "string" },
+        arguments: { type: "object" },
+      },
+      required: ["tool"],
+    },
+  },
+  mcp_resources: {
+    description: "List MCP resources for a server, including fairlx://me/* personal content.",
+    parameters: {
+      type: "object",
+      properties: { server: { type: "string" } },
+    },
+  },
+  delegate_agent: {
+    description: "Delegate a focused task to a specialist: planner, researcher, builder, git, or reviewer.",
+    parameters: {
+      type: "object",
+      properties: {
+        agent: { type: "string", enum: ["planner", "researcher", "builder", "git", "reviewer"] },
+        task: { type: "string" },
+      },
+      required: ["task"],
+    },
+  },
+  search_harness: {
+    description: "Search chats, workspaces, projects, skills, knowledge, automations, docs, repos, MCP, and staging.",
+    parameters: {
+      type: "object",
+      properties: { query: { type: "string" } },
+      required: ["query"],
+    },
+  },
+  create_project: {
+    description: "Create a Fairlx project in a workspace the user belongs to.",
+    parameters: {
+      type: "object",
+      properties: {
+        workspaceId: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string" },
+      },
+      required: ["name"],
+    },
+  },
+  git_status: {
+    description: "Show linked GitHub repositories and the Agent git staging buffer.",
+    parameters: { type: "object", properties: {} },
+  },
+  git_stage: {
+    description: "Stage a planned change. Does not run git on the host.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        summary: { type: "string" },
+        repoId: { type: "string" },
+        branch: { type: "string" },
+      },
+      required: ["path"],
+    },
+  },
+  git_unstage: {
+    description: "Unstage a planned change by id or path.",
+    parameters: {
+      type: "object",
+      properties: { id: { type: "string" }, path: { type: "string" } },
+    },
+  },
+  git_commit_plan: {
+    description: "Mark staged items as a planned commit. Never executes git commit on the host.",
+    parameters: {
+      type: "object",
+      properties: { message: { type: "string" } },
+      required: ["message"],
+    },
+  },
+  run_automation: {
+    description: "Load a saved automation and return the action the Agent should follow.",
+    parameters: {
+      type: "object",
+      properties: { automationId: { type: "string" }, name: { type: "string" } },
+    },
+  },
+  personal_read: {
+    description: "Read personal MCP content: harness, skills, knowledge, rules, automations, chats, staging.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["harness", "skills", "knowledge", "rules", "automations", "chats", "staging"],
+        },
+        query: { type: "string" },
+      },
+    },
+  },
 };
 
 export function openaiToolsForMode(mode: AgentRunMode, enabledTools: string[]): OpenAiTool[] {
@@ -187,10 +308,11 @@ export async function executeTool(
   name: string,
   args: unknown,
   ctx: ToolExecutionContext,
-): Promise<{ content: string; event: AgentToolEvent }> {
+): Promise<ToolExecutionResult> {
   const parsed = parseArgs(args);
   const query = asString(parsed.query || parsed.q || parsed.search);
   const { context, harness, mcp, runId } = ctx;
+  const publicMcp = toPublicMcpConfig(ensurePersonalMcp(mcp));
 
   switch (name) {
     case "code_inspect": {
@@ -366,18 +488,220 @@ export async function executeTool(
       };
     }
     case "mcp_list": {
-      const publicConfig = toPublicMcpConfig(mcp);
-      const servers = Object.entries(publicConfig.mcpServers ?? {}).map(([serverName, server]) => ({
+      const servers = Object.entries(publicMcp.mcpServers ?? {}).map(([serverName, server]) => ({
         name: serverName,
         transport: server.transport,
         url: server.url,
         command: server.command,
         disabled: Boolean(server.disabled),
+        personal: serverName === "fairlx-personal",
       }));
       const payload = { servers };
       return {
         content: JSON.stringify(payload),
         event: event(runId, "mcp_list", `${servers.length} MCP servers`, undefined, payload),
+      };
+    }
+    case "mcp_call": {
+      const tool = asString(parsed.tool || parsed.name || parsed.method);
+      const server = asString(parsed.server) || "fairlx";
+      const callArgs =
+        parsed.arguments && typeof parsed.arguments === "object"
+          ? (parsed.arguments as Record<string, unknown>)
+          : parsed.args && typeof parsed.args === "object"
+            ? (parsed.args as Record<string, unknown>)
+            : {};
+      if (!tool) {
+        const payload = { error: "tool is required" };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "mcp_call", "MCP call missing tool", undefined, payload),
+        };
+      }
+      try {
+        const result = await callMcpServerTool({
+          server,
+          tool,
+          args: callArgs,
+          ctx: { userId: ctx.userId, mcp, harness, runs: ctx.runs, databases: ctx.databases },
+        });
+        const payload = { server, tool, result };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "mcp_call", `${server}.${tool}`, undefined, payload),
+        };
+      } catch (error) {
+        const payload = { server, tool, error: error instanceof Error ? error.message : "MCP call failed" };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", `${server}.${tool} failed`, payload.error, payload),
+        };
+      }
+    }
+    case "mcp_resources": {
+      const server = asString(parsed.server) || "fairlx-personal";
+      try {
+        const result = await listMcpResourcesForServer(server, {
+          userId: ctx.userId,
+          mcp,
+          harness,
+          runs: ctx.runs,
+        });
+        return {
+          content: JSON.stringify(result),
+          event: event(runId, "mcp_resources", `Resources: ${server}`, undefined, result),
+        };
+      } catch (error) {
+        const payload = { error: error instanceof Error ? error.message : "Failed to list MCP resources" };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "MCP resources failed", payload.error, payload),
+        };
+      }
+    }
+    case "delegate_agent": {
+      const agent = specialistById(asString(parsed.agent) || "planner");
+      const task = asString(parsed.task || parsed.prompt || query);
+      const payload = { agent, task };
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "delegate_agent", `Delegated to ${agent}`, task || undefined, payload),
+        delegate: { agent: agent === "orchestrator" ? "planner" : agent, task: task || "Continue the current request." },
+      };
+    }
+    case "search_harness": {
+      const hits = searchAgentIndex({
+        query,
+        runs: ctx.runs,
+        context,
+        harness,
+        mcp: publicMcp,
+        limit: 24,
+      });
+      const payload = { query, hits };
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "search_harness", query ? `Search: ${query}` : "Harness search", `${hits.length} hits`, payload),
+      };
+    }
+    case "create_project": {
+      const workspaceId =
+        asString(parsed.workspaceId) || harness.settings.defaultWorkspaceId || context.workspaces[0]?.id || "";
+      const name = asString(parsed.name || parsed.title);
+      if (!ctx.databases) {
+        const payload = { error: "Project creation is unavailable in this turn." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Create project unavailable", undefined, payload),
+        };
+      }
+      try {
+        const created = await createFairlxProject({
+          databases: ctx.databases,
+          userId: ctx.userId,
+          workspaceId,
+          name,
+          description: asString(parsed.description) || undefined,
+        });
+        return {
+          content: JSON.stringify(created),
+          event: event(runId, "create_project", `Created project ${created.name}`, created.workspaceId, created),
+        };
+      } catch (error) {
+        const payload = { error: error instanceof Error ? error.message : "Failed to create project." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Create project failed", payload.error, payload),
+        };
+      }
+    }
+    case "git_status": {
+      const payload = {
+        repos: context.githubRepos,
+        staging: harness.gitStaging,
+        note: "Staging is a Fairlx harness buffer. Git is never executed on the host.",
+      };
+      return {
+        content: JSON.stringify(payload),
+        event: event(
+          runId,
+          "git_status",
+          `${context.githubRepos.length} repos · ${harness.gitStaging.items.filter((item) => item.status === "staged").length} staged`,
+          undefined,
+          payload,
+        ),
+      };
+    }
+    case "git_stage": {
+      const next = stageItem(harness.gitStaging, {
+        path: asString(parsed.path || parsed.file),
+        summary: asString(parsed.summary || parsed.message),
+        repoId: asString(parsed.repoId) || undefined,
+        branch: asString(parsed.branch) || undefined,
+        content: asString(parsed.content) || undefined,
+      });
+      const payload = { staging: next };
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "git_stage", `Staged ${asString(parsed.path)}`, undefined, payload),
+        harnessPatch: { gitStaging: next },
+      };
+    }
+    case "git_unstage": {
+      const next = unstageItem(harness.gitStaging, asString(parsed.id || parsed.path));
+      const payload = { staging: next };
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "git_unstage", "Unstaged change", undefined, payload),
+        harnessPatch: { gitStaging: next },
+      };
+    }
+    case "git_commit_plan": {
+      const planned = commitStaged(harness.gitStaging, asString(parsed.message || parsed.commit));
+      const payload = {
+        message: planned.message,
+        committed: planned.committed,
+        staging: planned.staging,
+        note: "Commit recorded in the harness buffer. Not executed on the host.",
+      };
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "git_commit_plan", planned.message, `${planned.committed.length} files`, payload),
+        harnessPatch: { gitStaging: planned.staging },
+      };
+    }
+    case "run_automation": {
+      const id = asString(parsed.automationId || parsed.id);
+      const nameArg = asString(parsed.name);
+      const automation =
+        harness.automations.find((item) => item.id === id || item.name.toLowerCase() === nameArg.toLowerCase()) ??
+        matchingAutomations(harness, query || nameArg)[0];
+      const payload = automation
+        ? {
+            id: automation.id,
+            name: automation.name,
+            trigger: automation.trigger,
+            action: automation.action,
+            enabled: automation.enabled,
+          }
+        : { error: "Automation not found", id, name: nameArg };
+      return {
+        content: JSON.stringify(payload),
+        event: event(
+          runId,
+          "run_automation",
+          automation ? `Automation: ${automation.name}` : "Automation not found",
+          automation?.action,
+          payload,
+        ),
+      };
+    }
+    case "personal_read": {
+      const kind = asString(parsed.kind) || "harness";
+      const payload = readPersonalContent({ kind, harness, runs: ctx.runs, query });
+      return {
+        content: JSON.stringify(payload),
+        event: event(runId, "personal_read", `Personal ${kind}`, undefined, payload),
       };
     }
     default: {

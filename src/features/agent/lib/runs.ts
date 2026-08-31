@@ -128,3 +128,10 @@ export async function updateRun(
   const doc = await databases.updateDocument(DATABASE_ID, AGENT_RUNS_ID, runId, payload);
   return parseRun(doc as unknown as RunDocument);
 }
+
+export async function deleteRun(databases: Databases, userId: string, runId: string): Promise<boolean> {
+  const existing = await getRun(databases, userId, runId);
+  if (!existing) return false;
+  await databases.deleteDocument(DATABASE_ID, AGENT_RUNS_ID, runId);
+  return true;
+}

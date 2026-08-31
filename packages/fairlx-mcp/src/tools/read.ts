@@ -6,6 +6,7 @@ import { compactWorkItem, toolResult, withId, wrapUntrusted } from "../runtime/o
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem } from "../runtime/tenant";
 import { listQuery, optionalString, requireString, redactGithubRepo } from "./helpers";
+import { handlePersonalTool } from "../personal/load";
 
 export async function handleReadTool(
   name: string,
@@ -85,6 +86,12 @@ export async function handleReadTool(
       return webhookList(args, runtime, auth);
     case "fairlx_github_repo_list":
       return githubRepoList(args, runtime, auth);
+    case "fairlx_personal_harness_get":
+    case "fairlx_personal_search":
+    case "fairlx_personal_skill_list":
+    case "fairlx_personal_knowledge_list":
+    case "fairlx_personal_chat_list":
+      return handlePersonalTool(name, args, runtime, auth);
     default:
       throw invalidParams(`Unknown read tool: ${name}`);
   }

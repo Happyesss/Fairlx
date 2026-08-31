@@ -4,7 +4,8 @@ import type { McpRuntime } from "./runtime/types";
 
 export { handleMcpRequest, MCP_SERVER_INFO } from "./protocol/dispatcher";
 export { handleStreamableHttp } from "./http/streamable";
-export { TOOL_CATALOG, getToolDefinition, listToolsForClient, wouldCreateCycle } from "./tools";
+export { TOOL_CATALOG, getToolDefinition, listToolsForClient, callTool, wouldCreateCycle } from "./tools";
+export { jwtToAuthContext } from "./auth/context";
 export { RESOURCE_TEMPLATES, listResources, listResourceTemplates } from "./resources/catalog";
 export { PROMPT_CATALOG, listPrompts, getPrompt } from "./prompts/catalog";
 export { SKILLS, getSkill, listSkills } from "./skills/registry";

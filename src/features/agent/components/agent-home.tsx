@@ -92,9 +92,9 @@ export function AgentHome() {
           <section className="bg-fairlx-surface border border-fairlx-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-white">Recent runs</h3>
-              <button type="button" onClick={openRecentWork} className="text-xs text-fairlx-primary hover:underline">
+              <Link href="/agent/chats" className="text-xs text-fairlx-primary hover:underline">
                 View all
-              </button>
+              </Link>
             </div>
             {runsLoading ? (
               <p className="text-sm text-fairlx-text-muted">Loading runs…</p>

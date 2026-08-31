@@ -53,11 +53,11 @@ function toolNames(permissions: string[], isOwner = false) {
 }
 
 describe("MCP surface counts", () => {
-  it("exposes 40 tools, 9 resource templates, 6 prompts, 6 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(68);
-    expect(RESOURCE_TEMPLATES).toHaveLength(9);
-    expect(PROMPT_CATALOG).toHaveLength(6);
-    expect(SKILLS).toHaveLength(6);
+  it("exposes 73 tools, 10 resource templates, 7 prompts, 7 skills", () => {
+    expect(TOOL_CATALOG).toHaveLength(73);
+    expect(RESOURCE_TEMPLATES).toHaveLength(10);
+    expect(PROMPT_CATALOG).toHaveLength(7);
+    expect(SKILLS).toHaveLength(7);
   });
 });
 

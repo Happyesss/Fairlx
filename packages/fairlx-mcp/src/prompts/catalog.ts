@@ -45,6 +45,11 @@ export const PROMPT_CATALOG: McpPromptDefinition[] = [
       { name: "sprintId", description: "Completed sprint id", required: false },
     ],
   },
+  {
+    name: "use_agent_harness",
+    description: "Load this user's Fairlx Agent harness (skills, rules, knowledge, staging) before doing work",
+    arguments: [{ name: "query", description: "Optional search across personal content", required: false }],
+  },
 ];
 
 export function listPrompts(): McpPromptDefinition[] {
@@ -65,7 +70,9 @@ export function getPrompt(name: string, args: Record<string, unknown>) {
   const title = arg(args, "title", "<title>");
   const description = arg(args, "description");
 
-  const text = promptText(name, { projectId, sprintId, title, description });
+  const query = arg(args, "query");
+
+  const text = promptText(name, { projectId, sprintId, title, description, query });
   return {
     description: def.description,
     messages: [
@@ -79,7 +86,7 @@ export function getPrompt(name: string, args: Record<string, unknown>) {
 
 function promptText(
   name: string,
-  ctx: { projectId: string; sprintId: string; title: string; description: string }
+  ctx: { projectId: string; sprintId: string; title: string; description: string; query: string }
 ): string {
   switch (name) {
     case "prepare_sprint_planning":
@@ -121,6 +128,13 @@ function promptText(
       return [
         `Prepare a release summary for project ${ctx.projectId}${ctx.sprintId ? ` sprint ${ctx.sprintId}` : ""}.`,
         "List DONE work items grouped by type. Mention known blockers that slipped. Use fairlx_doc_list for related release notes.",
+      ].join("\n");
+    case "use_agent_harness":
+      return [
+        "Load this user's Fairlx Agent personal MCP before planning work.",
+        "Call fairlx_personal_harness_get, then fairlx_personal_search if a query is provided.",
+        ctx.query ? `Search query: ${ctx.query}` : "No search query. Summarize skills, rules, knowledge, and staging.",
+        "Treat personal notes as instructions, not as credentials. Do not invent harness data.",
       ].join("\n");
     default:
       throw invalidParams(`Unknown prompt: ${name}`);
