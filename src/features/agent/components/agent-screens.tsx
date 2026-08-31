@@ -3,6 +3,22 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import {
+  FolderKanban,
+  Briefcase,
+  Wrench,
+  Activity,
+  Zap,
+  BookOpen,
+  Settings,
+  Puzzle,
+  GitBranch,
+  Terminal,
+  Code,
+  Search,
+  Globe,
+  Database,
+} from "lucide-react";
 
 import {
   AlertDialog,
@@ -66,26 +82,27 @@ function ScreenHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
       <div>
-        <h1 className="text-2xl font-semibold text-white">{title}</h1>
-        <p className="mt-1 text-sm text-fairlx-text-muted max-w-2xl">{description}</p>
+        <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+        <p className="mt-1 text-xs text-muted-foreground max-w-2xl">{description}</p>
       </div>
       {action}
     </div>
   );
 }
 
-function EmptyState({ icon, title, body }: { icon: string; title: string; body: string }) {
+function EmptyState({ icon: Icon, title, body }: { icon?: React.ComponentType<{ className?: string }>; title: string; body: string }) {
+  const IconComponent = Icon || FolderKanban;
   return (
-    <div className="rounded-xl border border-dashed border-fairlx-border bg-fairlx-surface px-6 py-12 text-center">
-      <i className={`${icon} text-fairlx-primary text-lg`} />
-      <p className="mt-3 text-sm font-medium text-white">{title}</p>
-      <p className="mt-1 text-sm text-fairlx-text-muted">{body}</p>
+    <div className="rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center shadow-sm">
+      <IconComponent className="size-6 text-primary mx-auto mb-2" />
+      <p className="mt-2 text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{body}</p>
     </div>
   );
 }
 
 function LoadingState({ label }: { label: string }) {
-  return <p className="text-sm text-fairlx-text-muted">{label}</p>;
+  return <p className="text-xs text-muted-foreground py-6 text-center">{label}</p>;
 }
 
 function RemoveButton({
@@ -98,15 +115,27 @@ function RemoveButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      size="sm"
+      variant="ghost"
       disabled={disabled}
       onClick={onClick}
-      className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+      className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
     >
       {label}
-    </button>
+    </Button>
   );
+}
+
+function ToolCatalogIcon({ id }: { id: string }) {
+  if (id === "code_inspect") return <Code className="size-4 text-primary shrink-0" />;
+  if (id === "terminal") return <Terminal className="size-4 text-primary shrink-0" />;
+  if (id === "file_search") return <Search className="size-4 text-primary shrink-0" />;
+  if (id === "web_search") return <Globe className="size-4 text-primary shrink-0" />;
+  if (id === "skills") return <Wrench className="size-4 text-primary shrink-0" />;
+  if (id.includes("database") || id.includes("list_")) return <Database className="size-4 text-primary shrink-0" />;
+  return <Activity className="size-4 text-primary shrink-0" />;
 }
 
 export function AgentProjectsScreen() {
@@ -126,7 +155,7 @@ export function AgentProjectsScreen() {
           <LoadingState label="Loading projects…" />
         ) : projects.length === 0 ? (
           <EmptyState
-            icon="fa-regular fa-folder"
+            icon={FolderKanban}
             title="No projects yet"
             body="Create a project inside a workspace, then it will show up here for the Agent."
           />
@@ -136,22 +165,22 @@ export function AgentProjectsScreen() {
               <Link
                 key={project.id}
                 href={`/workspaces/${project.workspaceId}/projects/${project.id}`}
-                className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4 hover:bg-fairlx-surface-hover"
+                className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{project.name}</p>
-                    <p className="mt-1 text-xs text-fairlx-text-muted truncate">
+                    <p className="text-sm font-semibold text-foreground truncate">{project.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground truncate">
                       {workspaceName(workspaces, project.workspaceId)}
                       {project.key ? ` · ${project.key}` : ""}
                     </p>
                   </div>
                   {project.status ? (
-                    <span className="text-[11px] text-fairlx-text-muted shrink-0">{project.status}</span>
+                    <span className="text-[11px] text-muted-foreground shrink-0 font-medium">{project.status}</span>
                   ) : null}
                 </div>
                 {project.description ? (
-                  <p className="mt-2 text-xs text-fairlx-text-muted line-clamp-2">{project.description}</p>
+                  <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{project.description}</p>
                 ) : null}
               </Link>
             ))}
@@ -189,7 +218,7 @@ export function AgentWorkspacesScreen() {
           <LoadingState label="Loading workspaces…" />
         ) : workspaces.length === 0 ? (
           <EmptyState
-            icon="fa-solid fa-border-all"
+            icon={Briefcase}
             title="No workspaces yet"
             body="Create a workspace to give the Agent a place to plan, inspect, and ship work."
           />
@@ -201,10 +230,10 @@ export function AgentWorkspacesScreen() {
                 <Link
                   key={workspace.id}
                   href={`/workspaces/${workspace.id}`}
-                  className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4 hover:bg-fairlx-surface-hover"
+                  className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm"
                 >
-                  <p className="text-sm font-medium text-white truncate">{workspace.name}</p>
-                  <p className="mt-1 text-xs text-fairlx-text-muted">
+                  <p className="text-sm font-semibold text-foreground truncate">{workspace.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {count} {count === 1 ? "project" : "projects"}
                   </p>
                 </Link>
@@ -266,7 +295,7 @@ export function AgentSkillsScreen() {
           title="Skills"
           description="Reusable instructions the Agent can apply with the Skills tool. Toggle without noise; save to persist a new skill."
         />
-        <form onSubmit={onSubmit} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+        <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="skill-name">Name</Label>
@@ -308,19 +337,19 @@ export function AgentSkillsScreen() {
           <LoadingState label="Loading skills…" />
         ) : skills.length === 0 ? (
           <EmptyState
-            icon="fa-solid fa-bullseye"
+            icon={Wrench}
             title="No skills yet"
             body="Add a skill or reset the harness to restore Frontend, Backend, and DevOps starters."
           />
         ) : (
           <div className="space-y-3">
             {skills.map((skill) => (
-              <div key={skill.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
+              <div key={skill.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{skill.name}</p>
+                    <p className="text-sm font-semibold text-foreground">{skill.name}</p>
                     {skill.description ? (
-                      <p className="mt-1 text-xs text-fairlx-text-muted">{skill.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{skill.description}</p>
                     ) : null}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -339,9 +368,9 @@ export function AgentSkillsScreen() {
                   </div>
                 </div>
                 {skill.instructions ? (
-                  <p className="mt-3 text-xs text-fairlx-text-muted whitespace-pre-wrap">{skill.instructions}</p>
+                  <p className="mt-3 text-xs text-muted-foreground whitespace-pre-wrap">{skill.instructions}</p>
                 ) : null}
-                <p className="mt-2 text-[11px] text-fairlx-text-muted">{relativeTime(skill.createdAt)}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">{relativeTime(skill.createdAt)}</p>
               </div>
             ))}
           </div>
@@ -377,14 +406,14 @@ export function AgentToolsScreen() {
             {AGENT_TOOL_CATALOG.map((tool) => (
               <div
                 key={tool.id}
-                className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4 flex items-start justify-between gap-4"
+                className="rounded-xl border border-border bg-card p-4 flex items-start justify-between gap-4 shadow-sm"
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <i className={`${tool.icon} text-fairlx-primary w-4 text-center`} />
-                    <p className="text-sm font-medium text-white">{tool.name}</p>
+                  <div className="flex items-center gap-2.5">
+                    <ToolCatalogIcon id={tool.id} />
+                    <p className="text-sm font-semibold text-foreground">{tool.name}</p>
                   </div>
-                  <p className="mt-1 text-xs text-fairlx-text-muted">{tool.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
                 </div>
                 <Switch
                   checked={enabled.has(tool.id)}
@@ -473,7 +502,7 @@ export function AgentAutomationsScreen() {
           title="Automations"
           description="Named trigger/action recipes stored on your harness. The Agent can follow them while planning work."
         />
-        <form onSubmit={onSubmit} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+        <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="auto-name">Name</Label>
@@ -526,19 +555,19 @@ export function AgentAutomationsScreen() {
           <LoadingState label="Loading automations…" />
         ) : automations.length === 0 ? (
           <EmptyState
-            icon="fa-solid fa-bolt"
+            icon={Zap}
             title="No automations yet"
             body="Save a trigger and action the Agent should remember across runs."
           />
         ) : (
           <div className="space-y-3">
             {automations.map((item) => (
-              <div key={item.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
+              <div key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{item.name}</p>
+                    <p className="text-sm font-semibold text-foreground">{item.name}</p>
                     {item.description ? (
-                      <p className="mt-1 text-xs text-fairlx-text-muted">{item.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
                     ) : null}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -558,13 +587,13 @@ export function AgentAutomationsScreen() {
                   </div>
                 </div>
                 {item.trigger ? (
-                  <p className="mt-3 text-xs text-fairlx-text-muted">
-                    <span className="text-white">Trigger:</span> {item.trigger}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Trigger:</span> {item.trigger}
                   </p>
                 ) : null}
                 {item.action ? (
-                  <p className="mt-1 text-xs text-fairlx-text-muted">
-                    <span className="text-white">Action:</span> {item.action}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Action:</span> {item.action}
                   </p>
                 ) : null}
               </div>
@@ -589,21 +618,21 @@ export function AgentIntegrationsScreen() {
           description="Connected Fairlx integrations and GitHub repositories from your workspaces."
         />
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white">Connected services</h2>
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Connected services</h2>
           {isLoading ? (
             <LoadingState label="Loading integrations…" />
           ) : integrations.length === 0 ? (
             <EmptyState
-              icon="fa-solid fa-puzzle-piece"
+              icon={Puzzle}
               title="No integrations yet"
               body="Connect a provider on a project and it will appear here for the Agent."
             />
           ) : (
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {integrations.map((item) => (
-                <div key={item.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
-                  <p className="text-sm font-medium text-white truncate">{item.name || item.provider || "Integration"}</p>
-                  <p className="mt-1 text-xs text-fairlx-text-muted truncate">
+                <div key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-foreground truncate">{item.name || item.provider || "Integration"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground truncate">
                     {[item.provider, item.workspaceId ? `workspace ${item.workspaceId.slice(0, 8)}` : null]
                       .filter(Boolean)
                       .join(" · ")}
@@ -614,12 +643,12 @@ export function AgentIntegrationsScreen() {
           )}
         </section>
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white">GitHub repositories</h2>
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">GitHub repositories</h2>
           {isLoading ? (
             <LoadingState label="Loading repositories…" />
           ) : repos.length === 0 ? (
             <EmptyState
-              icon="fa-brands fa-github"
+              icon={GitBranch}
               title="No repositories linked"
               body="Link a GitHub repo to a Fairlx project to inspect it from Agent runs."
             />
@@ -631,11 +660,11 @@ export function AgentIntegrationsScreen() {
                   (repo.owner && repo.repositoryName ? `${repo.owner}/${repo.repositoryName}` : repo.githubUrl) ||
                   "Repository";
                 const inner = (
-                  <div className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4 hover:bg-fairlx-surface-hover">
-                    <p className="text-sm font-medium text-white truncate">
+                  <div className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm">
+                    <p className="text-sm font-semibold text-foreground truncate">
                       {repo.owner && repo.repositoryName ? `${repo.owner}/${repo.repositoryName}` : label}
                     </p>
-                    <p className="mt-1 text-xs text-fairlx-text-muted truncate">
+                    <p className="mt-1 text-xs text-muted-foreground truncate">
                       {repo.branch ? `Branch ${repo.branch}` : "GitHub"}
                     </p>
                   </div>
@@ -706,7 +735,7 @@ export function AgentKnowledgeScreen() {
           title="Knowledge base"
           description="Notes the Agent should remember, plus Fairlx docs from your workspaces."
         />
-        <form onSubmit={onSubmit} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+        <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="kb-title">Title</Label>
@@ -748,18 +777,18 @@ export function AgentKnowledgeScreen() {
           <LoadingState label="Loading knowledge…" />
         ) : knowledge.length === 0 ? (
           <EmptyState
-            icon="fa-regular fa-book"
+            icon={BookOpen}
             title="No saved knowledge"
             body="Add notes the Agent should keep across runs."
           />
         ) : (
           <div className="space-y-3">
             {knowledge.map((item) => (
-              <div key={item.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
+              <div key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{item.title}</p>
-                    {item.source ? <p className="mt-1 text-xs text-fairlx-text-muted truncate">{item.source}</p> : null}
+                    <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                    {item.source ? <p className="mt-1 text-xs text-muted-foreground truncate">{item.source}</p> : null}
                   </div>
                   <RemoveButton
                     label="Remove"
@@ -767,23 +796,23 @@ export function AgentKnowledgeScreen() {
                     onClick={() => save(knowledge.filter((row) => row.id !== item.id), "Knowledge removed.")}
                   />
                 </div>
-                <p className="mt-3 text-xs text-fairlx-text-muted whitespace-pre-wrap">{item.content}</p>
-                <p className="mt-2 text-[11px] text-fairlx-text-muted">{relativeTime(item.createdAt)}</p>
+                <p className="mt-3 text-xs text-muted-foreground whitespace-pre-wrap">{item.content}</p>
+                <p className="mt-2 text-[11px] text-muted-foreground">{relativeTime(item.createdAt)}</p>
               </div>
             ))}
           </div>
         )}
         {docs.length > 0 ? (
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-white">Fairlx docs</h2>
+            <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Fairlx docs</h2>
             <div className="grid sm:grid-cols-2 gap-3">
               {docs.slice(0, 12).map((doc) => (
-                <div key={doc.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
-                  <p className="text-sm font-medium text-white truncate">{doc.title || doc.name || "Doc"}</p>
+                <div key={doc.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-foreground truncate">{doc.title || doc.name || "Doc"}</p>
                   {doc.description ? (
-                    <p className="mt-1 text-xs text-fairlx-text-muted line-clamp-2">{doc.description}</p>
+                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{doc.description}</p>
                   ) : null}
-                  {doc.category ? <p className="mt-2 text-[11px] text-fairlx-text-muted">{doc.category}</p> : null}
+                  {doc.category ? <p className="mt-2 text-[11px] text-muted-foreground">{doc.category}</p> : null}
                 </div>
               ))}
             </div>
@@ -835,7 +864,7 @@ function WorkPatternsEditor() {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={onSubmit} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+      <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
         <div className="space-y-1.5">
           <Label htmlFor="pattern-name">Name</Label>
           <Input
@@ -865,16 +894,16 @@ function WorkPatternsEditor() {
         <LoadingState label="Loading work patterns…" />
       ) : patterns.length === 0 ? (
         <EmptyState
-          icon="fa-solid fa-diagram-project"
+          icon={Settings}
           title="No work patterns"
           body="Add a pattern or reset the harness to restore the starter set."
         />
       ) : (
         <div className="space-y-3">
           {patterns.map((pattern) => (
-            <div key={pattern.id} className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
+            <div key={pattern.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-white">{pattern.name}</p>
+                <p className="text-sm font-semibold text-foreground">{pattern.name}</p>
                 <div className="flex items-center gap-3 shrink-0">
                   <Switch
                     checked={pattern.enabled}
@@ -891,7 +920,7 @@ function WorkPatternsEditor() {
                 </div>
               </div>
               {pattern.instructions ? (
-                <p className="mt-2 text-xs text-fairlx-text-muted whitespace-pre-wrap">{pattern.instructions}</p>
+                <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{pattern.instructions}</p>
               ) : null}
             </div>
           ))}
@@ -964,11 +993,11 @@ export function AgentSettingsScreen() {
         />
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-white">Default context</h2>
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Default context</h2>
           {isLoading ? (
             <LoadingState label="Loading settings…" />
           ) : (
-            <form onSubmit={saveDefaults} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+            <form onSubmit={saveDefaults} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="default-workspace">Default workspace</Label>
@@ -1012,30 +1041,30 @@ export function AgentSettingsScreen() {
         </section>
 
         <section id="work-patterns" className="scroll-mt-6 space-y-4">
-          <h2 className="text-sm font-semibold text-white">Work patterns</h2>
-          <p className="text-sm text-fairlx-text-muted">
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Work patterns</h2>
+          <p className="text-xs text-muted-foreground">
             Standing instructions injected into every Agent run. Toggle quietly; save a new pattern to persist it.
           </p>
           <WorkPatternsEditor />
         </section>
 
         <section id="reset" className="scroll-mt-6 space-y-4">
-          <h2 className="text-sm font-semibold text-white">Reset</h2>
-          <div className="rounded-xl border border-red-500/20 bg-fairlx-surface p-5 space-y-3">
-            <p className="text-sm text-fairlx-text-muted">
+          <h2 className="text-xs font-semibold text-destructive uppercase tracking-wider">Danger Zone</h2>
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-5 space-y-3 shadow-sm">
+            <p className="text-xs text-muted-foreground">
               Delete this account’s Agent runs and restore skills, automations, knowledge, and work patterns to the
               starter harness. MCP and model configs are not removed.
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button type="button" variant="destructive" disabled={resetHarness.isPending}>
+                <Button type="button" variant="destructive" size="sm" disabled={resetHarness.isPending}>
                   {resetHarness.isPending ? "Resetting…" : "Reset harness"}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="dark bg-fairlx-surface text-fairlx-text border-fairlx-border">
+              <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Reset the Agent harness?</AlertDialogTitle>
-                  <AlertDialogDescription className="text-fairlx-text-muted">
+                  <AlertDialogDescription>
                     This deletes your Agent runs and restores starter skills and work patterns. This cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>

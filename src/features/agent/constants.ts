@@ -98,15 +98,15 @@ export const PLATFORM_MODELS: AgentModel[] = [
 
 export function getMcpServerIcon(name: string): { kind: "icon" | "badge"; value: string; className?: string } {
   const key = name.toLowerCase();
-  if (key.includes("github")) return { kind: "icon", value: "fa-brands fa-github", className: "text-white" };
+  if (key.includes("github")) return { kind: "icon", value: "fa-brands fa-github", className: "text-foreground" };
   if (key.includes("postgres") || key.includes("pgsql") || key.includes("database")) {
-    return { kind: "icon", value: "fa-solid fa-database", className: "text-blue-400" };
+    return { kind: "icon", value: "fa-solid fa-database", className: "text-blue-500" };
   }
-  if (key.includes("slack")) return { kind: "icon", value: "fa-brands fa-slack", className: "text-white" };
-  if (key.includes("linear")) return { kind: "icon", value: "fa-solid fa-chart-gantt", className: "text-white" };
+  if (key.includes("slack")) return { kind: "icon", value: "fa-brands fa-slack", className: "text-foreground" };
+  if (key.includes("linear")) return { kind: "icon", value: "fa-solid fa-chart-gantt", className: "text-foreground" };
   if (key.includes("notion")) return { kind: "badge", value: "N" };
-  if (key.includes("fairlx") || key.includes("personal")) return { kind: "icon", value: "fa-solid fa-cube", className: "text-fairlx-primary" };
-  return { kind: "icon", value: "fa-solid fa-server", className: "text-fairlx-text-muted" };
+  if (key.includes("fairlx") || key.includes("personal")) return { kind: "icon", value: "fa-solid fa-cube", className: "text-primary" };
+  return { kind: "icon", value: "fa-solid fa-server", className: "text-muted-foreground" };
 }
 
 export function getProviderCatalogItem(type: AgentProviderType) {
@@ -323,4 +323,4 @@ export const STARTER_WORK_PATTERNS: Omit<AgentWorkPattern, "id" | "createdAt">[]
 ];
 
 export const AGENT_FIELD_CLASS =
-  "border-fairlx-border bg-fairlx-bg text-fairlx-text placeholder:text-fairlx-text-muted";
+  "border-border bg-background text-foreground placeholder:text-muted-foreground";

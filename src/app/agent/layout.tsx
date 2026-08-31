@@ -8,7 +8,7 @@ export default function AgentLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="h-screen w-full dark bg-fairlx-bg text-fairlx-text font-sans antialiased">
+        <div className="h-screen w-full bg-background text-foreground font-sans antialiased">
             <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
             <style dangerouslySetInnerHTML={{ __html: `
                 .scrollbar-hide::-webkit-scrollbar {
@@ -25,7 +25,7 @@ export default function AgentLayout({
                     background: transparent;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background-color: #374151;
+                    background-color: hsl(var(--border));
                     border-radius: 20px;
                 }
             `}} />

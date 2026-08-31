@@ -4,6 +4,19 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import {
+  MessageSquare,
+  Briefcase,
+  FolderKanban,
+  Wrench,
+  BookOpen,
+  Zap,
+  GitBranch,
+  Server,
+  Search,
+  Bookmark,
+  GitMerge,
+} from "lucide-react";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -27,31 +40,32 @@ import { searchAgentIndex } from "../lib/search";
 import type { AgentGitStageItem, AgentRun, AgentSearchHit } from "../types";
 import { AgentPageFrame } from "./agent-app-shell";
 
-function EmptyState({ icon, title, body }: { icon: string; title: string; body: string }) {
+function EmptyState({ icon: Icon, title, body }: { icon?: React.ComponentType<{ className?: string }>; title: string; body: string }) {
+  const IconComponent = Icon || MessageSquare;
   return (
-    <div className="rounded-xl border border-dashed border-fairlx-border bg-fairlx-surface px-6 py-12 text-center">
-      <i className={`${icon} text-fairlx-primary text-lg`} />
-      <p className="mt-3 text-sm font-medium text-white">{title}</p>
-      <p className="mt-1 text-sm text-fairlx-text-muted">{body}</p>
+    <div className="rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center shadow-sm">
+      <IconComponent className="size-6 text-primary mx-auto mb-2" />
+      <p className="mt-2 text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{body}</p>
     </div>
   );
 }
 
-function kindIcon(kind: string) {
-  if (kind === "run") return "fa-regular fa-comments";
-  if (kind === "workspace") return "fa-solid fa-border-all";
-  if (kind === "project") return "fa-regular fa-folder";
-  if (kind === "skill") return "fa-solid fa-bullseye";
-  if (kind === "knowledge") return "fa-regular fa-book";
-  if (kind === "automation") return "fa-solid fa-bolt";
-  if (kind === "repo" || kind === "staging") return "fa-brands fa-git-alt";
-  if (kind === "mcp") return "fa-solid fa-server";
-  return "fa-solid fa-magnifying-glass";
+function KindIcon({ kind }: { kind: string }) {
+  if (kind === "run") return <MessageSquare className="size-4 text-primary shrink-0" />;
+  if (kind === "workspace") return <Briefcase className="size-4 text-primary shrink-0" />;
+  if (kind === "project") return <FolderKanban className="size-4 text-primary shrink-0" />;
+  if (kind === "skill") return <Wrench className="size-4 text-primary shrink-0" />;
+  if (kind === "knowledge") return <BookOpen className="size-4 text-primary shrink-0" />;
+  if (kind === "automation") return <Zap className="size-4 text-primary shrink-0" />;
+  if (kind === "repo" || kind === "staging") return <GitBranch className="size-4 text-primary shrink-0" />;
+  if (kind === "mcp") return <Server className="size-4 text-primary shrink-0" />;
+  return <Search className="size-4 text-primary shrink-0" />;
 }
 
 export function SearchHits({ hits, onPick }: { hits: AgentSearchHit[]; onPick?: () => void }) {
   if (hits.length === 0) {
-    return <p className="text-sm text-fairlx-text-muted py-8 text-center">No matches.</p>;
+    return <p className="text-xs text-muted-foreground py-8 text-center">No matches found.</p>;
   }
   return (
     <div className="space-y-1">
@@ -60,12 +74,14 @@ export function SearchHits({ hits, onPick }: { hits: AgentSearchHit[]; onPick?: 
           key={`${hit.kind}-${hit.id}`}
           href={hit.href}
           onClick={onPick}
-          className="flex items-start gap-3 rounded-lg px-3 py-2 hover:bg-fairlx-surface-hover"
+          className="flex items-start gap-3 rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors"
         >
-          <i className={`${kindIcon(hit.kind)} mt-1 text-fairlx-primary w-4 text-center`} />
-          <div className="min-w-0">
-            <p className="text-sm text-white truncate">{hit.title}</p>
-            <p className="text-xs text-fairlx-text-muted">{hit.meta}</p>
+          <div className="mt-0.5">
+            <KindIcon kind={hit.kind} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-foreground truncate">{hit.title}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{hit.meta}</p>
           </div>
         </Link>
       ))}
@@ -96,8 +112,8 @@ export function AgentSearchScreen() {
     <AgentPageFrame>
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Search</h1>
-          <p className="mt-1 text-sm text-fairlx-text-muted">
+          <h1 className="text-2xl font-bold text-foreground">Search</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
             Search chats, workspaces, projects, skills, knowledge, automations, docs, repos, MCP, and staging.
           </p>
         </div>
@@ -109,9 +125,11 @@ export function AgentSearchScreen() {
           autoFocus
         />
         {isFetching && query.trim() ? (
-          <p className="text-sm text-fairlx-text-muted">Searching…</p>
+          <p className="text-xs text-muted-foreground">Searching…</p>
         ) : (
-          <SearchHits hits={hits} />
+          <div className="bg-card border border-border rounded-xl p-3 shadow-sm">
+            <SearchHits hits={hits} />
+          </div>
         )}
       </div>
     </AgentPageFrame>
@@ -135,7 +153,7 @@ function ChatRow({
   const [title, setTitle] = useState(run.title);
 
   return (
-    <div className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-3 flex items-start gap-3">
+    <div className="rounded-xl border border-border bg-card px-4 py-3 flex items-start gap-3 shadow-sm hover:bg-muted/30 transition-colors">
       <div className="min-w-0 flex-1">
         {editing ? (
           <Input
@@ -152,23 +170,31 @@ function ChatRow({
           />
         ) : (
           <Link href={`/agent/workflow?runId=${run.id}`} className="block">
-            <p className="text-sm font-medium text-white truncate">
-              {pinned ? <i className="fa-solid fa-thumbtack mr-2 text-fairlx-primary" /> : null}
-              {run.title}
+            <p className="text-sm font-semibold text-foreground truncate flex items-center gap-1.5">
+              {pinned ? <Bookmark className="size-3.5 fill-primary text-primary shrink-0" /> : null}
+              <span>{run.title}</span>
             </p>
-            <p className="mt-1 text-xs text-fairlx-text-muted">
+            <p className="mt-1 text-xs text-muted-foreground capitalize">
               {run.status} · {relativeTime(run.updatedAt)}
             </p>
           </Link>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button type="button" className="text-xs text-fairlx-text-muted hover:text-white" onClick={onPin}>
-          {pinned ? "Unpin" : "Pin"}
-        </button>
-        <button
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
           type="button"
-          className="text-xs text-fairlx-text-muted hover:text-white"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={onPin}
+        >
+          {pinned ? "Unpin" : "Pin"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
           onClick={() => {
             if (editing) {
               onRename(title);
@@ -179,10 +205,16 @@ function ChatRow({
           }}
         >
           {editing ? "Save" : "Rename"}
-        </button>
-        <button type="button" className="text-xs text-red-400 hover:text-red-300" onClick={onDelete}>
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          onClick={onDelete}
+        >
           Delete
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -216,20 +248,20 @@ export function AgentChatsScreen() {
     <AgentPageFrame>
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Chats</h1>
-          <p className="mt-1 text-sm text-fairlx-text-muted">
+          <h1 className="text-2xl font-bold text-foreground">Chats</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
             Pin, rename, or delete Agent runs. Archived chats stay off this list.
           </p>
         </div>
         {isLoading ? (
-          <p className="text-sm text-fairlx-text-muted">Loading chats…</p>
+          <p className="text-xs text-muted-foreground">Loading chats…</p>
         ) : visible.length === 0 ? (
-          <EmptyState icon="fa-regular fa-comments" title="No chats yet" body="Start a run from Agent Home." />
+          <EmptyState title="No chats yet" body="Start an agent run from Agent Home." />
         ) : (
           <div className="space-y-6">
             {pinnedRuns.length > 0 ? (
               <section className="space-y-2">
-                <h2 className="text-sm font-semibold text-white">Pinned</h2>
+                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Pinned</h2>
                 {pinnedRuns.map((run) => (
                   <ChatRow
                     key={run.id}
@@ -243,7 +275,7 @@ export function AgentChatsScreen() {
               </section>
             ) : null}
             <section className="space-y-2">
-              <h2 className="text-sm font-semibold text-white">Recent</h2>
+              <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Recent</h2>
               {otherRuns.map((run) => (
                 <ChatRow
                   key={run.id}
@@ -291,20 +323,19 @@ export function AgentGitScreen() {
     <AgentPageFrame>
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Git & staging</h1>
-          <p className="mt-1 text-sm text-fairlx-text-muted">
-            Linked GitHub repositories plus a Cursor-style staging buffer. Planned commits are recorded here and never
-            executed on the Fairlx host.
+          <h1 className="text-2xl font-bold text-foreground">Git & Staging</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Linked GitHub repositories plus a Cursor-style staging buffer. Planned commits are recorded here and never executed on the Fairlx host.
           </p>
         </div>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-white">Repositories</h2>
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Repositories</h2>
           {isLoading ? (
-            <p className="text-sm text-fairlx-text-muted">Loading repositories…</p>
+            <p className="text-xs text-muted-foreground">Loading repositories…</p>
           ) : repos.length === 0 ? (
             <EmptyState
-              icon="fa-brands fa-github"
+              icon={GitBranch}
               title="No repositories linked"
               body="Link a GitHub repo on a project to inspect it from Agent mode."
             />
@@ -316,9 +347,9 @@ export function AgentGitScreen() {
                     ? `${repo.owner}/${repo.repositoryName}`
                     : repo.repositoryName || "Repository";
                 const inner = (
-                  <div className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-4">
-                    <p className="text-sm font-medium text-white truncate">{label}</p>
-                    <p className="mt-1 text-xs text-fairlx-text-muted">{repo.branch ? `Branch ${repo.branch}` : "GitHub"}</p>
+                  <div className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors shadow-sm">
+                    <p className="text-sm font-semibold text-foreground truncate">{label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{repo.branch ? `Branch ${repo.branch}` : "GitHub"}</p>
                   </div>
                 );
                 return repo.githubUrl ? (
@@ -334,9 +365,9 @@ export function AgentGitScreen() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-white">Staging</h2>
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Staging</h2>
           <form
-            className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 grid sm:grid-cols-[1fr_1fr_auto] gap-3"
+            className="rounded-xl border border-border bg-card p-5 grid sm:grid-cols-[1fr_1fr_auto] gap-3 shadow-sm"
             onSubmit={(event) => {
               event.preventDefault();
               if (!path.trim()) return;
@@ -374,34 +405,36 @@ export function AgentGitScreen() {
             </Button>
           </form>
           {items.length === 0 ? (
-            <EmptyState icon="fa-solid fa-code-commit" title="Nothing staged" body="Stage a planned change for the Agent to track." />
+            <EmptyState icon={GitMerge} title="Nothing staged" body="Stage a planned change for the Agent to track." />
           ) : (
             <div className="space-y-2">
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-xl border border-fairlx-border bg-fairlx-surface px-4 py-3 flex items-center gap-3"
+                  className="rounded-xl border border-border bg-card px-4 py-3 flex items-center gap-3 shadow-sm"
                 >
                   <span
                     className={cn(
-                      "text-[11px] uppercase tracking-wide",
+                      "text-[11px] uppercase tracking-wide font-semibold",
                       item.status === "staged"
-                        ? "text-green-400"
+                        ? "text-green-500"
                         : item.status === "committed"
-                          ? "text-fairlx-primary"
-                          : "text-fairlx-text-muted",
+                          ? "text-primary"
+                          : "text-muted-foreground",
                     )}
                   >
                     {item.status}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white truncate">{item.path}</p>
-                    <p className="text-xs text-fairlx-text-muted truncate">{item.summary}</p>
+                    <p className="text-xs font-semibold text-foreground truncate">{item.path}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{item.summary}</p>
                   </div>
                   {item.status !== "committed" ? (
-                    <button
+                    <Button
                       type="button"
-                      className="text-xs text-fairlx-text-muted hover:text-white"
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs text-muted-foreground hover:text-foreground h-7"
                       onClick={() =>
                         saveStaging(
                           items.map((row) =>
@@ -413,7 +446,7 @@ export function AgentGitScreen() {
                       }
                     >
                       {item.status === "staged" ? "Unstage" : "Stage"}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               ))}
@@ -489,7 +522,7 @@ export function AgentNewProjectForm({
   };
 
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-fairlx-border bg-fairlx-surface p-5 space-y-4">
+    <form onSubmit={onSubmit} className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-sm">
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="new-project-workspace">Workspace</Label>
@@ -512,7 +545,7 @@ export function AgentNewProjectForm({
             id="new-project-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Website"
+            placeholder="Website Redesign"
             className={AGENT_FIELD_CLASS}
           />
         </div>
