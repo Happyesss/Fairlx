@@ -1,5 +1,8 @@
 import { AGENT_TOOL_CATALOG } from "../constants";
 import type { AgentChatMessage, AgentToolCall, AgentToolEvent } from "../types";
+import { unwrapMcpToolContent } from "./truncate";
+import type { AgentWorkItem } from "./work-item-table";
+import { memberLookupKey, type AgentMember } from "./member-table";
 
 export type TranscriptStep = {
   call: AgentToolCall;
@@ -88,8 +91,10 @@ export function groupTranscript(
 
 function asRecord(raw: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    const parsed = JSON.parse(unwrapMcpToolContent(raw));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -140,6 +145,9 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     name === "fairlx_project_list" ||
     name === "fairlx_workspace_list"
   ) {
+    if (parsed.repeated === true) {
+      return { ok: true, detail: "Reused previous result" };
+    }
     const key =
       name === "list_workspaces" || name === "fairlx_workspace_list"
         ? "workspaces"
@@ -149,9 +157,23 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     const count = Array.isArray(parsed[key])
       ? (parsed[key] as unknown[]).length
       : Array.isArray(parsed.items)
-        ? parsed.items.length
+        ? (parsed.items as unknown[]).length
         : 0;
-    return { ok: true, detail: `${count} ${key === "workItems" ? "work items" : key}` };
+    if (key === "workItems") {
+      const total = typeof parsed.total === "number" ? parsed.total : count;
+      const unassignedCount =
+        typeof parsed.unassignedCount === "number"
+          ? parsed.unassignedCount
+          : Array.isArray(parsed.workItems)
+            ? (parsed.workItems as Array<{ unassigned?: boolean }>).filter((item) => item.unassigned).length
+            : 0;
+      const matched = typeof parsed.matched === "number" ? parsed.matched : count;
+      return {
+        ok: true,
+        detail: `Listed ${total} items · ${unassignedCount} unassigned${matched !== count ? ` · showing ${count}` : ""}`,
+      };
+    }
+    return { ok: true, detail: `${count} ${key}` };
   }
   if (name === "search_harness" || name === "web_search" || name === "file_search") {
     const hits = Array.isArray(parsed.hits) ? parsed.hits.length : Array.isArray(parsed.related) ? parsed.related.length : 0;
@@ -182,6 +204,57 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     if (Array.isArray(parsed[key])) return { ok: true, detail: `${(parsed[key] as unknown[]).length} ${key}` };
   }
   return { ok: true, detail: toolLabel(name) };
+}
+
+export function isRepeatedToolResult(content?: string): boolean {
+  const parsed = asRecord(content ?? "");
+  return parsed?.repeated === true;
+}
+
+export type WorkItemListRow = AgentWorkItem;
+
+export function workItemListRows(content?: string): WorkItemListRow[] {
+  const parsed = asRecord(content ?? "");
+  if (!parsed || !Array.isArray(parsed.workItems)) return [];
+  return parsed.workItems.filter((item): item is WorkItemListRow => Boolean(item) && typeof item === "object");
+}
+
+export function collectWorkItemLookup(messages: AgentChatMessage[]): Map<string, AgentWorkItem> {
+  const map = new Map<string, AgentWorkItem>();
+  for (const message of messages) {
+    if (message.role !== "tool") continue;
+    for (const row of workItemListRows(message.content)) {
+      const key = String(row.key ?? "").trim().toUpperCase();
+      if (key) map.set(key, row);
+    }
+  }
+  return map;
+}
+
+export function workspaceMemberRows(content?: string): AgentMember[] {
+  const parsed = asRecord(content ?? "");
+  if (!parsed) return [];
+  if (Array.isArray(parsed.members)) {
+    return parsed.members.filter((item): item is AgentMember => Boolean(item) && typeof item === "object");
+  }
+  if (parsed.member && typeof parsed.member === "object") {
+    return [parsed.member as AgentMember];
+  }
+  return [];
+}
+
+export function collectMemberLookup(messages: AgentChatMessage[]): Map<string, AgentMember> {
+  const map = new Map<string, AgentMember>();
+  for (const message of messages) {
+    if (message.role !== "tool") continue;
+    for (const row of workspaceMemberRows(message.content)) {
+      const emailKey = memberLookupKey(row);
+      if (emailKey) map.set(emailKey, row);
+      const name = String(row.name ?? "").trim().toLowerCase();
+      if (name) map.set(`name:${name}`, row);
+    }
+  }
+  return map;
 }
 
 export function activitySummary(events: AgentToolEvent[]) {

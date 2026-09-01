@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseJson, stringifyBounded } from "./truncate";
+import { compactJsonString, parseJson, stringifyBounded, unwrapMcpToolContent } from "./truncate";
 
 describe("stringifyBounded", () => {
   it("keeps valid JSON under the Appwrite string cap", () => {
@@ -119,5 +119,63 @@ describe("stringifyBounded", () => {
     expect(content.endsWith("…")).toBe(true);
     expect(content).not.toMatch(/wan…/);
     expect(content).not.toMatch(/\w…$/);
+  });
+});
+
+describe("unwrapMcpToolContent", () => {
+  it("extracts JSON from an MCP text envelope", () => {
+    const inner = { hasMore: true, nextCursor: "abc", workItems: [{ key: "A-1" }] };
+    const raw = JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify(inner, null, 2) }],
+    });
+    expect(JSON.parse(unwrapMcpToolContent(raw))).toEqual(inner);
+  });
+});
+
+describe("compactJsonString work item lists", () => {
+  it("keeps hasMore and nextCursor when dropping tail rows", () => {
+    const payload = {
+      hasMore: true,
+      nextCursor: "doc_last",
+      returned: 40,
+      total: 61,
+      unassignedCount: 18,
+      workItems: Array.from({ length: 40 }, (_, i) => ({
+        key: `PROJ-${i}`,
+        title: "z".repeat(200),
+        status: "TODO",
+        assignees: [] as string[],
+        unassigned: true,
+      })),
+    };
+    const json = compactJsonString(JSON.stringify(payload), 800);
+    const parsed = JSON.parse(json) as {
+      hasMore: boolean;
+      nextCursor: string;
+      truncated?: boolean;
+      omitted?: number;
+      workItems: unknown[];
+    };
+    expect(parsed.hasMore).toBe(true);
+    expect(parsed.nextCursor).toBe("doc_last");
+    expect(parsed.truncated).toBe(true);
+    expect((parsed.omitted ?? 0) + parsed.workItems.length).toBe(40);
+    expect(json).not.toContain('"preview"');
+  });
+
+  it("unwraps an envelope then compact the inner list", () => {
+    const inner = {
+      hasMore: true,
+      nextCursor: "next",
+      workItems: Array.from({ length: 30 }, (_, i) => ({ key: `K-${i}`, title: "y".repeat(180) })),
+    };
+    const envelope = JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify(inner) }],
+    });
+    const json = compactJsonString(envelope, 600);
+    const parsed = JSON.parse(json) as { hasMore: boolean; nextCursor: string; workItems: unknown[] };
+    expect(parsed.hasMore).toBe(true);
+    expect(parsed.nextCursor).toBe("next");
+    expect(Array.isArray(parsed.workItems)).toBe(true);
   });
 });

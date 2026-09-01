@@ -1,5 +1,5 @@
 import type { AgentChatMessage, AgentToolCall } from "../types";
-import { compactJsonString, truncateString } from "./truncate";
+import { compactJsonString, truncateString, unwrapMcpToolContent } from "./truncate";
 
 const PREVIOUS_RESULT_MAX = 1500;
 export const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
@@ -73,6 +73,8 @@ export function listSliceKey(tool: string, args: Record<string, unknown>): strin
     sprintId: String(args.sprintId ?? ""),
     status: String(args.status ?? ""),
     type: String(args.type ?? ""),
+    unassigned: args.unassigned === true || args.unassigned === "true" ? "1" : "",
+    assigneeId: String(args.assigneeId ?? ""),
   });
 }
 
@@ -82,7 +84,7 @@ function asCursor(value: unknown): string {
 
 export function parseListPageMeta(content: string): { hasMore: boolean; nextCursor: string | null } {
   try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const parsed = JSON.parse(unwrapMcpToolContent(content)) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return { hasMore: false, nextCursor: null };
     const nextCursor = asCursor(parsed.nextCursor) || null;
     return { hasMore: parsed.hasMore === true, nextCursor };
@@ -217,12 +219,19 @@ export function collapseWorkItemListFanOut(calls: AgentToolCall[]): {
       return a.status !== b.status || a.type !== b.type || a.sprintId !== b.sprintId;
     });
     if (!filtersDiffer) continue;
+    const unassignedFlags = group.map((row) => row.parts.args.unassigned === true || row.parts.args.unassigned === "true");
+    if (unassignedFlags.some(Boolean) && !unassignedFlags.every(Boolean)) continue;
+    const assigneeIds = new Set(group.map((row) => String(row.parts.args.assigneeId ?? "")));
+    if (assigneeIds.size > 1) continue;
     const sprints = new Set(group.map((row) => String(row.parts.args.sprintId ?? "")));
     const sharedSprint = sprints.size === 1 ? [...sprints][0] : "";
     const canonical: Record<string, unknown> = {
       projectId: String(group[0]!.parts.args.projectId ?? ""),
     };
     if (sharedSprint) canonical.sprintId = sharedSprint;
+    if (unassignedFlags.every(Boolean) && unassignedFlags.length) canonical.unassigned = true;
+    const sharedAssignee = [...assigneeIds][0];
+    if (sharedAssignee) canonical.assigneeId = sharedAssignee;
     for (const row of group) {
       next[row.index] = withListArgs(row.call, canonical);
     }

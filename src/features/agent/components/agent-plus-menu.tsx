@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   Plus,
+  Paperclip,
   Image as ImageIcon,
   Sliders,
   BookOpen,
@@ -12,7 +13,6 @@ import {
   Briefcase,
   FileText,
   Lightbulb,
-  Check,
   ChevronRight,
   ChevronLeft,
   X,
@@ -20,13 +20,14 @@ import {
 } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
-import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
+import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
 import { isInternalMcpServer } from "../constants";
-import { AGENT_SESSION_MODES, chipKey, runModeForSession } from "../lib/session-context";
-import type { AgentContextChip, AgentSessionMode } from "../types";
+import { chipKey } from "../lib/session-context";
+import type { AgentContextChip } from "../types";
 import { useAgentUi } from "./agent-ui-context";
 
 type MenuView = "root" | "work_items" | "skills" | "mcp" | "projects" | "workspaces" | "docs";
@@ -34,9 +35,15 @@ type MenuView = "root" | "work_items" | "skills" | "mcp" | "projects" | "workspa
 export function AgentPlusMenu({
   chips,
   onAdd,
+  triggerVariant = "plus",
+  triggerClassName,
+  align = "start",
 }: {
   chips: AgentContextChip[];
   onAdd: (chip: AgentContextChip) => void;
+  triggerVariant?: "plus" | "paperclip";
+  triggerClassName?: string;
+  align?: "start" | "end" | "center";
 }) {
   const { openMcp, openModels, openNewWorkspace } = useAgentUi();
   const [open, setOpen] = useState(false);
@@ -47,10 +54,8 @@ export function AgentPlusMenu({
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
   const { data: mcp } = useGetAgentMcpConfig();
-  const updateHarness = useUpdateAgentHarness();
 
   const selected = useMemo(() => new Set(chips.map(chipKey)), [chips]);
-  const sessionMode = harness?.settings.sessionMode || "agent";
   const q = query.trim().toLowerCase();
 
   const workItems = useMemo(() => context?.workItems ?? [], [context?.workItems]);
@@ -77,13 +82,6 @@ export function AgentPlusMenu({
     return [];
   }, [view, q, workItems, skills, projects, workspaces, docs]);
 
-  const setMode = (id: AgentSessionMode) => {
-    updateHarness.mutate({
-      json: { settings: { sessionMode: id, mode: runModeForSession(id) } },
-    });
-    setOpen(false);
-  };
-
   const add = (chip: AgentContextChip) => {
     if (selected.has(chipKey(chip))) return;
     onAdd(chip);
@@ -106,14 +104,23 @@ export function AgentPlusMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="size-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors shadow-sm border border-border/40"
-          title="Add agents, context, tools"
+          className={cn(
+            triggerVariant === "paperclip"
+              ? "size-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/70 flex items-center justify-center transition-colors cursor-pointer select-none"
+              : "size-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted flex items-center justify-center transition-colors shadow-sm border border-border/40 cursor-pointer select-none",
+            triggerClassName
+          )}
+          title={triggerVariant === "paperclip" ? "Attach context or files" : "Add agents, context, tools"}
         >
-          <Plus className="size-3.5" />
+          {triggerVariant === "paperclip" ? (
+            <Paperclip className="size-4" />
+          ) : (
+            <Plus className="size-3.5" />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
-        align="start"
+        align={align}
         side="top"
         className="w-80 p-0 bg-popover border-border text-popover-foreground shadow-2xl rounded-xl"
       >
@@ -121,25 +128,13 @@ export function AgentPlusMenu({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Add agents, context, tools..."
+            placeholder="Add context, files, tools..."
             className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none"
             autoFocus
           />
         </div>
         {view === "root" ? (
           <div className="py-1 max-h-80 overflow-y-auto custom-scrollbar">
-            {AGENT_SESSION_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setMode(mode.id)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted transition-colors text-left"
-              >
-                <span className="flex-1 font-medium">{mode.label}</span>
-                {sessionMode === mode.id ? <Check className="size-3.5 text-primary" /> : null}
-              </button>
-            ))}
-            <div className="h-px bg-border my-1" />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}

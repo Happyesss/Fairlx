@@ -4,7 +4,8 @@ vi.mock("server-only", () => ({}));
 
 import type { AgentContext } from "../types";
 import { defaultHarnessData } from "./harness";
-import { applyScopeDefaults } from "./tools";
+import { applyScopeDefaults, openaiToolsForTurn } from "./tools";
+import { DEFAULT_ENABLED_TOOLS } from "../constants";
 
 function context(): AgentContext {
   return {
@@ -54,5 +55,37 @@ describe("applyScopeDefaults", () => {
     );
     expect(next.workspaceId).toBe("other-ws");
     expect(next.projectId).toBe("other-proj");
+  });
+});
+
+describe("openaiToolsForTurn", () => {
+  it("hides database_query and list stubs when Fairlx MCP list tools exist", () => {
+    const tools = openaiToolsForTurn({
+      mode: "agent",
+      enabledTools: [...DEFAULT_ENABLED_TOOLS],
+      mcpTools: [
+        {
+          name: "fairlx_work_item_list",
+          description: "List work items",
+          inputSchema: { type: "object", properties: { projectId: { type: "string" } } },
+        },
+        {
+          name: "fairlx_workspace_list",
+          description: "List workspaces",
+          inputSchema: { type: "object", properties: {} },
+        },
+        {
+          name: "fairlx_project_list",
+          description: "List projects",
+          inputSchema: { type: "object", properties: { workspaceId: { type: "string" } } },
+        },
+      ],
+    });
+    const names = tools.map((tool) => tool.function.name);
+    expect(names).toContain("fairlx_work_item_list");
+    expect(names).not.toContain("database_query");
+    expect(names).not.toContain("list_work_items");
+    expect(names).not.toContain("list_workspaces");
+    expect(names).not.toContain("list_projects");
   });
 });

@@ -6,6 +6,7 @@ import { toolResult } from "../runtime/output";
 import { requireProjectAccess } from "../runtime/rbac";
 import { loadWorkItem } from "../runtime/tenant";
 import { audit, requireString } from "./helpers";
+import { workspaceMemberRemove } from "./write";
 
 export async function handleDestructiveTool(
   name: string,
@@ -35,6 +36,8 @@ export async function handleDestructiveTool(
       return savedViewDelete(args, runtime, auth);
     case "fairlx_webhook_delete":
       return webhookDelete(args, runtime, auth);
+    case "fairlx_workspace_member_remove":
+      return workspaceMemberRemove(args, runtime, auth);
     default:
       throw invalidParams(`Unknown destructive tool: ${name}`);
   }

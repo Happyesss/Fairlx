@@ -10,6 +10,7 @@ import { withIdempotency } from "../runtime/idempotency";
 import {
   audit,
   LINK_INVERSE,
+  listAllDocuments,
   loadBlocksLinks,
   optionalString,
   parseCustomFields,
@@ -80,6 +81,8 @@ export async function handleWriteTool(
       return sprintUpdate(args, runtime, auth);
     case "fairlx_workspace_member_update":
       return workspaceMemberUpdate(args, runtime, auth);
+    case "fairlx_workspace_member_add":
+      return workspaceMemberAdd(args, runtime, auth);
     default:
       throw invalidParams(`Unknown write tool: ${name}`);
   }
@@ -908,26 +911,9 @@ async function listAllWorkspaceMembers(
   runtime: McpRuntime,
   workspaceId: string
 ): Promise<Record<string, unknown>[]> {
-  const documents: Record<string, unknown>[] = [];
-  let cursor: string | undefined;
-  for (;;) {
-    const queries = [
-      { type: "equal" as const, field: "workspaceId", value: workspaceId },
-      { type: "limit" as const, value: 100 },
-      { type: "orderDesc" as const, field: "$createdAt" },
-      ...(cursor ? [{ type: "cursorAfter" as const, value: cursor }] : []),
-    ];
-    const page = await runtime.store.list<Record<string, unknown>>(
-      runtime.collections.members,
-      queries
-    );
-    documents.push(...page.documents);
-    if (page.documents.length === 0 || documents.length >= page.total) break;
-    const last = page.documents[page.documents.length - 1];
-    cursor = String(last?.$id ?? last?.id ?? "");
-    if (!cursor) break;
-  }
-  return documents;
+  return listAllDocuments(runtime, runtime.collections.members, [
+    { type: "equal", field: "workspaceId", value: workspaceId },
+  ]);
 }
 
 async function requireWorkspaceAdmin(
@@ -948,7 +934,7 @@ async function requireWorkspaceAdmin(
   if (!actor) throw notFoundError("Not found");
   const role = String(actor.role ?? "");
   if (!isWorkspaceAdminRole(role)) {
-    throw forbiddenError("Only workspace admins can change member roles");
+    throw forbiddenError("Only workspace admins can manage members");
   }
   return { role: role.toUpperCase() };
 }
@@ -1044,6 +1030,200 @@ async function workspaceMemberUpdate(
   });
   return toolResult({
     member: { name: target.name, email: target.email, role, status: target.status },
+  });
+}
+
+async function namedWorkspaceMembers(runtime: McpRuntime, workspaceId: string) {
+  const docs = await listAllWorkspaceMembers(runtime, workspaceId);
+  const hydrated = await hydrateMembers(runtime, docs);
+  const named: NamedMember[] = docs.map((doc, index) => ({
+    id: String(doc.$id ?? doc.id ?? ""),
+    name: hydrated[index]?.name ?? "",
+    email: hydrated[index]?.email ?? "",
+    role: hydrated[index]?.role ?? String(doc.role ?? "MEMBER"),
+    status: hydrated[index]?.status ?? String(doc.status ?? "ACTIVE"),
+  }));
+  return { docs, named };
+}
+
+function matchQueryResult(
+  query: string,
+  named: NamedMember[],
+  emptyMessage: string
+) {
+  const matched = matchWorkspaceMember(query, named);
+  if (matched.kind === "none") {
+    return {
+      error: true as const,
+      payload: {
+        error: emptyMessage,
+        members: named.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+    };
+  }
+  if (matched.kind === "many") {
+    return {
+      error: true as const,
+      payload: {
+        error: "Several people match. Say which one.",
+        matches: matched.members.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+    };
+  }
+  return { error: false as const, member: matched.member };
+}
+
+async function workspaceMemberAdd(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  const actor = await requireWorkspaceAdmin(runtime, auth, workspaceId);
+  let role: "OWNER" | "ADMIN" | "MEMBER" = "MEMBER";
+  const rawRole = optionalString(args, "role");
+  if (rawRole) {
+    try {
+      role = normalizeMemberRole(rawRole);
+    } catch (error) {
+      throw invalidParams(error instanceof Error ? error.message : "Invalid role");
+    }
+  }
+  if (role === "OWNER" && actor.role !== "OWNER") {
+    throw forbiddenError("Only the workspace owner can grant owner");
+  }
+
+  const query = optionalString(args, "email") || optionalString(args, "name") || "";
+  if (!query) throw invalidParams("Provide the person's name or email");
+
+  const workspace = await runtime.store.get<Record<string, unknown>>(
+    runtime.collections.workspaces,
+    workspaceId
+  );
+  const organizationId = String(workspace.organizationId ?? "").trim();
+  if (!organizationId) {
+    return toolResult(
+      {
+        error:
+          "This workspace is not in an organization. Share the invite link from fairlx_workspace_invite_get instead of adding someone by name.",
+      },
+      true
+    );
+  }
+  const orgCollection = runtime.collections.organizationMembers;
+  if (!orgCollection) {
+    return toolResult({ error: "Organization members are unavailable." }, true);
+  }
+
+  const orgDocs = await listAllDocuments(runtime, orgCollection, [
+    { type: "equal", field: "organizationId", value: organizationId },
+  ]);
+  const hydrated = await hydrateMembers(runtime, orgDocs);
+  const named: NamedMember[] = orgDocs.map((doc, index) => ({
+    id: String(doc.userId ?? doc.$id ?? ""),
+    name: hydrated[index]?.name ?? "",
+    email: hydrated[index]?.email ?? "",
+    role: hydrated[index]?.role ?? String(doc.role ?? "MEMBER"),
+    status: hydrated[index]?.status ?? String(doc.status ?? "ACTIVE"),
+  }));
+  const matched = matchQueryResult(query, named, `No organization member matches "${query}".`);
+  if (matched.error) return toolResult(matched.payload, true);
+
+  const userId = matched.member.id;
+  const existing = await runtime.store.list<Record<string, unknown>>(runtime.collections.members, [
+    { type: "equal", field: "workspaceId", value: workspaceId },
+    { type: "equal", field: "userId", value: userId },
+    { type: "limit", value: 1 },
+  ]);
+  if (existing.documents.length > 0) {
+    return toolResult(
+      {
+        error: `${matched.member.name} is already a workspace member.`,
+        member: {
+          name: matched.member.name,
+          email: matched.member.email,
+          role: String(existing.documents[0]?.role ?? "MEMBER"),
+        },
+      },
+      true
+    );
+  }
+
+  const created = await runtime.store.create<Record<string, unknown>>(runtime.collections.members, {
+    workspaceId,
+    userId,
+    role,
+    status: "ACTIVE",
+  });
+  try {
+    await runtime.onMembershipChanged?.({ userId, workspaceId });
+  } catch {
+    // Cache invalidation must never fail the add.
+  }
+  await audit(runtime, {
+    workspaceId,
+    userId: auth.actorUserId,
+    action: "mcp.workspace_member.add",
+    resourceType: "member",
+    resourceId: String(created.$id ?? created.id ?? ""),
+    resourceName: matched.member.name,
+    metadata: { role },
+  });
+  return toolResult({
+    member: { name: matched.member.name, email: matched.member.email, role, status: "ACTIVE" },
+    added: true,
+  });
+}
+
+export async function workspaceMemberRemove(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const workspaceId = requireString(args, "workspaceId");
+  await requireWorkspaceAdmin(runtime, auth, workspaceId);
+  const query = optionalString(args, "email") || optionalString(args, "name") || "";
+  if (!query) throw invalidParams("Provide the member's name or email");
+
+  const { docs, named } = await namedWorkspaceMembers(runtime, workspaceId);
+  const matched = matchQueryResult(query, named, `No member matches "${query}".`);
+  if (matched.error) return toolResult(matched.payload, true);
+
+  const target = matched.member;
+  const targetDoc = docs.find((doc) => String(doc.$id ?? doc.id ?? "") === target.id);
+  if (!targetDoc) throw notFoundError("Not found");
+  if (String(targetDoc.role ?? target.role) === "OWNER") {
+    throw forbiddenError("Cannot remove the workspace owner. They must transfer ownership first.");
+  }
+  if (docs.length === 1) {
+    throw invalidParams("Cannot delete the only member.");
+  }
+
+  await runtime.store.delete(runtime.collections.members, target.id);
+  try {
+    await runtime.onMembershipChanged?.({ userId: String(targetDoc.userId ?? ""), workspaceId });
+  } catch {
+    // Cache invalidation must never fail the remove.
+  }
+  await audit(runtime, {
+    workspaceId,
+    userId: auth.actorUserId,
+    action: "mcp.workspace_member.remove",
+    resourceType: "member",
+    resourceId: target.id,
+    resourceName: target.name,
+  });
+  return toolResult({
+    removed: true,
+    member: { name: target.name, email: target.email, role: target.role },
   });
 }
 

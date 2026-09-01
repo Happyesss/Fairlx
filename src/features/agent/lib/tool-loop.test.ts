@@ -94,6 +94,34 @@ describe("list slice cache", () => {
     if (skip.action === "skip") expect(skip.content).toMatch(/No further pages/);
   });
 
+  it("allows the next page when hasMore is nested in an MCP text envelope", () => {
+    const cache = new Map();
+    rememberListSlice(
+      cache,
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      JSON.stringify({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ hasMore: true, nextCursor: "doc_last", workItems: [{ key: "A-1" }] }),
+          },
+        ],
+      }),
+    );
+    const ok = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      cursorAfter: "doc_last",
+    });
+    expect(ok.action).toBe("execute");
+  });
+
+  it("keeps unassigned lists on a separate slice from the full project list", () => {
+    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1" })).not.toBe(
+      listSliceKey("fairlx_work_item_list", { projectId: "p1", unassigned: true }),
+    );
+  });
+
   it("rejects a cursor that is not the stored nextCursor", () => {
     const cache = new Map();
     rememberListSlice(
@@ -128,5 +156,16 @@ describe("collapseWorkItemListFanOut", () => {
     expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1" });
     expect(next[2]!.name).toBe("fairlx_sprint_list");
     expect([...coalescedIds]).toEqual(["c2"]);
+  });
+
+  it("does not merge an unassigned list with a typed list", () => {
+    const calls: AgentToolCall[] = [
+      { id: "c1", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", unassigned: true }) },
+      { id: "c2", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", type: "TASK" }) },
+    ];
+    const { calls: next, coalescedIds } = collapseWorkItemListFanOut(calls);
+    expect(JSON.parse(next[0]!.arguments)).toEqual({ projectId: "p1", unassigned: true });
+    expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1", type: "TASK" });
+    expect(coalescedIds.size).toBe(0);
   });
 });

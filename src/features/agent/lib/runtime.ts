@@ -13,7 +13,9 @@ import { buildAgentMcpAuth, mcpToolsForAuth } from "./agent-auth";
 import { loadAgentContext } from "./context";
 import { getOrCreateHarness, upsertHarness } from "./harness";
 import { ensurePersonalMcp } from "./mcp-bridge";
+import { compileFairlxListIntent } from "./intent-compiler";
 import { extractToolCallsFromText, mergeToolCalls, normalizeAgentToolCall, stripToolCallMarkup } from "./parse-tool-calls";
+import { displayUserContent } from "./session-context";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
 import { buildSystemPrompt } from "./prompt";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
@@ -636,6 +638,40 @@ export async function runAgentTurn(params: {
         error: "",
       });
       if (run.status === "stopped") return run;
+    }
+
+    if (!resume && run.mode === "agent") {
+      const lastUser = [...run.messages].reverse().find((message) => message.role === "user");
+      const intent = compileFairlxListIntent(displayUserContent(lastUser?.content || run.prompt || ""), {
+        projectId: run.projectId || mcpAuth.projectId,
+      });
+      if (intent) {
+        const call: AgentToolCall = {
+          id: crypto.randomUUID(),
+          name: intent.tool,
+          arguments: JSON.stringify(intent.args),
+        };
+        if (!seenCalls.has(toolCallFingerprint(call.name, call.arguments))) {
+          const nextMessages: AgentChatMessage[] = [
+            ...run.messages,
+            {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: "",
+              toolCalls: [call],
+              createdAt: new Date().toISOString(),
+            },
+          ];
+          const nextEvents = [...run.events];
+          await applyToolCall(call, nextMessages, nextEvents);
+          run = await persistUnlessStopped({
+            messages: nextMessages,
+            events: nextEvents,
+            status: "running",
+          });
+          if (run.status === "stopped") return run;
+        }
+      }
     }
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {

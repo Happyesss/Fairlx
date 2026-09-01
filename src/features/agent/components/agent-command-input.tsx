@@ -10,6 +10,7 @@ import {
   FileText,
   ArrowUp,
   Loader2,
+  Mic,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -18,9 +19,10 @@ import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useCreateAgentRun } from "../api/use-agent-runs";
 import { chipKey, composeUserPrompt } from "../lib/session-context";
-import type { AgentContextChip } from "../types";
+import type { AgentContextChip, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
+import { AgentModeSelector } from "./agent-mode-selector";
 import { ModelPicker } from "./model-picker";
 
 const QUICK_ACTIONS = [
@@ -54,12 +56,12 @@ const QUICK_ACTIONS = [
 
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = "auto";
-  el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
+  el.style.height = `${Math.min(Math.max(el.scrollHeight, 56), 180)}px`;
 }
 
 export function AgentCommandInput({
   showQuickActions = true,
-  placeholder = "Ask anything, @ to mention, / for actions",
+  placeholder = "Plan, Build, / for skills, @ for context",
   variant = "create",
   disabled = false,
   submitting = false,
@@ -79,10 +81,85 @@ export function AgentCommandInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState("");
   const [chips, setChips] = useState<AgentContextChip[]>([]);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const busy = submitting || createRun.isPending;
   const canSend = Boolean(prompt.trim()) && !busy && !disabled;
-  const sessionMode = harness?.settings.sessionMode || "agent";
+  const sessionMode = (harness?.settings.sessionMode as AgentSessionMode) || "agent";
+
+  const toggleVoiceInput = () => {
+    if (typeof window === "undefined") return;
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const windowWithSpeech = window as unknown as {
+      SpeechRecognition?: new () => {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onstart: () => void;
+        onend: () => void;
+        onerror: () => void;
+        onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
+        start: () => void;
+        stop: () => void;
+      };
+      webkitSpeechRecognition?: new () => {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onstart: () => void;
+        onend: () => void;
+        onerror: () => void;
+        onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
+        start: () => void;
+        stop: () => void;
+      };
+    };
+
+    const SpeechRecognition =
+      windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = () => setIsListening(false);
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript) {
+          setPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          if (textareaRef.current) {
+            autosize(textareaRef.current);
+          }
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
+  };
 
   const submit = (value: string) => {
     const trimmed = value.trim();
@@ -92,7 +169,7 @@ export function AgentCommandInput({
       onFollowUp?.(content);
       setPrompt("");
       setChips([]);
-      if (textareaRef.current) textareaRef.current.style.height = "44px";
+      if (textareaRef.current) textareaRef.current.style.height = "56px";
       return;
     }
     createRun.mutate(
@@ -107,7 +184,7 @@ export function AgentCommandInput({
         onSuccess: (result) => {
           setPrompt("");
           setChips([]);
-          if (textareaRef.current) textareaRef.current.style.height = "44px";
+          if (textareaRef.current) textareaRef.current.style.height = "56px";
           router.push(`/agent/workflow?runId=${result.data.id}`);
         },
       },
@@ -118,7 +195,7 @@ export function AgentCommandInput({
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
       <AgentScopeBar />
       <form
-        className="rounded-[22px] border border-border bg-card shadow-lg flex flex-col transition-all focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/50"
+        className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
         onSubmit={(event) => {
           event.preventDefault();
           submit(prompt);
@@ -144,35 +221,52 @@ export function AgentCommandInput({
           placeholder={placeholder}
           rows={1}
           disabled={busy}
-          className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-6 px-4 pt-3.5 pb-1.5 resize-none focus:outline-none placeholder:text-muted-foreground min-h-[44px] max-h-40"
+          className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-relaxed px-4 pt-3.5 pb-2 resize-none focus:outline-none placeholder:text-muted-foreground/60 min-h-[58px] max-h-44 custom-scrollbar"
         />
-        <div className="flex items-center gap-1.5 px-3 pb-2.5 pt-1">
-          <AgentPlusMenu
-            chips={chips}
-            onAdd={(chip) => setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])}
-          />
-          <ModelPicker variant="chip" />
-          {sessionMode !== "agent" ? (
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground px-1 font-semibold">{sessionMode}</span>
-          ) : null}
-          <div className="ml-auto flex items-center gap-1">
+        <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5 select-none">
+          <div className="flex items-center gap-2">
+            <AgentModeSelector />
+            <ModelPicker variant="subtle" />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <AgentPlusMenu
+              chips={chips}
+              onAdd={(chip) =>
+                setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])
+              }
+              triggerVariant="paperclip"
+              align="end"
+            />
             <button
-              type="submit"
-              disabled={!canSend}
+              type="button"
+              onClick={toggleVoiceInput}
+              disabled={busy}
               className={cn(
-                "size-7 rounded-full flex items-center justify-center transition-colors shadow-sm",
-                canSend
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "bg-muted text-muted-foreground cursor-default",
+                "size-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
+                isListening
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 shadow-2xs"
               )}
-              title="Send"
+              title={isListening ? "Listening... click to stop" : "Voice input"}
             >
-              {busy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <ArrowUp className="size-3.5" />
-              )}
+              <Mic className="size-3.5" />
             </button>
+            {canSend || busy ? (
+              <button
+                type="submit"
+                disabled={!canSend}
+                className={cn(
+                  "size-7 rounded-full flex items-center justify-center transition-colors shadow-2xs cursor-pointer",
+                  canSend
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-muted text-muted-foreground cursor-default"
+                )}
+                title="Send"
+              >
+                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+              </button>
+            ) : null}
           </div>
         </div>
       </form>

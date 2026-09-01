@@ -8,6 +8,7 @@ import {
   MCP_API_TOKENS_ID,
   MEMBERS_ID,
   ORGANIZATION_AUDIT_LOGS_ID,
+  ORGANIZATION_MEMBERS_ID,
   PROJECT_DOCS_ID,
   PROJECT_MEMBERS_ID,
   PROJECT_TEAM_MEMBERS_ID,
@@ -77,6 +78,7 @@ const COLLECTIONS: McpCollections = {
   projectWebhooks: PROJECT_WEBHOOKS_ID,
   githubRepos: GITHUB_REPOS_ID,
   organizationAuditLogs: ORGANIZATION_AUDIT_LOGS_ID,
+  organizationMembers: ORGANIZATION_MEMBERS_ID,
   customFields: CUSTOM_FIELDS_ID,
   mcpApiTokens: MCP_API_TOKENS_ID,
   // New collections for full MCP coverage

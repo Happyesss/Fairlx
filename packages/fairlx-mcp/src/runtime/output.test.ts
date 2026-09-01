@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactMember, hydrateMembers, isWorkItemKeyCursor, paginationMeta, toolResult, wrapUntrusted } from "./output";
+import { compactMember, compactWorkItem, hydrateMembers, isWorkItemKeyCursor, paginationMeta, toolResult, wrapUntrusted } from "./output";
 
 describe("output envelope", () => {
   it("wraps payloads as text content", () => {
@@ -40,6 +40,39 @@ describe("isWorkItemKeyCursor", () => {
   });
 });
 
+describe("compactWorkItem", () => {
+  it("treats empty assigneeIds as unassigned when names are not hydrated", () => {
+    expect(compactWorkItem({ key: "A-1", title: "None", assigneeIds: [] })).toMatchObject({
+      key: "A-1",
+      assignees: [],
+      unassigned: true,
+    });
+  });
+
+  it("treats unresolved hydrated names as unassigned like the board", () => {
+    expect(
+      compactWorkItem({ key: "A-2", title: "Stale", assigneeIds: ["gone"] }, []),
+    ).toMatchObject({
+      key: "A-2",
+      assignees: [],
+      unassigned: true,
+    });
+  });
+
+  it("keeps hydrated assignee profile images", () => {
+    expect(
+      compactWorkItem(
+        { key: "A-3", title: "With photo", assigneeIds: ["m1"] },
+        [{ name: "Ada Lovelace", imageUrl: "https://cdn.example/ada.png" }],
+      ),
+    ).toMatchObject({
+      key: "A-3",
+      assignees: [{ name: "Ada Lovelace", imageUrl: "https://cdn.example/ada.png" }],
+      unassigned: false,
+    });
+  });
+});
+
 describe("compactMember", () => {
   it("uses Appwrite user profiles for name and email like the Members page", () => {
     expect(
@@ -52,6 +85,24 @@ describe("compactMember", () => {
       email: "surendram.dev@gmail.com",
       role: "OWNER",
       status: "ACTIVE",
+      imageUrl: null,
+    });
+  });
+
+  it("keeps profile images from user prefs", () => {
+    expect(
+      compactMember(
+        { userId: "u1", role: "ADMIN", status: "ACTIVE" },
+        {
+          id: "u1",
+          name: "Ada",
+          email: "ada@fairlx.dev",
+          profileImageUrl: "https://cdn.example/ada.png",
+        },
+      ),
+    ).toMatchObject({
+      name: "Ada",
+      imageUrl: "https://cdn.example/ada.png",
     });
   });
 

@@ -5,6 +5,7 @@ import { extractToolCallsFromText, resolveToolName, stripToolCallMarkup } from "
 const MCP = [
   "fairlx_work_item_list",
   "fairlx_workspace_members_list",
+  "fairlx_workspace_invite_get",
   "fairlx_project_list",
   "fairlx_workspace_list",
 ];
@@ -13,8 +14,18 @@ describe("resolveToolName", () => {
   it("maps screenshot-style Fairlx XML names onto real tools", () => {
     expect(resolveToolName("fairlx:listWorkItems", MCP)).toBe("fairlx_work_item_list");
     expect(resolveToolName("listWorkspaceMembers", MCP)).toBe("fairlx_workspace_members_list");
+    expect(resolveToolName("getInviteLink", MCP)).toBe("fairlx_workspace_invite_get");
     expect(resolveToolName("updateWorkspaceMember", ["fairlx_workspace_member_update"])).toBe(
       "fairlx_workspace_member_update",
+    );
+    expect(resolveToolName("addFromOrg", ["fairlx_workspace_member_add"])).toBe(
+      "fairlx_workspace_member_add",
+    );
+    expect(resolveToolName("addMember", ["fairlx_workspace_member_add"])).toBe(
+      "fairlx_workspace_member_add",
+    );
+    expect(resolveToolName("removeMember", ["fairlx_workspace_member_remove"])).toBe(
+      "fairlx_workspace_member_remove",
     );
     expect(resolveToolName("mcp_list", MCP)).toBe("mcp_list");
   });

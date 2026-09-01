@@ -12,6 +12,7 @@ import {
   Pin,
   Trash2,
   RotateCcw,
+  Square,
   Pencil,
   Server,
   GitBranch,
@@ -58,14 +59,18 @@ import {
 } from "../api/use-agent-runs";
 import { selectedModelLabel } from "../lib/client-defaults";
 import { clockTime, relativeTime } from "../lib/agent-ui";
-import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, type TranscriptStep } from "../lib/transcript";
+import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, isRepeatedToolResult, workItemListRows, collectWorkItemLookup, workspaceMemberRows, collectMemberLookup, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
 import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/visible-content";
 import { findPendingConfirmation } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
+import { AgentWorkItemTable } from "./agent-work-item-table";
+import { AgentMemberTable } from "./agent-member-table";
 import { useAgentUi } from "./agent-ui-context";
 import { ModelPicker } from "./model-picker";
+import { splitMarkdownWorkItemTable, type AgentWorkItem } from "../lib/work-item-table";
+import { splitMarkdownMemberTable, type AgentMember } from "../lib/member-table";
 
 function FloatingComposer({ children }: { children: React.ReactNode }) {
   return (
@@ -141,7 +146,7 @@ function CodeBlock({
   );
 }
 
-function MarkdownContent({ content }: { content: string }) {
+function MarkdownRich({ content }: { content: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed text-sm">
       <ReactMarkdown
@@ -212,6 +217,85 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
+function MarkdownContent({
+  content,
+  workItems,
+  members,
+  workspaceId,
+  projectId,
+}: {
+  content: string;
+  workItems?: Map<string, AgentWorkItem>;
+  members?: Map<string, AgentMember>;
+  workspaceId?: string;
+  projectId?: string;
+}) {
+  const workParsed = splitMarkdownWorkItemTable(content);
+  if (workParsed) {
+    return (
+      <div>
+        {workParsed.before ? (
+          <MarkdownContent
+            content={workParsed.before}
+            workItems={workItems}
+            members={members}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
+        ) : null}
+        <AgentWorkItemTable
+          rows={workParsed.rows}
+          lookup={workItems}
+          workspaceId={workspaceId}
+          projectId={projectId}
+        />
+        {workParsed.after ? (
+          <MarkdownContent
+            content={workParsed.after}
+            workItems={workItems}
+            members={members}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  const memberParsed = splitMarkdownMemberTable(content);
+  if (memberParsed) {
+    return (
+      <div>
+        {memberParsed.before ? (
+          <MarkdownContent
+            content={memberParsed.before}
+            workItems={workItems}
+            members={members}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
+        ) : null}
+        <AgentMemberTable
+          rows={memberParsed.rows}
+          lookup={members}
+          workspaceId={workspaceId}
+        />
+        {memberParsed.after ? (
+          <MarkdownContent
+            content={memberParsed.after}
+            workItems={workItems}
+            members={members}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return <MarkdownRich content={content} />;
+}
+
 function TruncationNote({ content }: { content?: string | null }) {
   if (!isPersistedTruncatedAssistant(content)) return null;
   return (
@@ -221,7 +305,19 @@ function TruncationNote({ content }: { content?: string | null }) {
   );
 }
 
-function AgentBubble({ message }: { message: AgentChatMessage }) {
+function AgentBubble({
+  message,
+  workItems,
+  members,
+  workspaceId,
+  projectId,
+}: {
+  message: AgentChatMessage;
+  workItems?: Map<string, AgentWorkItem>;
+  members?: Map<string, AgentMember>;
+  workspaceId?: string;
+  projectId?: string;
+}) {
   const visible = sanitizeAssistantVisible(message.content);
   if (!visible) return null;
   return (
@@ -235,8 +331,14 @@ function AgentBubble({ message }: { message: AgentChatMessage }) {
           <span>•</span>
           <span>{clockTime(message.createdAt)}</span>
         </div>
-        <div className="max-w-3xl">
-          <MarkdownContent content={visible} />
+        <div className="max-w-4xl">
+          <MarkdownContent
+            content={visible}
+            workItems={workItems}
+            members={members}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
           <TruncationNote content={message.content} />
         </div>
       </div>
@@ -249,16 +351,31 @@ function StepRow({
   index,
   active,
   awaiting,
+  workItems,
+  members,
+  workspaceId,
+  projectId,
 }: {
   step: TranscriptStep;
   index: number;
   active?: boolean;
   awaiting?: boolean;
+  workItems?: Map<string, AgentWorkItem>;
+  members?: Map<string, AgentMember>;
+  workspaceId?: string;
+  projectId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copiedQuery, setCopiedQuery] = useState(false);
   const [copiedResult, setCopiedResult] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
   const summary = summarizeToolResult(step.call.name, step.result?.content);
+  const listRows = workItemListRows(step.result?.content);
+  const memberRows = workspaceMemberRows(step.result?.content);
+  const isList = step.call.name === "fairlx_work_item_list" || step.call.name === "list_work_items";
+  const isMemberList =
+    step.call.name === "fairlx_workspace_members_list" || step.call.name === "list_workspace_members";
+  const hasRichTable = (isList && listRows.length > 0) || (isMemberList && memberRows.length > 0);
 
   // Parse arguments
   let parsedArgs: Record<string, unknown> | null = null;
@@ -304,7 +421,9 @@ function StepRow({
     const obj = effectiveArgs as Record<string, unknown>;
     const directQuery = obj.query || obj.q || obj.search || obj.prompt || obj.task || obj.command || obj.name;
     const targetId = obj.workItemId || obj.projectId || obj.workspaceId || obj.sprintId || obj.docId;
-    if (typeof directQuery === "string" && directQuery) {
+    if (obj.unassigned === true) {
+      argHint = "Unassigned";
+    } else if (typeof directQuery === "string" && directQuery) {
       argHint = `"${directQuery.slice(0, 45)}${directQuery.length > 45 ? "…" : ""}"`;
     } else if (typeof targetId === "string" && targetId) {
       argHint = `ID: ${targetId}`;
@@ -355,9 +474,9 @@ function StepRow({
                 type="button"
                 onClick={() => setExpanded(!expanded)}
                 className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60 hover:bg-muted transition-colors cursor-pointer"
-                title="View MCP Query parameters and Response"
+                title="View parameters and result"
               >
-                <span>{expanded ? "Hide Query" : "View Query"}</span>
+                <span>{expanded ? "Hide details" : "View details"}</span>
                 <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
               </button>
             ) : null}
@@ -383,49 +502,73 @@ function StepRow({
       </div>
 
       {expanded && hasDetails ? (
-        <div className="mt-3 ml-7 flex flex-col gap-2.5 p-3 bg-muted/30 border border-border/70 rounded-lg text-xs font-mono">
-          {/* Query / Arguments passed by AI */}
+        <div className="mt-3 ml-7 flex flex-col gap-2.5 p-3 bg-muted/30 border border-border/70 rounded-lg text-xs">
           {formattedArgsString.trim() ? (
             <div>
-              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider font-sans flex items-center justify-between">
-                <span>AI MCP Query / Arguments</span>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider flex items-center justify-between">
+                <span>Parameters</span>
                 <button
                   type="button"
                   onClick={() => handleCopy(formattedArgsString, "query")}
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-sans px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
                 >
                   <Copy className="size-3" />
                   <span>{copiedQuery ? "Copied" : "Copy"}</span>
                 </button>
               </div>
-              <pre className="p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto text-foreground whitespace-pre-wrap break-all max-h-56">
+              <pre className="p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto text-foreground whitespace-pre-wrap break-all max-h-56 font-mono">
                 {formattedArgsString}
               </pre>
             </div>
           ) : null}
 
-          {/* Response / Error */}
           {formattedResultString.trim() ? (
             <div>
-              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider font-sans flex items-center justify-between">
-                <span>Response / Error Result</span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(formattedResultString, "result")}
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-sans px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
-                >
-                  <Copy className="size-3" />
-                  <span>{copiedResult ? "Copied" : "Copy"}</span>
-                </button>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider flex items-center justify-between">
+                <span>Result</span>
+                <div className="flex items-center gap-1">
+                  {hasRichTable ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowRaw((value) => !value)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
+                    >
+                      {showRaw ? "Table" : "Raw"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(formattedResultString, "result")}
+                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
+                  >
+                    <Copy className="size-3" />
+                    <span>{copiedResult ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
               </div>
-              <pre
-                className={cn(
-                  "p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto whitespace-pre-wrap break-all max-h-56",
-                  summary.ok ? "text-foreground" : "text-destructive border-destructive/30 bg-destructive/5"
-                )}
-              >
-                {formattedResultString}
-              </pre>
+              {isList && listRows.length > 0 && !showRaw ? (
+                <AgentWorkItemTable
+                  rows={listRows}
+                  lookup={workItems}
+                  workspaceId={workspaceId}
+                  projectId={projectId}
+                />
+              ) : isMemberList && memberRows.length > 0 && !showRaw ? (
+                <AgentMemberTable
+                  rows={memberRows}
+                  lookup={members}
+                  workspaceId={workspaceId}
+                />
+              ) : (
+                <pre
+                  className={cn(
+                    "p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto whitespace-pre-wrap break-all max-h-56 font-mono",
+                    summary.ok ? "text-foreground" : "text-destructive border-destructive/30 bg-destructive/5"
+                  )}
+                >
+                  {formattedResultString}
+                </pre>
+              )}
             </div>
           ) : null}
         </div>
@@ -439,18 +582,32 @@ function StepsCard({
   steps,
   running,
   awaiting,
+  workItems,
+  members,
+  workspaceId,
+  projectId,
 }: {
   lead?: AgentChatMessage;
   steps: TranscriptStep[];
   running: boolean;
   awaiting?: boolean;
+  workItems?: Map<string, AgentWorkItem>;
+  members?: Map<string, AgentMember>;
+  workspaceId?: string;
+  projectId?: string;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(Boolean(running || awaiting));
   const failed = steps.some((step) => step.result && !summarizeToolResult(step.call.name, step.result?.content).ok);
   const last = steps[steps.length - 1];
   const inProgress = (running || awaiting) && last && !last.result;
   const answering = running && Boolean(last?.result) && !awaiting;
   const leadVisible = sanitizeAssistantVisible(lead?.content ?? "");
+  const visibleSteps = steps.filter((step) => !isRepeatedToolResult(step.result?.content));
+  const skipped = steps.length - visibleSteps.length;
+
+  useEffect(() => {
+    if (running || awaiting) setOpen(true);
+  }, [running, awaiting]);
 
   return (
     <div className="flex gap-3.5">
@@ -469,8 +626,14 @@ function StepsCard({
           ) : null}
         </div>
         {leadVisible ? (
-          <div className="max-w-3xl">
-            <MarkdownContent content={leadVisible} />
+          <div className="max-w-4xl">
+            <MarkdownContent
+              content={leadVisible}
+              workItems={workItems}
+              members={members}
+              workspaceId={workspaceId}
+              projectId={projectId}
+            />
           </div>
         ) : null}
         <div className="bg-card border border-border rounded-xl overflow-hidden max-w-4xl shadow-sm mt-1">
@@ -501,15 +664,16 @@ function StepsCard({
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>
-                {steps.length} {steps.length === 1 ? "step" : "steps"}
+                {visibleSteps.length} {visibleSteps.length === 1 ? "step" : "steps"}
+                {skipped ? ` · ${skipped} skipped` : ""}
               </span>
               {open ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
             </div>
           </button>
           {open ? (
             <div className="flex flex-col divide-y divide-border">
-              {steps.map((step, index) => {
-                const active = inProgress && index === steps.length - 1 && !step.result;
+              {visibleSteps.map((step, index) => {
+                const active = inProgress && index === visibleSteps.length - 1 && !step.result;
                 return (
                   <StepRow
                     key={step.call.id || `${step.call.name}-${index}`}
@@ -517,6 +681,10 @@ function StepsCard({
                     index={index}
                     active={active}
                     awaiting={awaiting}
+                    workItems={workItems}
+                    members={members}
+                    workspaceId={workspaceId}
+                    projectId={projectId}
                   />
                 );
               })}
@@ -949,6 +1117,14 @@ function WorkflowViewInner() {
     () => groupTranscript(run?.messages ?? [], run?.events ?? []),
     [run?.messages, run?.events],
   );
+  const workItems = useMemo(
+    () => collectWorkItemLookup(run?.messages ?? []),
+    [run?.messages],
+  );
+  const members = useMemo(
+    () => collectMemberLookup(run?.messages ?? []),
+    [run?.messages],
+  );
 
   if (!runId) {
     return (
@@ -962,7 +1138,7 @@ function WorkflowViewInner() {
           </div>
         </div>
         <FloatingComposer>
-          <AgentCommandInput showQuickActions placeholder="Ask anything, @ to mention, / for actions" />
+          <AgentCommandInput showQuickActions placeholder="Plan, Build, / for skills, @ for context" />
         </FloatingComposer>
       </div>
     );
@@ -1007,6 +1183,7 @@ function WorkflowViewInner() {
 
   return (
     <div className="h-full min-h-0 flex overflow-hidden bg-background">
+      <DeleteDialog />
       {/* Center Chat & Stream View */}
       <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
         {/* Top Run Toolbar */}
@@ -1060,6 +1237,17 @@ function WorkflowViewInner() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {running ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={stopRun.isPending}
+                onClick={() => stopRun.mutate({ runId: run.id })}
+                className="h-8 text-xs font-medium gap-1.5 text-destructive hover:text-destructive"
+              >
+                <Square className="size-3.5 fill-current" /> Stop
+              </Button>
+            ) : null}
             {run.status === "failed" || run.status === "stopped" ? (
               <Button
                 variant="outline"
@@ -1127,7 +1315,7 @@ function WorkflowViewInner() {
               stickToBottomRef.current = gap < 80;
             }}
           >
-            <div className="max-w-3xl mx-auto flex flex-col gap-6">
+            <div className="max-w-4xl mx-auto flex flex-col gap-6">
               {project && !linkedRepo ? (
                 <Link
                   href={`/workspaces/${project.workspaceId}/projects/${project.id}/github`}
@@ -1145,7 +1333,18 @@ function WorkflowViewInner() {
 
               {blocks.map((block, index) => {
                 if (block.kind === "user") return <UserBubble key={block.message.id} message={block.message} />;
-                if (block.kind === "assistant") return <AgentBubble key={block.message.id} message={block.message} />;
+                if (block.kind === "assistant") {
+                  return (
+                    <AgentBubble
+                      key={block.message.id}
+                      message={block.message}
+                      workItems={workItems}
+                      members={members}
+                      workspaceId={run.workspaceId}
+                      projectId={run.projectId}
+                    />
+                  );
+                }
                 return (
                   <StepsCard
                     key={block.lead?.id ?? `steps-${index}`}
@@ -1153,6 +1352,10 @@ function WorkflowViewInner() {
                     steps={block.steps}
                     running={running}
                     awaiting={awaiting}
+                    workItems={workItems}
+                    members={members}
+                    workspaceId={run.workspaceId}
+                    projectId={run.projectId}
                   />
                 );
               })}
@@ -1209,7 +1412,7 @@ function WorkflowViewInner() {
               variant="followup"
               showQuickActions={false}
               submitting={sendMessage.isPending || awaiting || running}
-              placeholder={awaiting ? "Accept or deny the pending action first" : "Ask anything, @ to mention, / for actions"}
+              placeholder={awaiting ? "Accept or deny the pending action first" : "Plan, Build, / for skills, @ for context"}
               onFollowUp={(content) => {
                 stickToBottomRef.current = true;
                 sendMessage.mutate({ param: { runId: run.id }, json: { content } });
