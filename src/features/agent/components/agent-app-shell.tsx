@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Search,
   FolderKanban,
-  Briefcase,
   GitMerge,
   Wrench,
   Cpu,
@@ -20,6 +19,7 @@ import {
   Settings,
   Plus,
   ChevronRight,
+  ChevronDown,
   Menu,
 } from "lucide-react";
 
@@ -33,12 +33,10 @@ import { NotificationBell } from "@/features/notifications";
 import { BugReportPopover } from "@/features/bug-reports/components/bug-report-popover";
 
 import { useGetAgentContext } from "../api/use-agent-context";
-import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
+import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentRuns } from "../api/use-agent-runs";
 import { relativeTime } from "../lib/agent-ui";
-import type { AgentRunMode } from "../types";
 import { useAgentUi } from "./agent-ui-context";
-import { ModelPicker } from "./model-picker";
 
 export function AgentPageFrame({ children }: { children: ReactNode }) {
   return <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar">{children}</div>;
@@ -54,7 +52,21 @@ function navActive(pathname: string, href: string, hash: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const NAV_SECTIONS = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  shortcut?: string;
+}
+
+interface NavSection {
+  title: string;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
   {
     title: "Agent Core",
     items: [
@@ -63,15 +75,18 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    title: "Workspace & Code",
+    title: "Project & Codes",
+    collapsible: true,
+    defaultExpanded: true,
     items: [
       { href: "/agent/projects", label: "Projects", icon: FolderKanban },
-      { href: "/agent/workspaces", label: "Workspaces", icon: Briefcase },
       { href: "/agent/git", label: "Git & Staging", icon: GitMerge },
     ],
   },
   {
     title: "Agent Tools",
+    collapsible: true,
+    defaultExpanded: false,
     items: [
       { href: "/agent/skills", label: "Skills", icon: Wrench },
       { href: "/agent/tools", label: "Tools", icon: Cpu },
@@ -101,6 +116,31 @@ function AgentSidebarNav({
   openRecentWork: () => void;
   onNavigate?: () => void;
 }) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    NAV_SECTIONS.forEach((section) => {
+      if (section.collapsible) {
+        initial[section.title] = section.defaultExpanded ?? true;
+      }
+    });
+    return initial;
+  });
+
+  const toggleSection = (title: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [title]: !prev[title],
+    }));
+  };
+
+  useEffect(() => {
+    NAV_SECTIONS.forEach((section) => {
+      if (section.collapsible && section.items.some((item) => navActive(pathname, item.href, hash))) {
+        setExpandedSections((prev) => ({ ...prev, [section.title]: true }));
+      }
+    });
+  }, [pathname, hash]);
+
   return (
     <div className="flex flex-col h-full w-full">
       {/* Top Logo Header */}
@@ -142,33 +182,60 @@ function AgentSidebarNav({
         </div>
 
         {/* Categorized Navigation */}
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.title} className="flex flex-col gap-0.5">
-            <p className="text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50 pl-2.5 mb-1.5">
-              {section.title}
-            </p>
-            {section.items.map((item) => {
-              const isActive = navActive(pathname, item.href, hash);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onNavigate}
-                  className={cn(
-                    "flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-[12px] tracking-tight transition",
-                    isActive
-                      ? "bg-sidebar-accent shadow-sm text-sidebar-foreground font-semibold"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  )}
+        {NAV_SECTIONS.map((section) => {
+          const isCollapsible = section.collapsible;
+          const isExpanded = isCollapsible ? !!expandedSections[section.title] : true;
+
+          return (
+            <div key={section.title} className="flex flex-col gap-0.5">
+              {isCollapsible ? (
+                <button
+                  type="button"
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleSection(section.title)}
+                  className="flex items-center justify-between w-full pl-2.5 pr-2 py-1 mb-1 rounded text-left text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors group cursor-pointer"
                 >
-                  <Icon className={cn("size-[17px]", isActive && "text-primary")} />
-                  <span className="flex-1 truncate">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+                  <span>{section.title}</span>
+                  <ChevronDown
+                    className={cn(
+                      "size-3.5 transition-transform duration-200 text-sidebar-foreground/50 group-hover:text-sidebar-foreground",
+                      !isExpanded && "-rotate-90"
+                    )}
+                  />
+                </button>
+              ) : (
+                <p className="text-[11px] font-semibold tracking-wider uppercase text-sidebar-foreground/50 pl-2.5 mb-1.5">
+                  {section.title}
+                </p>
+              )}
+
+              {isExpanded && (
+                <div className="flex flex-col gap-0.5">
+                  {section.items.map((item) => {
+                    const isActive = navActive(pathname, item.href, hash);
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onNavigate}
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-[12px] tracking-tight transition",
+                          isActive
+                            ? "bg-sidebar-accent shadow-sm text-sidebar-foreground font-semibold"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        )}
+                      >
+                        <Icon className={cn("size-[17px]", isActive && "text-primary")} />
+                        <span className="flex-1 truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Recent Runs Section */}
         <div className="flex flex-col gap-1 pt-1">
@@ -236,11 +303,9 @@ export function AgentAppShell({ children }: { children: ReactNode }) {
   const { data: runs } = useGetAgentRuns();
   const { data: harness } = useGetAgentHarness();
   const { data: context } = useGetAgentContext();
-  const updateHarness = useUpdateAgentHarness();
   const [hash, setHash] = useState("");
   const [activeRunId, setActiveRunId] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const mode: AgentRunMode = harness?.settings.mode === "manual" ? "manual" : "agent";
 
   const runId = searchParams.get("runId");
   const activeRun = (runs ?? []).find((r) => r.id === (runId || activeRunId));
@@ -294,11 +359,6 @@ export function AgentAppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openSearch, router]);
-
-  const setMode = (next: AgentRunMode) => {
-    if (next === mode || updateHarness.isPending) return;
-    updateHarness.mutate({ json: { settings: { mode: next } } });
-  };
 
   // Determine breadcrumb page title
   const pageTitle = useMemo(() => {
@@ -389,28 +449,6 @@ export function AgentAppShell({ children }: { children: ReactNode }) {
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Mode Switcher */}
-            <div className="hidden sm:inline-flex rounded-lg border border-border bg-muted/50 p-0.5">
-              {(["manual", "agent"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  className={cn(
-                    "px-2.5 py-1 text-xs font-medium rounded-md capitalize transition-colors",
-                    mode === value
-                      ? "bg-background text-foreground shadow-sm font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-
-            {/* Model Picker */}
-            <ModelPicker variant="chip" className="hidden md:flex" />
-
             {/* Switch back to Fairlx Main App */}
             <Link href="/">
               <Button
