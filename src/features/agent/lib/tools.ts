@@ -19,6 +19,8 @@ import { createFairlxProject } from "./mutations";
 import { readPersonalContent } from "./personal";
 import { toPublicMcpConfig } from "./public-mcp";
 import { matchingAutomations, searchAgentIndex } from "./search";
+import { HARNESS_TO_MCP } from "./parse-tool-calls";
+import { compactJsonString } from "./truncate";
 
 export type OpenAiTool = {
   type: "function";
@@ -134,7 +136,7 @@ const TOOL_PARAMETERS: Record<string, { description: string; parameters: Record<
     parameters: { type: "object", properties: {} },
   },
   mcp_call: {
-    description: "Call a tool on an MCP server. Use server=fairlx for platform tools, fairlx-personal for this user's harness.",
+    description: "Call a tool on an external MCP server only. For Fairlx platform data, call the native fairlx_* tools directly — do not wrap them in mcp_call.",
     parameters: {
       type: "object",
       properties: {
@@ -250,25 +252,94 @@ export function openaiToolsForMode(mode: AgentRunMode, enabledTools: string[]): 
   }));
 }
 
+function mcpToolDescription(tool: {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}): string {
+  const required = Array.isArray(tool.inputSchema?.required)
+    ? (tool.inputSchema.required as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  const parts = [tool.description?.trim() || tool.name];
+  if (required.length) parts.push(`Required arguments: ${required.join(", ")}.`);
+  parts.push("Call this tool directly; do not wrap it in mcp_call.");
+  return parts.join(" ");
+}
+
 export function openaiToolsForTurn(params: {
   mode: AgentRunMode;
   enabledTools: string[];
   mcpTools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
 }): OpenAiTool[] {
-  const harness = openaiToolsForMode(params.mode, params.enabledTools);
+  const mcpTools = params.mcpTools ?? [];
+  const mcpNames = new Set(mcpTools.map((tool) => tool.name));
+  const harness = openaiToolsForMode(params.mode, params.enabledTools).filter((tool) => {
+    const mapped = HARNESS_TO_MCP[tool.function.name];
+    return !(mapped && mcpNames.has(mapped));
+  });
   if (params.mode !== "agent") return harness;
   const existing = new Set(harness.map((tool) => tool.function.name));
-  const mcp = (params.mcpTools ?? [])
+  const mcp = mcpTools
     .filter((tool) => !existing.has(tool.name))
     .map((tool) => ({
       type: "function" as const,
       function: {
         name: tool.name,
-        description: tool.description,
+        description: mcpToolDescription(tool),
         parameters: tool.inputSchema?.type ? tool.inputSchema : { type: "object", properties: tool.inputSchema ?? {} },
       },
     }));
   return [...harness, ...mcp];
+}
+
+function compactEventPayload(payload: unknown): unknown {
+  if (payload == null) return payload;
+  try {
+    if (JSON.stringify(payload).length <= 600) return payload;
+  } catch {
+    return undefined;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { truncated: true };
+  }
+  const source = payload as Record<string, unknown>;
+  const slim: Record<string, unknown> = {};
+  for (const key of ["server", "tool", "error", "query", "name", "kind", "command", "cwd", "status"]) {
+    if (source[key] != null) slim[key] = source[key];
+  }
+  return Object.keys(slim).length ? slim : { truncated: true };
+}
+
+function unwrapMcpToolContent(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return content;
+    if (parsed.server != null && parsed.tool != null && "result" in parsed) {
+      const result = parsed.result;
+      return typeof result === "string" ? result : JSON.stringify(result ?? null);
+    }
+  } catch {
+    return content;
+  }
+  return content;
+}
+
+function event(
+  runId: string,
+  type: AgentToolEventType,
+  title: string,
+  detail?: string,
+  payload?: unknown,
+): AgentToolEvent {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    title,
+    detail,
+    payload: compactEventPayload(payload),
+    createdAt: new Date().toISOString(),
+    runId,
+  };
 }
 
 function parseArgs(args: unknown): Record<string, unknown> {
@@ -288,28 +359,29 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
-function event(
-  runId: string,
-  type: AgentToolEventType,
-  title: string,
-  detail?: string,
-  payload?: unknown,
-): AgentToolEvent {
-  return {
-    id: crypto.randomUUID(),
-    type,
-    title,
-    detail,
-    payload,
-    createdAt: new Date().toISOString(),
-    runId,
-  };
-}
-
-function applyScopeDefaults(args: Record<string, unknown>, ctx: ToolExecutionContext): Record<string, unknown> {
+export function applyScopeDefaults(args: Record<string, unknown>, ctx: ToolExecutionContext): Record<string, unknown> {
   const next = { ...args };
-  if (!asString(next.workspaceId) && ctx.workspaceId) next.workspaceId = ctx.workspaceId;
-  if (!asString(next.projectId) && ctx.projectId) next.projectId = ctx.projectId;
+  const rawWs = asString(next.workspaceId);
+  if (!rawWs) {
+    if (ctx.workspaceId) next.workspaceId = ctx.workspaceId;
+  } else {
+    const matchedWs = ctx.context.workspaces.find(
+      (w) => w.id === rawWs || w.name.toLowerCase() === rawWs.toLowerCase()
+    );
+    if (matchedWs) next.workspaceId = matchedWs.id;
+  }
+  const rawProj = asString(next.projectId);
+  if (!rawProj) {
+    if (ctx.projectId) next.projectId = ctx.projectId;
+  } else {
+    const matchedProj = ctx.context.projects.find(
+      (p) =>
+        p.id === rawProj ||
+        p.name.toLowerCase() === rawProj.toLowerCase() ||
+        (p.key && p.key.toLowerCase() === rawProj.toLowerCase())
+    );
+    if (matchedProj) next.projectId = matchedProj.id;
+  }
   if (next.arguments && typeof next.arguments === "object") {
     next.arguments = applyScopeDefaults(next.arguments as Record<string, unknown>, ctx);
   }
@@ -346,11 +418,15 @@ export async function executeTool(
 ): Promise<ToolExecutionResult> {
   const parsed = applyScopeDefaults(parseArgs(args), ctx);
   if (name.startsWith("fairlx_")) {
-    return executeTool(
+    const inner = await executeTool(
       "mcp_call",
       { server: "fairlx", tool: name, arguments: parsed },
       ctx,
     );
+    return {
+      ...inner,
+      content: compactJsonString(unwrapMcpToolContent(inner.content), 8000),
+    };
   }
   const query = asString(parsed.query || parsed.q || parsed.search);
   const { context, harness, mcp, runId } = ctx;
@@ -570,20 +646,24 @@ export async function executeTool(
           event: event(runId, "mcp_call", "MCP call missing tool", undefined, payload),
         };
       }
+      const effectiveArgs = applyScopeDefaults(callArgs, ctx);
+      console.log(`[Fairlx Agent] 🛠️ Calling MCP Tool -> Server: "${server}", Tool: "${tool}", Args:`, JSON.stringify(effectiveArgs));
       try {
         const result = await callMcpServerTool({
           server,
           tool,
-          args: applyScopeDefaults(callArgs, ctx),
+          args: effectiveArgs,
           ctx: mcpCtx,
         });
-        const payload = { server, tool, result };
+        console.log(`[Fairlx Agent] ✅ MCP Tool "${tool}" succeeded:`, JSON.stringify(result));
         return {
-          content: JSON.stringify(payload),
-          event: event(runId, "mcp_call", tool.replace(/^fairlx_/, "").replaceAll("_", " "), undefined, payload),
+          content: compactJsonString(JSON.stringify(result), 8000),
+          event: event(runId, "mcp_call", tool.replace(/^fairlx_/, "").replaceAll("_", " "), undefined, { server, tool }),
         };
       } catch (error) {
-        const payload = { server, tool, error: error instanceof Error ? error.message : "MCP call failed" };
+        const errorMessage = error instanceof Error ? error.message : "MCP call failed";
+        console.error(`[Fairlx Agent] ❌ MCP Tool "${tool}" failed:`, errorMessage, { server, args: effectiveArgs });
+        const payload = { server, tool, error: errorMessage };
         return {
           content: JSON.stringify(payload),
           event: event(runId, "error", `${tool.replace(/^fairlx_/, "").replaceAll("_", " ")} failed`, payload.error, payload),

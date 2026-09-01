@@ -26,7 +26,13 @@ export function groupTranscript(
 ): TranscriptBlock[] {
   const leftoverEvents = [...events];
   const takeEvent = (name: string) => {
-    const index = leftoverEvents.findIndex((event) => event.type === name || event.title.includes(name));
+    const pretty = name.replace(/^fairlx_/, "").replaceAll("_", " ");
+    const index = leftoverEvents.findIndex((event) => {
+      if (event.type === name || event.title.includes(name)) return true;
+      if (pretty && event.title.toLowerCase().includes(pretty.toLowerCase())) return true;
+      const payload = event.payload as { tool?: unknown } | undefined;
+      return Boolean(payload && typeof payload === "object" && payload.tool === name);
+    });
     if (index === -1) return undefined;
     return leftoverEvents.splice(index, 1)[0];
   };
@@ -126,9 +132,25 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     if (denied) return { ok: false, detail: "Denied" };
     return { ok: true, detail: tool };
   }
-  if (name === "list_work_items" || name === "list_projects" || name === "list_workspaces") {
-    const key = name === "list_workspaces" ? "workspaces" : name === "list_projects" ? "projects" : "workItems";
-    const count = Array.isArray(parsed[key]) ? (parsed[key] as unknown[]).length : 0;
+  if (
+    name === "list_work_items" ||
+    name === "list_projects" ||
+    name === "list_workspaces" ||
+    name === "fairlx_work_item_list" ||
+    name === "fairlx_project_list" ||
+    name === "fairlx_workspace_list"
+  ) {
+    const key =
+      name === "list_workspaces" || name === "fairlx_workspace_list"
+        ? "workspaces"
+        : name === "list_projects" || name === "fairlx_project_list"
+          ? "projects"
+          : "workItems";
+    const count = Array.isArray(parsed[key])
+      ? (parsed[key] as unknown[]).length
+      : Array.isArray(parsed.items)
+        ? parsed.items.length
+        : 0;
     return { ok: true, detail: `${count} ${key === "workItems" ? "work items" : key}` };
   }
   if (name === "search_harness" || name === "web_search" || name === "file_search") {
@@ -155,7 +177,7 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
   if (parsed.ok === false) {
     return { ok: false, detail: String(parsed.message || parsed.error || "Failed") };
   }
-  const countKeys = ["workspaces", "projects", "workItems", "docs", "servers", "skills"];
+  const countKeys = ["workspaces", "projects", "workItems", "docs", "servers", "skills", "items", "members"];
   for (const key of countKeys) {
     if (Array.isArray(parsed[key])) return { ok: true, detail: `${(parsed[key] as unknown[]).length} ${key}` };
   }

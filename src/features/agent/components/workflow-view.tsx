@@ -61,7 +61,7 @@ import { selectedModelLabel } from "../lib/client-defaults";
 import { clockTime, relativeTime } from "../lib/agent-ui";
 import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
-import { sanitizeAssistantVisible } from "../lib/visible-content";
+import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/visible-content";
 import { findPendingConfirmation } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
@@ -213,6 +213,15 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
+function TruncationNote({ content }: { content?: string | null }) {
+  if (!isPersistedTruncatedAssistant(content)) return null;
+  return (
+    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+      This answer was cut off while saving. Ask the agent to continue from here.
+    </p>
+  );
+}
+
 function AgentBubble({ message }: { message: AgentChatMessage }) {
   const visible = sanitizeAssistantVisible(message.content);
   if (!visible) return null;
@@ -229,8 +238,199 @@ function AgentBubble({ message }: { message: AgentChatMessage }) {
         </div>
         <div className="max-w-3xl">
           <MarkdownContent content={visible} />
+          <TruncationNote content={message.content} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function StepRow({
+  step,
+  index,
+  active,
+  awaiting,
+}: {
+  step: TranscriptStep;
+  index: number;
+  active?: boolean;
+  awaiting?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copiedQuery, setCopiedQuery] = useState(false);
+  const [copiedResult, setCopiedResult] = useState(false);
+  const summary = summarizeToolResult(step.call.name, step.result?.content);
+
+  // Parse arguments
+  let parsedArgs: Record<string, unknown> | null = null;
+  if (typeof step.call.arguments === "string" && step.call.arguments.trim()) {
+    try {
+      parsedArgs = JSON.parse(step.call.arguments);
+    } catch {
+      // Keep as string
+    }
+  } else if (step.call.arguments && typeof step.call.arguments === "object") {
+    parsedArgs = step.call.arguments as Record<string, unknown>;
+  }
+
+  // Parse result
+  let parsedResult: unknown = null;
+  if (step.result?.content) {
+    try {
+      parsedResult = JSON.parse(step.result.content);
+    } catch {
+      parsedResult = step.result.content;
+    }
+  }
+
+  const effectiveArgs =
+    parsedArgs ||
+    (step.event?.payload && typeof step.event.payload === "object"
+      ? (step.event.payload as Record<string, unknown>).args || step.event.payload
+      : null);
+
+  const formattedArgsString = effectiveArgs
+    ? JSON.stringify(effectiveArgs, null, 2)
+    : step.call.arguments || "";
+
+  const formattedResultString = parsedResult
+    ? JSON.stringify(parsedResult, null, 2)
+    : step.result?.content || (step.event?.payload ? JSON.stringify(step.event.payload, null, 2) : "");
+
+  const hasDetails = Boolean(formattedArgsString.trim() || formattedResultString.trim());
+
+  // Extract a readable summary hint from arguments
+  let argHint = "";
+  if (effectiveArgs && typeof effectiveArgs === "object") {
+    const obj = effectiveArgs as Record<string, unknown>;
+    const directQuery = obj.query || obj.q || obj.search || obj.prompt || obj.task || obj.command || obj.name;
+    const targetId = obj.workItemId || obj.projectId || obj.workspaceId || obj.sprintId || obj.docId;
+    if (typeof directQuery === "string" && directQuery) {
+      argHint = `"${directQuery.slice(0, 45)}${directQuery.length > 45 ? "…" : ""}"`;
+    } else if (typeof targetId === "string" && targetId) {
+      argHint = `ID: ${targetId}`;
+    }
+  }
+
+  const handleCopy = (text: string, type: "query" | "result") => {
+    navigator.clipboard.writeText(text);
+    if (type === "query") {
+      setCopiedQuery(true);
+      setTimeout(() => setCopiedQuery(false), 1500);
+    } else {
+      setCopiedResult(true);
+      setTimeout(() => setCopiedResult(false), 1500);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "px-4 py-3 flex flex-col transition-colors",
+        active &&
+          "bg-primary/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-primary"
+      )}
+    >
+      <div className="flex items-start gap-3.5 w-full">
+        <div className="mt-0.5 size-4 text-center shrink-0">
+          {active ? (
+            <span className="font-mono text-primary text-xs font-bold">{index + 1}</span>
+          ) : summary.ok ? (
+            <Check className="size-4 text-green-500" />
+          ) : (
+            <XCircle className="size-4 text-destructive" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn("text-xs font-semibold", active ? "text-primary" : "text-foreground")}>
+              {toolLabel(step.call.name)}
+            </span>
+            {argHint ? (
+              <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded max-w-[260px] truncate">
+                {argHint}
+              </span>
+            ) : null}
+            {hasDetails ? (
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/60 hover:bg-muted transition-colors cursor-pointer"
+                title="View MCP Query parameters and Response"
+              >
+                <span>{expanded ? "Hide Query" : "View Query"}</span>
+                <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+              </button>
+            ) : null}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5 break-words">
+            {awaiting && !step.result
+              ? "Needs your approval"
+              : sanitizeAssistantVisible(step.event?.title || summary.detail)}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs shrink-0">
+          {active ? (
+            <span className="text-primary font-medium flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+              {awaiting ? "Pending" : "In progress"}
+            </span>
+          ) : summary.ok ? (
+            <span className="text-green-500 font-medium">Completed</span>
+          ) : (
+            <span className="text-destructive font-medium">Failed</span>
+          )}
+        </div>
+      </div>
+
+      {expanded && hasDetails ? (
+        <div className="mt-3 ml-7 flex flex-col gap-2.5 p-3 bg-muted/30 border border-border/70 rounded-lg text-xs font-mono">
+          {/* Query / Arguments passed by AI */}
+          {formattedArgsString.trim() ? (
+            <div>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider font-sans flex items-center justify-between">
+                <span>AI MCP Query / Arguments</span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(formattedArgsString, "query")}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-sans px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
+                >
+                  <Copy className="size-3" />
+                  <span>{copiedQuery ? "Copied" : "Copy"}</span>
+                </button>
+              </div>
+              <pre className="p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto text-foreground whitespace-pre-wrap break-all max-h-56">
+                {formattedArgsString}
+              </pre>
+            </div>
+          ) : null}
+
+          {/* Response / Error */}
+          {formattedResultString.trim() ? (
+            <div>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wider font-sans flex items-center justify-between">
+                <span>Response / Error Result</span>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(formattedResultString, "result")}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground font-sans px-1.5 py-0.5 rounded hover:bg-muted/80 transition-colors"
+                >
+                  <Copy className="size-3" />
+                  <span>{copiedResult ? "Copied" : "Copy"}</span>
+                </button>
+              </div>
+              <pre
+                className={cn(
+                  "p-2.5 bg-background/90 border border-border rounded text-[11px] overflow-x-auto whitespace-pre-wrap break-all max-h-56",
+                  summary.ok ? "text-foreground" : "text-destructive border-destructive/30 bg-destructive/5"
+                )}
+              >
+                {formattedResultString}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -250,6 +450,7 @@ function StepsCard({
   const failed = steps.some((step) => step.result && !summarizeToolResult(step.call.name, step.result?.content).ok);
   const last = steps[steps.length - 1];
   const inProgress = (running || awaiting) && last && !last.result;
+  const answering = running && Boolean(last?.result) && !awaiting;
   const leadVisible = sanitizeAssistantVisible(lead?.content ?? "");
 
   return (
@@ -260,6 +461,7 @@ function StepsCard({
       <div className="flex-1 min-w-0 flex flex-col gap-2.5">
         <div className="text-xs text-muted-foreground flex items-center gap-2">
           <span className="font-semibold text-foreground">fairlx Agent</span>
+            <TruncationNote content={lead?.content} />
           {lead?.createdAt ? (
             <>
               <span>•</span>
@@ -276,10 +478,10 @@ function StepsCard({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="w-full px-4 py-3 border-b border-border flex items-center justify-between text-left hover:bg-muted/40 transition-colors"
+            className="w-full px-4 py-3 border-b border-border flex items-center justify-between text-left hover:bg-muted/40 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
-              {inProgress ? (
+              {inProgress || answering ? (
                 <Loader2 className="size-4 animate-spin text-primary" />
               ) : failed ? (
                 <AlertTriangle className="size-4 text-destructive" />
@@ -291,9 +493,11 @@ function StepsCard({
                   ? "Waiting for approval"
                   : inProgress
                     ? "Working…"
-                    : failed
-                      ? "Finished with errors"
-                      : "Finished"}
+                    : answering
+                      ? "Answering…"
+                      : failed
+                        ? "Finished with errors"
+                        : "Finished"}
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -306,48 +510,15 @@ function StepsCard({
           {open ? (
             <div className="flex flex-col divide-y divide-border">
               {steps.map((step, index) => {
-                const summary = summarizeToolResult(step.call.name, step.result?.content);
                 const active = inProgress && index === steps.length - 1 && !step.result;
                 return (
-                  <div
-                    key={step.call.id}
-                    className={cn(
-                      "px-4 py-3 flex items-start gap-3.5 transition-colors",
-                      active && "bg-primary/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-primary"
-                    )}
-                  >
-                    <div className="mt-0.5 size-4 text-center shrink-0">
-                      {active ? (
-                        <span className="font-mono text-primary text-xs font-bold">{index + 1}</span>
-                      ) : summary.ok ? (
-                        <Check className="size-4 text-green-500" />
-                      ) : (
-                        <XCircle className="size-4 text-destructive" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={cn("text-xs font-semibold", active ? "text-primary" : "text-foreground")}>
-                        {toolLabel(step.call.name)}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {awaiting && !step.result
-                          ? "Needs your approval"
-                          : sanitizeAssistantVisible(step.event?.title || summary.detail)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs shrink-0">
-                      {active ? (
-                        <span className="text-primary font-medium flex items-center gap-1.5">
-                          <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-                          {awaiting ? "Pending" : "In progress"}
-                        </span>
-                      ) : summary.ok ? (
-                        <span className="text-green-500 font-medium">Completed</span>
-                      ) : (
-                        <span className="text-destructive font-medium">Failed</span>
-                      )}
-                    </div>
-                  </div>
+                  <StepRow
+                    key={step.call.id || `${step.call.name}-${index}`}
+                    step={step}
+                    index={index}
+                    active={active}
+                    awaiting={awaiting}
+                  />
                 );
               })}
             </div>
@@ -745,6 +916,7 @@ function WorkflowViewInner() {
   const patchRun = usePatchAgentRun();
   const { data: harness } = useGetAgentHarness();
   const updateHarness = useUpdateAgentHarness();
+  const stickToBottomRef = useRef(true);
   const continuedRef = useRef<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
@@ -766,6 +938,7 @@ function WorkflowViewInner() {
   }, [run, continueRun]);
 
   useEffect(() => {
+    if (!stickToBottomRef.current) return;
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
   }, [run?.messages.length, run?.events.length, run?.status]);
 
@@ -814,6 +987,9 @@ function WorkflowViewInner() {
 
   const running = run.status === "running";
   const awaiting = run.status === "awaiting_confirmation";
+  const lastBlock = blocks[blocks.length - 1];
+  const showThinking = running && !awaiting && lastBlock?.kind !== "steps";
+  const thinkingLabel = !lastBlock || lastBlock.kind === "user" ? "Thinking…" : "Answering…";
   const pending = findPendingConfirmation(run.events ?? []);
   const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
   const project = context?.projects.find((item) => item.id === run.projectId);
@@ -952,7 +1128,15 @@ function WorkflowViewInner() {
 
         {/* Messages Stream Scroll Area */}
         <div className="relative flex-1 min-h-0">
-          <div ref={scrollerRef} className="absolute inset-0 overflow-y-auto custom-scrollbar px-6 py-6 pb-40">
+          <div
+            ref={scrollerRef}
+            className="absolute inset-0 overflow-y-auto custom-scrollbar px-6 py-6 pb-40"
+            onScroll={(event) => {
+              const target = event.currentTarget;
+              const gap = target.scrollHeight - target.scrollTop - target.clientHeight;
+              stickToBottomRef.current = gap < 80;
+            }}
+          >
             <div className="max-w-3xl mx-auto flex flex-col gap-6">
               {project && !linkedRepo ? (
                 <Link
@@ -982,6 +1166,18 @@ function WorkflowViewInner() {
                   />
                 );
               })}
+
+              {showThinking ? (
+                <div className="flex gap-3.5">
+                  <div className="size-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">
+                    <Bot className="size-4" />
+                  </div>
+                  <div className="flex-1 min-w-0 flex items-center gap-2 text-sm text-muted-foreground pt-1.5">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <span>{thinkingLabel}</span>
+                  </div>
+                </div>
+              ) : null}
 
               {awaiting ? (
                 <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1025,6 +1221,7 @@ function WorkflowViewInner() {
               submitting={sendMessage.isPending || awaiting || running}
               placeholder={awaiting ? "Accept or deny the pending action first" : "Ask anything, @ to mention, / for actions"}
               onFollowUp={(content) => {
+                stickToBottomRef.current = true;
                 sendMessage.mutate({ param: { runId: run.id }, json: { content } });
               }}
             />

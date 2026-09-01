@@ -61,6 +61,7 @@ async function jsonRpc(
 ): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MCP_TIMEOUT_MS);
+  console.log(`[MCP JSON-RPC Request] POST ${url} -> Method: ${method} | Params:`, JSON.stringify(params));
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -69,9 +70,14 @@ async function jsonRpc(
       signal: controller.signal,
       cache: "no-store",
     });
-    const json = (await response.json().catch(() => null)) as
-      | { result?: unknown; error?: { message?: string } }
-      | null;
+    const text = await response.text();
+    let json: { result?: unknown; error?: { message?: string } } | null = null;
+    try {
+      json = text ? (JSON.parse(text) as { result?: unknown; error?: { message?: string } }) : null;
+    } catch {
+      json = { error: { message: text } };
+    }
+    console.log(`[MCP JSON-RPC Response] POST ${url} (${response.status}) ->`, text);
     if (!response.ok) {
       throw new Error(json?.error?.message || `MCP ${method} failed (${response.status})`);
     }

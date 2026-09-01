@@ -101,6 +101,10 @@ describe("graph and prompt", () => {
     expect(resolveSpecialist("stage the login change and plan a commit")).toBe("git");
   });
 
+  it("routes plan-a-feature prompts to the planner", () => {
+    expect(resolveSpecialist("Plan a new feature for the current Fairlx workspace.")).toBe("planner");
+  });
+
   it("builds a context graph and system prompt with automations and knowledge", () => {
     const h = harness();
     const graph = buildContextGraph({
@@ -120,8 +124,22 @@ describe("graph and prompt", () => {
     expect(prompt).toContain("Triage bugs");
     expect(prompt).toContain("Release checklist");
     expect(prompt).not.toContain("(w1)");
+    expect(prompt).toContain("workspaceId: w1");
     expect(prompt).not.toMatch(/Use mcp_list/);
     expect(prompt).toMatch(/change a member's role/i);
+    expect(prompt).toContain("Task: New high-priority bug on login");
+  });
+
+  it("tells the agent to write a feature plan instead of a workspace census", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Plan a new feature for the current Fairlx workspace."),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toMatch(/propose one concrete feature/i);
+    expect(prompt).toMatch(/Stay in the Planner role/);
+    expect(prompt).not.toMatch(/return findings only/);
   });
 });
 
