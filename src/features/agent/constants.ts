@@ -46,66 +46,101 @@ export const PROVIDER_CATALOG: Array<{
   { type: "custom", label: "Custom", icon: "fa-solid fa-plug", needsBaseUrl: true },
 ];
 
+export function isPlatformGrokEnabled(): boolean {
+  if (typeof process !== "undefined" && process.env) {
+    if (process.env.ENABLE_PLATFORM_GROK === "true") return true;
+    if (process.env.ENABLE_PLATFORM_GROK === "false") return false;
+    if (process.env.NODE_ENV === "production") return false;
+  }
+  return true;
+}
+
+export const PLATFORM_XAI_PROVIDER: AgentProviderStored = {
+  id: PLATFORM_XAI_PROVIDER_ID,
+  provider: "azure",
+  displayName: "Azure Grok (Fairlx)",
+  baseUrl: "https://personal-use-g1-resource.openai.azure.com",
+  extra: {
+    vendor: "azure",
+    deployment: "grok-4.6",
+    openaiPath: "/openai/v1",
+    authHeader: "api-key",
+  },
+  isEnabled: true,
+  isPlatform: true,
+};
+
+export const PLATFORM_DEEPSEEK_PROVIDER: AgentProviderStored = {
+  id: PLATFORM_DEEPSEEK_PROVIDER_ID,
+  provider: "azure",
+  displayName: "Azure DeepSeek (Fairlx)",
+  baseUrl: "https://projectfairlx-resource.services.ai.azure.com/api/projects/projectfairlx",
+  extra: {
+    vendor: "azure",
+    deployment: "DeepSeek-V4-Flash",
+    openaiPath: "/openai/v1",
+    authHeader: "api-key",
+    project: "projectfairlx",
+  },
+  isEnabled: true,
+  isPlatform: true,
+};
+
+export const PLATFORM_GROK_MODEL: AgentModel = {
+  id: GROK_46_MODEL_ID,
+  providerId: PLATFORM_XAI_PROVIDER_ID,
+  modelId: "grok-4.6",
+  displayName: "Grok 4.6",
+  role: "default",
+  isEnabled: true,
+  isPlatform: true,
+  toolCalling: true,
+  vision: true,
+  maxInputTokens: 72000,
+  maxOutputTokens: 128000,
+};
+
+export const PLATFORM_DEEPSEEK_MODEL: AgentModel = {
+  id: DEEPSEEK_FLASH_MODEL_ID,
+  providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
+  modelId: "DeepSeek-V4-Flash",
+  displayName: "DeepSeek V4 Flash",
+  role: "default",
+  isEnabled: true,
+  isPlatform: true,
+  toolCalling: true,
+  vision: true,
+  maxInputTokens: 64000,
+  maxOutputTokens: 8192,
+};
+
+export function getPlatformProviders(): AgentProviderStored[] {
+  if (isPlatformGrokEnabled()) {
+    return [PLATFORM_XAI_PROVIDER, PLATFORM_DEEPSEEK_PROVIDER];
+  }
+  return [PLATFORM_DEEPSEEK_PROVIDER];
+}
+
+export function getPlatformModels(): AgentModel[] {
+  if (isPlatformGrokEnabled()) {
+    return [PLATFORM_GROK_MODEL, { ...PLATFORM_DEEPSEEK_MODEL, role: "flash" }];
+  }
+  return [{ ...PLATFORM_DEEPSEEK_MODEL, role: "default" }];
+}
+
+export function getPlatformDefaultModelId(): string {
+  return isPlatformGrokEnabled() ? GROK_46_MODEL_ID : DEEPSEEK_FLASH_MODEL_ID;
+}
+
 // Public Azure resource URLs only. API keys live in server env (AGENT_*_AZURE_API_KEY).
 export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
-  {
-    id: PLATFORM_XAI_PROVIDER_ID,
-    provider: "azure",
-    displayName: "Azure Grok (Fairlx)",
-    baseUrl: "https://personal-use-g1-resource.openai.azure.com",
-    extra: {
-      vendor: "azure",
-      deployment: "grok-4.6",
-      openaiPath: "/openai/v1",
-      authHeader: "api-key",
-    },
-    isEnabled: true,
-    isPlatform: true,
-  },
-  {
-    id: PLATFORM_DEEPSEEK_PROVIDER_ID,
-    provider: "azure",
-    displayName: "Azure DeepSeek (Fairlx)",
-    baseUrl: "https://projectfairlx-resource.services.ai.azure.com/api/projects/projectfairlx",
-    extra: {
-      vendor: "azure",
-      deployment: "DeepSeek-V4-Flash",
-      openaiPath: "/openai/v1",
-      authHeader: "api-key",
-      project: "projectfairlx",
-    },
-    isEnabled: true,
-    isPlatform: true,
-  },
+  PLATFORM_XAI_PROVIDER,
+  PLATFORM_DEEPSEEK_PROVIDER,
 ];
 
 export const PLATFORM_MODELS: AgentModel[] = [
-  {
-    id: GROK_46_MODEL_ID,
-    providerId: PLATFORM_XAI_PROVIDER_ID,
-    modelId: "grok-4.6",
-    displayName: "Grok 4.6",
-    role: "default",
-    isEnabled: true,
-    isPlatform: true,
-    toolCalling: true,
-    vision: true,
-    maxInputTokens: 72000,
-    maxOutputTokens: 128000,
-  },
-  {
-    id: DEEPSEEK_FLASH_MODEL_ID,
-    providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
-    modelId: "DeepSeek-V4-Flash",
-    displayName: "DeepSeek V4 Flash",
-    role: "flash",
-    isEnabled: true,
-    isPlatform: true,
-    toolCalling: true,
-    vision: true,
-    maxInputTokens: 64000,
-    maxOutputTokens: 8192,
-  },
+  PLATFORM_GROK_MODEL,
+  { ...PLATFORM_DEEPSEEK_MODEL, role: "flash" },
 ];
 
 export function getMcpServerIcon(name: string): { kind: "icon" | "badge"; value: string; className?: string } {

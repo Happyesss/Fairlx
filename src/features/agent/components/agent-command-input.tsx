@@ -19,7 +19,7 @@ import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useCreateAgentRun } from "../api/use-agent-runs";
 import { chipKey, composeUserPrompt } from "../lib/session-context";
-import type { AgentContextChip, AgentSessionMode } from "../types";
+import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
 import { AgentModeSelector } from "./agent-mode-selector";
@@ -60,6 +60,7 @@ function autosize(el: HTMLTextAreaElement) {
 }
 
 export function AgentCommandInput({
+  run,
   showQuickActions = true,
   placeholder = "Plan, Build, / for skills, @ for context",
   variant = "create",
@@ -67,6 +68,7 @@ export function AgentCommandInput({
   submitting = false,
   onFollowUp,
 }: {
+  run?: AgentRun;
   showQuickActions?: boolean;
   placeholder?: string;
   variant?: "create" | "followup";
@@ -193,7 +195,7 @@ export function AgentCommandInput({
 
   return (
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
-      <AgentScopeBar />
+      <AgentScopeBar run={run} />
       <form
         className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
         onSubmit={(event) => {

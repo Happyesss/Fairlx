@@ -22,7 +22,9 @@ import {
   DEEPSEEK_FLASH_MODEL_ID,
   GROK_46_MODEL_ID,
   PROVIDER_CATALOG,
+  getPlatformDefaultModelId,
   getProviderCatalogItem,
+  isPlatformGrokEnabled,
 } from "../constants";
 import type {
   AgentAiConfigInput,
@@ -78,7 +80,7 @@ function newId(prefix: string) {
 function emptyAiDraft(): AiDraft {
   return {
     mode: "auto",
-    selectedModelId: GROK_46_MODEL_ID,
+    selectedModelId: getPlatformDefaultModelId(),
     providers: [],
     models: [],
   };
@@ -215,10 +217,13 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
     setModelForm(null);
   };
 
+  const hasGrok = draft.models.some((m) => m.id === GROK_46_MODEL_ID && m.isPlatform) || isPlatformGrokEnabled();
+  const defaultAutoModelId = hasGrok ? GROK_46_MODEL_ID : DEEPSEEK_FLASH_MODEL_ID;
+
   const handleSave = () => {
     const payload: AgentAiConfigInput = {
       mode: draft.mode,
-      selectedModelId: draft.mode === "auto" ? GROK_46_MODEL_ID : draft.selectedModelId,
+      selectedModelId: draft.mode === "auto" ? defaultAutoModelId : draft.selectedModelId,
       providers: draft.providers.map((provider) => ({
         id: provider.id,
         provider: provider.provider,
@@ -246,7 +251,9 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
         <DialogHeader>
           <DialogTitle>Manage Models</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Auto routes between Grok 4.6 and DeepSeek V4 Flash. Add BYOK providers from the catalog.
+            {hasGrok
+              ? "Auto routes between Grok 4.6 and DeepSeek V4 Flash. Add BYOK providers from the catalog."
+              : "Auto uses DeepSeek V4 Flash. Add BYOK providers from the catalog."}
           </DialogDescription>
         </DialogHeader>
 
@@ -259,7 +266,7 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
               type="button"
               size="sm"
               variant={draft.mode === "auto" ? "primary" : "outline"}
-              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: GROK_46_MODEL_ID })}
+              onClick={() => setDraft({ ...draft, mode: "auto", selectedModelId: defaultAutoModelId })}
             >
               Auto
             </Button>
@@ -274,7 +281,15 @@ export function ManageModelsDialog({ open, onOpenChange }: ManageModelsDialogPro
           </div>
           {draft.mode === "auto" && (
             <p className="text-xs text-muted-foreground">
-              Routes with Grok 4.6 (`{GROK_46_MODEL_ID}`) and DeepSeek V4 Flash (`{DEEPSEEK_FLASH_MODEL_ID}`).
+              {hasGrok ? (
+                <>
+                  Routes with Grok 4.6 (<code>{GROK_46_MODEL_ID}</code>) and DeepSeek V4 Flash (<code>{DEEPSEEK_FLASH_MODEL_ID}</code>).
+                </>
+              ) : (
+                <>
+                  Routes with DeepSeek V4 Flash (<code>{DEEPSEEK_FLASH_MODEL_ID}</code>).
+                </>
+              )}
             </p>
           )}
         </div>
