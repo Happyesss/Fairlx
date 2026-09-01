@@ -36,19 +36,121 @@ const TOOL_CONTENT_HARD = 400;
 const EVENT_PAYLOAD_MAX = 600;
 const DETAIL_MAX = 400;
 
-export function compactJsonString(raw: string, max: number): string {
-  if (!raw || raw.length <= max) return raw;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function unwrapMcpValue(value: unknown, depth = 0): unknown {
+  if (depth > 5) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return unwrapMcpValue(JSON.parse(trimmed) as unknown, depth + 1);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
+  if (!isRecord(value)) return value;
+  const content = value.content;
+  if (Array.isArray(content)) {
+    const textItem = content.find(
+      (item) => isRecord(item) && item.type === "text" && typeof item.text === "string",
+    );
+    if (textItem && isRecord(textItem) && typeof textItem.text === "string") {
+      return unwrapMcpValue(textItem.text, depth + 1);
+    }
+  }
+  if ("result" in value) {
+    return unwrapMcpValue(value.result, depth + 1);
+  }
+  return value;
+}
+
+/** Flatten MCP `{ content: [{ type: "text", text }] }` envelopes to the inner JSON string. */
+export function unwrapMcpToolContent(content: string): string {
+  if (!content) return content;
   try {
-    const compacted = compactUnknown(JSON.parse(raw) as unknown, max);
+    const parsed = JSON.parse(content) as unknown;
+    if (!isRecord(parsed)) return content;
+    const isEnvelope =
+      Array.isArray(parsed.content) ||
+      ("result" in parsed && (parsed.server != null || parsed.tool != null || Array.isArray(parsed.content)));
+    if (!isEnvelope) return content;
+    const inner = unwrapMcpValue(parsed);
+    return typeof inner === "string" ? inner : JSON.stringify(inner);
+  } catch {
+    return content;
+  }
+}
+
+function isWorkItemListPayload(value: unknown): value is Record<string, unknown> & { workItems: unknown[] } {
+  return isRecord(value) && Array.isArray(value.workItems);
+}
+
+const LIST_META_KEYS = [
+  "hasMore",
+  "nextCursor",
+  "returned",
+  "total",
+  "matched",
+  "unassignedCount",
+  "error",
+] as const;
+
+export function compactWorkItemListPayload(payload: Record<string, unknown>, max: number): string {
+  const original = Array.isArray(payload.workItems) ? (payload.workItems as unknown[]) : [];
+  const items = [...original];
+  const meta: Record<string, unknown> = {};
+  for (const key of LIST_META_KEYS) {
+    if (payload[key] !== undefined) meta[key] = payload[key];
+  }
+  const build = (rows: unknown[], omitted: number) => {
+    const next: Record<string, unknown> = {
+      ...meta,
+      returned: rows.length,
+      workItems: rows,
+    };
+    if (omitted > 0) {
+      next.truncated = true;
+      next.omitted = omitted;
+    }
+    return JSON.stringify(next);
+  };
+  let json = build(items, 0);
+  if (json.length <= max) return json;
+  while (items.length > 0) {
+    items.pop();
+    json = build(items, original.length - items.length);
+    if (json.length <= max) return json;
+  }
+  return build([], original.length);
+}
+
+export function compactJsonString(raw: string, max: number): string {
+  if (!raw) return raw;
+  const normalized = unwrapMcpToolContent(raw);
+  if (normalized.length <= max) return normalized;
+  try {
+    const inner = JSON.parse(normalized) as unknown;
+    if (isWorkItemListPayload(inner)) {
+      return compactWorkItemListPayload(inner, max);
+    }
+    const compacted = compactUnknown(inner, max);
     const json = JSON.stringify(compacted);
     if (json.length <= max) return json;
+    if (isWorkItemListPayload(compacted)) {
+      return compactWorkItemListPayload(compacted as Record<string, unknown>, max);
+    }
     return JSON.stringify({
       truncated: true,
       preview: truncateString(json, Math.max(32, max - 40)),
     });
   } catch {
     // Prose / markdown is not JSON. Truncate in place so chat bubbles stay readable.
-    return truncateString(raw, max);
+    return truncateString(normalized, max);
   }
 }
 
@@ -91,10 +193,6 @@ function compactUnknown(value: unknown, budget: number): unknown {
     return next;
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function compactArrayItems(items: unknown[]): unknown[] {

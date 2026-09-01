@@ -63,6 +63,7 @@ export interface McpCollections {
   organizationAuditLogs: string;
   customFields: string;
   mcpApiTokens: string;
+  organizationMembers?: string;
   // ── New collections for full MCP coverage ──
   subtasks: string;
   notifications: string;

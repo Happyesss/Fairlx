@@ -43,6 +43,12 @@ export function shouldPollAgentRun(status?: string): boolean {
   return status === "running" || status === "awaiting_confirmation";
 }
 
+export function agentRunPollMs(status?: string): number | false {
+  if (status === "running") return 1000;
+  if (status === "awaiting_confirmation") return 2000;
+  return false;
+}
+
 const STALE_APPROVAL_ERROR = "Nothing is waiting for approval.";
 
 export const useGetAgentRuns = () => {
@@ -67,7 +73,8 @@ export const useGetAgentRun = (runId?: string) => {
     enabled: Boolean(runId),
     staleTime: 0,
     gcTime: QUERY_CONFIG.REALTIME.gcTime,
-    refetchInterval: (query) => (shouldPollAgentRun(query.state.data?.status) ? 1000 : false),
+    refetchInterval: (query) => agentRunPollMs(query.state.data?.status),
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const response = await client.api.agent.runs[":runId"].$get({
         param: { runId: runId! },

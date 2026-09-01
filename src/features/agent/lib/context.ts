@@ -81,11 +81,14 @@ export async function loadAgentContext(
       ])) as ProjectDoc[])
     : [];
 
-  const workItems = (await safeList(databases, WORK_ITEMS_ID, [
-    Query.equal("assigneeIds", user.$id),
-    Query.orderDesc("$createdAt"),
-    Query.limit(20),
-  ])) as WorkItemDoc[];
+  const memberIds = memberships.map((member) => member.$id).filter(Boolean);
+  const workItems = memberIds.length
+    ? ((await safeList(databases, WORK_ITEMS_ID, [
+        Query.equal("assigneeIds", memberIds.length === 1 ? memberIds[0]! : memberIds),
+        Query.orderDesc("$createdAt"),
+        Query.limit(20),
+      ])) as WorkItemDoc[])
+    : [];
 
   const notifications = await safeList(databases, NOTIFICATIONS_ID, [
     Query.equal("userId", user.$id),

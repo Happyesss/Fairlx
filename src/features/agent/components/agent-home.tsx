@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { useCurrent } from "@/features/auth/api/use-current";
-import { WorkspaceAvatar } from "@/features/workspaces/components/workspace-avatar";
 import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 
 import { useGetAgentContext } from "../api/use-agent-context";
@@ -16,17 +15,16 @@ import { useAgentUi } from "./agent-ui-context";
 
 export function AgentHome() {
   const { data: user } = useCurrent();
-  const { data: context, isLoading: contextLoading } = useGetAgentContext();
+  const { data: context } = useGetAgentContext();
   const { data: runs, isLoading: runsLoading } = useGetAgentRuns();
   const { openRecentWork } = useAgentUi();
-  const workspaces = context?.workspaces ?? [];
   const projects = context?.projects ?? [];
   const workItems = context?.workItems ?? [];
 
   return (
     <AgentPageFrame>
-      <div className="max-w-[1300px] mx-auto grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="max-w-[1300px] mx-auto grid lg:grid-cols-3 gap-8 min-h-[calc(100vh-7.5rem)]">
+        <div className="lg:col-span-2 flex flex-col justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">
               {greetingForNow()}, {firstName(user?.name, user?.email)}
@@ -36,50 +34,29 @@ export function AgentHome() {
             </p>
           </div>
 
-          <AgentCommandInput />
+          <div className="text-center py-4 my-auto">
+            <p className="text-base sm:text-lg font-medium text-muted-foreground/75 tracking-tight">
+              What would you like to build, investigate, or ship today?
+            </p>
+          </div>
 
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Workspaces</h2>
-              <Link href="/agent/workspaces" className="text-xs text-primary hover:underline font-medium">
-                View all
-              </Link>
+          <div className="space-y-6">
+            <div>
+              <AgentCommandInput />
             </div>
-            {contextLoading ? (
-              <p className="text-sm text-muted-foreground">Loading workspaces…</p>
-            ) : workspaces.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No workspaces yet. Create one to get started.</p>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {workspaces.slice(0, 4).map((workspace) => (
-                  <Link
-                    key={workspace.id}
-                    href={`/workspaces/${workspace.id}`}
-                    className="rounded-xl border border-border bg-card p-4 hover:bg-muted/40 transition-colors group flex flex-col justify-between shadow-sm"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <WorkspaceAvatar name={workspace.name} image={workspace.imageUrl} className="size-6 shrink-0" />
-                      <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
-                        {workspace.name}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-3 flex items-center justify-between">
-                      <span>Open Workspace</span>
-                      <ChevronRight className="size-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
-                    </div>
-                  </Link>
-                ))}
+
+            <section className="pt-1">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Projects</h2>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    {projects.length}
+                  </span>
+                </div>
+                <Link href="/agent/projects" className="text-xs text-primary hover:underline font-medium">
+                  View all
+                </Link>
               </div>
-            )}
-          </section>
-
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Projects</h2>
-              <Link href="/agent/projects" className="text-xs text-primary hover:underline font-medium">
-                View all
-              </Link>
-            </div>
             {projects.length === 0 ? (
               <p className="text-sm text-muted-foreground">No projects in your workspaces yet.</p>
             ) : (
@@ -104,7 +81,8 @@ export function AgentHome() {
                 ))}
               </div>
             )}
-          </section>
+            </section>
+          </div>
         </div>
 
         <div className="space-y-6">

@@ -17,7 +17,7 @@ import { enabledModels, selectedModelLabel } from "../lib/client-defaults";
 import { useAgentUi } from "./agent-ui-context";
 
 type ModelPickerProps = {
-  variant: "chip" | "sidebar";
+  variant: "chip" | "sidebar" | "subtle";
   className?: string;
 };
 
@@ -30,7 +30,19 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
   const selectedId = data?.mode === "auto" ? "auto" : data?.selectedModelId;
 
   const trigger =
-    variant === "chip" ? (
+    variant === "subtle" ? (
+      <button
+        type="button"
+        disabled={isPending}
+        className={cn(
+          "flex items-center gap-1 h-7 px-1.5 text-xs font-medium text-foreground/80 hover:text-foreground hover:bg-muted/60 rounded-md transition-colors cursor-pointer shrink-0 select-none",
+          className
+        )}
+      >
+        <span className="max-w-[170px] truncate">{label}</span>
+        <ChevronDown className="size-3 opacity-60 shrink-0" />
+      </button>
+    ) : variant === "chip" ? (
       <button
         type="button"
         disabled={isPending}

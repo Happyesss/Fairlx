@@ -49,6 +49,20 @@ export const PROVIDER_CATALOG: Array<{
 // Public Azure resource URLs only. API keys live in server env (AGENT_*_AZURE_API_KEY).
 export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
   {
+    id: PLATFORM_XAI_PROVIDER_ID,
+    provider: "azure",
+    displayName: "Azure Grok (Fairlx)",
+    baseUrl: "https://personal-use-g1-resource.openai.azure.com",
+    extra: {
+      vendor: "azure",
+      deployment: "grok-4.6",
+      openaiPath: "/openai/v1",
+      authHeader: "api-key",
+    },
+    isEnabled: true,
+    isPlatform: true,
+  },
+  {
     id: PLATFORM_DEEPSEEK_PROVIDER_ID,
     provider: "azure",
     displayName: "Azure DeepSeek (Fairlx)",
@@ -67,11 +81,24 @@ export const PLATFORM_PROVIDERS: AgentProviderStored[] = [
 
 export const PLATFORM_MODELS: AgentModel[] = [
   {
+    id: GROK_46_MODEL_ID,
+    providerId: PLATFORM_XAI_PROVIDER_ID,
+    modelId: "grok-4.6",
+    displayName: "Grok 4.6",
+    role: "default",
+    isEnabled: true,
+    isPlatform: true,
+    toolCalling: true,
+    vision: true,
+    maxInputTokens: 72000,
+    maxOutputTokens: 128000,
+  },
+  {
     id: DEEPSEEK_FLASH_MODEL_ID,
     providerId: PLATFORM_DEEPSEEK_PROVIDER_ID,
     modelId: "DeepSeek-V4-Flash",
     displayName: "DeepSeek V4 Flash",
-    role: "default",
+    role: "flash",
     isEnabled: true,
     isPlatform: true,
     toolCalling: true,

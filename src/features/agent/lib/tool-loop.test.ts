@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentChatMessage } from "../types";
+import type { AgentChatMessage, AgentToolCall } from "../types";
 import {
+  collapseWorkItemListFanOut,
   fingerprintsFromMessages,
   isFailedToolContent,
+  listSliceKey,
+  rememberListSlice,
   repeatedToolMessage,
+  resolveListSliceCall,
   stableToolArgs,
   toolCallFingerprint,
 } from "./tool-loop";
@@ -64,5 +68,104 @@ describe("fingerprintsFromMessages", () => {
       JSON.stringify({ workspaceId: "w1" }),
     );
     expect(map.get(fingerprint)).toBe(JSON.stringify({ workItems: [] }));
+  });
+});
+
+describe("list slice cache", () => {
+  it("ignores cursorAfter when building the slice key", () => {
+    expect(
+      listSliceKey("fairlx_work_item_list", { projectId: "p1", cursorAfter: "first" }),
+    ).toBe(listSliceKey("fairlx_work_item_list", { projectId: "p1", cursorAfter: "last" }));
+  });
+
+  it("blocks a second page when hasMore is false", () => {
+    const cache = new Map();
+    rememberListSlice(
+      cache,
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      JSON.stringify({ hasMore: false, nextCursor: null, workItems: [{ id: "a" }] }),
+    );
+    const skip = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      cursorAfter: "anything",
+    });
+    expect(skip.action).toBe("skip");
+    if (skip.action === "skip") expect(skip.content).toMatch(/No further pages/);
+  });
+
+  it("allows the next page when hasMore is nested in an MCP text envelope", () => {
+    const cache = new Map();
+    rememberListSlice(
+      cache,
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      JSON.stringify({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ hasMore: true, nextCursor: "doc_last", workItems: [{ key: "A-1" }] }),
+          },
+        ],
+      }),
+    );
+    const ok = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      cursorAfter: "doc_last",
+    });
+    expect(ok.action).toBe("execute");
+  });
+
+  it("keeps unassigned lists on a separate slice from the full project list", () => {
+    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1" })).not.toBe(
+      listSliceKey("fairlx_work_item_list", { projectId: "p1", unassigned: true }),
+    );
+  });
+
+  it("rejects a cursor that is not the stored nextCursor", () => {
+    const cache = new Map();
+    rememberListSlice(
+      cache,
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      JSON.stringify({ hasMore: true, nextCursor: "doc_last", workItems: [] }),
+    );
+    const skip = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      cursorAfter: "doc_first",
+    });
+    expect(skip.action).toBe("skip");
+    if (skip.action === "skip") expect(skip.content).toMatch(/Invalid cursorAfter/);
+    const ok = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      cursorAfter: "doc_last",
+    });
+    expect(ok.action).toBe("execute");
+  });
+});
+
+describe("collapseWorkItemListFanOut", () => {
+  it("rewrites overlapping BUG and TODO lists into one project list", () => {
+    const calls: AgentToolCall[] = [
+      { id: "c1", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", type: "BUG" }) },
+      { id: "c2", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", status: "TODO" }) },
+      { id: "c3", name: "fairlx_sprint_list", arguments: JSON.stringify({ projectId: "p1" }) },
+    ];
+    const { calls: next, coalescedIds } = collapseWorkItemListFanOut(calls);
+    expect(JSON.parse(next[0]!.arguments)).toEqual({ projectId: "p1" });
+    expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1" });
+    expect(next[2]!.name).toBe("fairlx_sprint_list");
+    expect([...coalescedIds]).toEqual(["c2"]);
+  });
+
+  it("does not merge an unassigned list with a typed list", () => {
+    const calls: AgentToolCall[] = [
+      { id: "c1", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", unassigned: true }) },
+      { id: "c2", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", type: "TASK" }) },
+    ];
+    const { calls: next, coalescedIds } = collapseWorkItemListFanOut(calls);
+    expect(JSON.parse(next[0]!.arguments)).toEqual({ projectId: "p1", unassigned: true });
+    expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1", type: "TASK" });
+    expect(coalescedIds.size).toBe(0);
   });
 });

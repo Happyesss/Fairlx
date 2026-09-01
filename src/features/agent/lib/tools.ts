@@ -20,7 +20,7 @@ import { readPersonalContent } from "./personal";
 import { toPublicMcpConfig } from "./public-mcp";
 import { matchingAutomations, searchAgentIndex } from "./search";
 import { HARNESS_TO_MCP } from "./parse-tool-calls";
-import { compactJsonString } from "./truncate";
+import { compactJsonString, unwrapMcpToolContent } from "./truncate";
 
 export type OpenAiTool = {
   type: "function";
@@ -275,7 +275,17 @@ export function openaiToolsForTurn(params: {
   const mcpNames = new Set(mcpTools.map((tool) => tool.name));
   const harness = openaiToolsForMode(params.mode, params.enabledTools).filter((tool) => {
     const mapped = HARNESS_TO_MCP[tool.function.name];
-    return !(mapped && mcpNames.has(mapped));
+    if (mapped && mcpNames.has(mapped)) return false;
+    if (
+      mcpNames.has("fairlx_work_item_list") &&
+      (tool.function.name === "database_query" ||
+        tool.function.name === "list_work_items" ||
+        tool.function.name === "list_workspaces" ||
+        tool.function.name === "list_projects")
+    ) {
+      return false;
+    }
+    return true;
   });
   if (params.mode !== "agent") return harness;
   const existing = new Set(harness.map((tool) => tool.function.name));
@@ -308,20 +318,6 @@ function compactEventPayload(payload: unknown): unknown {
     if (source[key] != null) slim[key] = source[key];
   }
   return Object.keys(slim).length ? slim : { truncated: true };
-}
-
-function unwrapMcpToolContent(content: string): string {
-  try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return content;
-    if (parsed.server != null && parsed.tool != null && "result" in parsed) {
-      const result = parsed.result;
-      return typeof result === "string" ? result : JSON.stringify(result ?? null);
-    }
-  } catch {
-    return content;
-  }
-  return content;
 }
 
 function event(

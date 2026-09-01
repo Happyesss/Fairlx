@@ -54,7 +54,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_list",
-    description: "List work items in a project (compact fields)",
+    description:
+      "List work items in a project. Unassigned means no current project member (same as the board) — pass unassigned=true; do not fan out by type or call database_query. One call auto-completes small projects. Paginate only when hasMore is true, and pass nextCursor unchanged as cursorAfter. Never pass a work-item key (WEB-12) as cursorAfter.",
     inputSchema: {
       type: "object",
       properties: {
@@ -62,6 +63,11 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         sprintId: id,
         status: { type: "string" },
         type: { type: "string" },
+        unassigned: {
+          type: "boolean",
+          description: "Only items with no current project member, matching the Kanban Unassigned label",
+        },
+        assigneeId: id,
         limit: { type: "number" },
         cursorAfter: { type: "string" },
       },
@@ -652,6 +658,49 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     rateClass: "write",
     scopes: ["admin:manage"],
   },
+  {
+    name: "fairlx_workspace_member_add",
+    description:
+      "Add a person to this workspace. For organization workspaces this is Add from Org — find them by name or email among organization members. Role defaults to MEMBER. Wait for the user to Accept. Do not send them to Settings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: id,
+        name: { type: "string", description: "Display name as shown in the organization" },
+        email: { type: "string", description: "Email if the name is ambiguous" },
+        role: { type: "string", description: "ADMIN, MEMBER, or OWNER. Defaults to MEMBER." },
+      },
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
+  },
+  {
+    name: "fairlx_workspace_member_remove",
+    description:
+      "Remove a workspace member by name or email. Cannot remove the owner or the last member. Wait for the user to Accept.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspaceId: id,
+        name: { type: "string" },
+        email: { type: "string" },
+      },
+    },
+    riskTier: 3,
+    rateClass: "destructive",
+    scopes: ["admin:manage"],
+  },
+  {
+    name: "fairlx_organization_members_list",
+    description:
+      "List organization members for this workspace, including who is already on the workspace. Use before adding someone if you need to see who can be added.",
+    inputSchema: { type: "object", properties: { workspaceId: id }, required: ["workspaceId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
 
   // ── Workspace Details ──
   {
@@ -661,6 +710,16 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     riskTier: 1,
     rateClass: "read",
     scopes: ["project:read"],
+  },
+  {
+    name: "fairlx_workspace_invite_get",
+    description:
+      "Get the workspace invite / join link (the same URL as Members → Quick Invite). Use this when the user wants to invite someone. Return inviteUrl to the user. Organization workspaces disable invite links — add the person with fairlx_workspace_member_add instead of sending the user to Settings.",
+    inputSchema: { type: "object", properties: { workspaceId: id }, required: ["workspaceId"] },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["members:read"],
+    permission: PERMISSIONS.VIEW_MEMBERS,
   },
 
   // ── Subtasks ──

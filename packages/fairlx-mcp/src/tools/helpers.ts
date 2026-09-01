@@ -39,6 +39,38 @@ export function optionalString(args: Record<string, unknown>, key: string): stri
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+export function optionalBoolean(args: Record<string, unknown>, key: string): boolean | undefined {
+  const value = args[key];
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+export async function listAllDocuments(
+  runtime: Pick<McpRuntime, "store">,
+  collection: string,
+  extra: McpQuery[] = []
+): Promise<Record<string, unknown>[]> {
+  const documents: Record<string, unknown>[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const queries: McpQuery[] = [
+      ...extra,
+      { type: "limit", value: 100 },
+      { type: "orderDesc", field: "$createdAt" },
+      ...(cursor ? [{ type: "cursorAfter" as const, value: cursor }] : []),
+    ];
+    const page = await runtime.store.list<Record<string, unknown>>(collection, queries);
+    documents.push(...page.documents);
+    if (page.documents.length === 0 || documents.length >= page.total) break;
+    const last = page.documents[page.documents.length - 1];
+    cursor = String(last?.$id ?? last?.id ?? "");
+    if (!cursor) break;
+  }
+  return documents;
+}
+
 export function listQuery(args: Record<string, unknown>, extra: McpQuery[] = []): McpQuery[] {
   const { limit, cursorAfter } = paginationQueries(args);
   const queries: McpQuery[] = [...extra, { type: "limit", value: limit }, { type: "orderDesc", field: "$createdAt" }];
@@ -114,6 +146,20 @@ export function parseCustomFields(raw: unknown): Array<{ fieldId: string; value:
 export function redactGithubRepo(doc: Record<string, unknown>): Record<string, unknown> {
   const { accessToken: _a, webhookSecret: _w, ...rest } = doc;
   return { ...rest, accessToken: undefined, webhookSecret: undefined };
+}
+
+export function appBaseUrl(): string {
+  return String(process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/+$/, "");
+}
+
+export function workspaceInvitePath(workspaceId: string, inviteCode: string): string {
+  return `/workspaces/${workspaceId}/join/${inviteCode}`;
+}
+
+export function workspaceInviteUrl(workspaceId: string, inviteCode: string): string {
+  const path = workspaceInvitePath(workspaceId, inviteCode);
+  const origin = appBaseUrl();
+  return origin ? `${origin}${path}` : path;
 }
 
 export async function audit(

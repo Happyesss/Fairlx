@@ -42,6 +42,12 @@ export function confirmationSummary(call: AgentToolCall): string {
     .replace(/^fairlx_/, "")
     .replaceAll("_", " ")
     .trim();
+  if (/workspace_member_add/i.test(mcpName) && label) {
+    return role ? `Add ${label} as ${role}?` : `Add ${label} to the workspace?`;
+  }
+  if (/workspace_member_remove/i.test(mcpName) && label) {
+    return `Remove ${label} from the workspace?`;
+  }
   if (/workspace_member_update/i.test(mcpName) && (label || role)) {
     if (label && role) return `Make ${label} ${role}?`;
     if (label) return `Update ${label}'s role?`;

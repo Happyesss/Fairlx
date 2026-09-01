@@ -25,12 +25,6 @@ export const AGENT_SESSION_MODES: Array<{
     hint: "Find the failure and propose a fix.",
   },
   {
-    id: "multitask",
-    label: "Multitask",
-    icon: "fa-solid fa-layer-group",
-    hint: "Split work across planner, researcher, builder, and git specialists.",
-  },
-  {
     id: "ask",
     label: "Ask",
     icon: "fa-regular fa-comment-dots",

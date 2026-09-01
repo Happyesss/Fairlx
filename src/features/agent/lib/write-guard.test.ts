@@ -13,6 +13,8 @@ describe("isWriteToolCall", () => {
     expect(isWriteToolCall(call("fairlx_work_item_update", { workItemId: "x" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_work_item_delete", { workItemId: "x" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_workspace_member_update", { name: "Ada", role: "ADMIN" }))).toBe(true);
+    expect(isWriteToolCall(call("fairlx_workspace_member_add", { name: "Ada" }))).toBe(true);
+    expect(isWriteToolCall(call("fairlx_workspace_member_remove", { name: "Ada" }))).toBe(true);
     expect(
       isWriteToolCall(call("mcp_call", { server: "fairlx", tool: "fairlx_project_create", arguments: { name: "N" } })),
     ).toBe(true);
@@ -29,6 +31,18 @@ describe("isWriteToolCall", () => {
     expect(
       confirmationSummary(call("fairlx_workspace_member_update", { name: "Shashank Kumar Rathour", role: "ADMIN" })),
     ).toBe("Make Shashank Kumar Rathour ADMIN?");
+  });
+
+  it("summarizes add and remove for Accept/Deny", () => {
+    expect(confirmationSummary(call("fairlx_workspace_member_add", { name: "Ada" }))).toBe(
+      "Add Ada to the workspace?",
+    );
+    expect(
+      confirmationSummary(call("fairlx_workspace_member_add", { name: "Ada", role: "MEMBER" })),
+    ).toBe("Add Ada as MEMBER?");
+    expect(confirmationSummary(call("fairlx_workspace_member_remove", { name: "Ada" }))).toBe(
+      "Remove Ada from the workspace?",
+    );
   });
 });
 
