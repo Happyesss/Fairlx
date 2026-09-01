@@ -1,8 +1,9 @@
 import {
   PLATFORM_DEEPSEEK_PROVIDER_ID,
-  PLATFORM_MODELS,
-  PLATFORM_PROVIDERS,
   PLATFORM_XAI_PROVIDER_ID,
+  getPlatformDefaultModelId,
+  getPlatformModels,
+  getPlatformProviders,
 } from "../constants";
 import type {
   AgentAiConfigPublic,
@@ -21,20 +22,23 @@ import { last4FromEncrypted, maskEncryptedSecret } from "./secrets";
 
 export { defaultMcpConfig, enabledModels, selectedModelLabel } from "./client-defaults";
 export { platformDeepseekHasKey, platformGrokHasKey, platformXaiHasKey } from "./platform-credentials";
+export { getPlatformDefaultModelId, getPlatformModels, getPlatformProviders, isPlatformGrokEnabled } from "../constants";
 
 export function defaultAiStoredConfig(): AgentAiConfigStored {
+  const models = getPlatformModels();
   return {
     mode: "auto",
-    selectedModelId: PLATFORM_MODELS[0]?.id,
-    providers: PLATFORM_PROVIDERS.map((provider) => overlayPlatformProvider(provider)),
-    models: PLATFORM_MODELS.map((model) => overlayPlatformModel(model)),
+    selectedModelId: getPlatformDefaultModelId(),
+    providers: getPlatformProviders().map((provider) => overlayPlatformProvider(provider)),
+    models: models.map((model) => overlayPlatformModel(model)),
   };
 }
 
 export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfigStored {
-  const platformProviderIds = new Set(PLATFORM_PROVIDERS.map((p) => p.id));
+  const activeProviders = getPlatformProviders();
+  const platformProviderIds = new Set(activeProviders.map((p) => p.id));
   const providers = config.providers.filter((p) => !p.isPlatform || platformProviderIds.has(p.id));
-  for (const platform of PLATFORM_PROVIDERS) {
+  for (const platform of activeProviders) {
     const nextPlatform = overlayPlatformProvider(platform);
     const index = providers.findIndex((provider) => provider.id === platform.id);
     if (index === -1) {
@@ -52,9 +56,10 @@ export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfi
     };
   }
 
-  const platformModelIds = new Set(PLATFORM_MODELS.map((m) => m.id));
+  const activeModels = getPlatformModels();
+  const platformModelIds = new Set(activeModels.map((m) => m.id));
   const models = config.models.filter((m) => !m.isPlatform || platformModelIds.has(m.id));
-  for (const platform of PLATFORM_MODELS) {
+  for (const platform of activeModels) {
     const nextPlatform = overlayPlatformModel(platform);
     const index = models.findIndex((model) => model.id === platform.id);
     if (index === -1) {
@@ -70,9 +75,10 @@ export function mergePlatformAiConfig(config: AgentAiConfigStored): AgentAiConfi
     };
   }
 
+  const defaultModelId = getPlatformDefaultModelId();
   const selectedModelId =
     !config.selectedModelId || !models.some((m) => m.id === config.selectedModelId)
-      ? (PLATFORM_MODELS[0]?.id ?? "")
+      ? defaultModelId
       : config.selectedModelId;
 
   return {

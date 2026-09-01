@@ -814,7 +814,8 @@ function WorkflowSidebar({
     () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
     [context?.projects, workspaceId]
   );
-  const project = context?.projects.find((item) => item.id === run.projectId);
+  const effectiveProjectId = run.projectId || harness?.settings.defaultProjectId;
+  const project = context?.projects.find((item) => item.id === effectiveProjectId);
   const connected = Object.entries(mcp?.mcpServers ?? {}).filter(
     ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
   ).length;
@@ -1171,7 +1172,8 @@ function WorkflowViewInner() {
   const thinkingLabel = !lastBlock || lastBlock.kind === "user" ? "Thinking…" : "Answering…";
   const pending = findPendingConfirmation(run.events ?? []);
   const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
-  const project = context?.projects.find((item) => item.id === run.projectId);
+  const effectiveProjectId = run.projectId || harness?.settings.defaultProjectId;
+  const project = context?.projects.find((item) => item.id === effectiveProjectId);
   const linkedRepo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
 
   const saveTitle = () => {
@@ -1409,6 +1411,7 @@ function WorkflowViewInner() {
 
           <FloatingComposer>
             <AgentCommandInput
+              run={run}
               variant="followup"
               showQuickActions={false}
               submitting={sendMessage.isPending || awaiting || running}

@@ -3,6 +3,7 @@ import {
   GROK_46_MODEL_ID,
   PLATFORM_DEEPSEEK_PROVIDER_ID,
   PLATFORM_XAI_PROVIDER_ID,
+  isPlatformGrokEnabled,
 } from "../constants";
 import type { AgentModel, AgentProviderStored } from "../types";
 
@@ -15,6 +16,7 @@ export const PLATFORM_DEEPSEEK_DEFAULT_DEPLOYMENT = "DeepSeek-V4-Flash";
 export const PLATFORM_AZURE_OPENAI_PATH = "/openai/v1";
 
 export function getPlatformGrokApiKey(): string {
+  if (!isPlatformGrokEnabled()) return "";
   return (
     process.env.AGENT_GROK_AZURE_API_KEY?.trim() ||
     process.env.GROK_API_KEY?.trim() ||

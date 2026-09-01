@@ -10,14 +10,23 @@ import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
+import { usePatchAgentRun } from "../api/use-agent-runs";
 import { AGENT_CONTEXT_QUERY_KEY } from "../constants";
+import type { AgentRun } from "../types";
 import { useAgentUi } from "./agent-ui-context";
 
-export function AgentScopeBar() {
+export function AgentScopeBar({
+  run,
+  onScopeChange,
+}: {
+  run?: AgentRun;
+  onScopeChange?: (workspaceId: string, projectId?: string) => void;
+} = {}) {
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
   const { openNewWorkspace } = useAgentUi();
   const updateHarness = useUpdateAgentHarness();
+  const patchRun = usePatchAgentRun();
   const createProject = useCreateProject();
   const queryClient = useQueryClient();
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -26,13 +35,13 @@ export function AgentScopeBar() {
   const [newName, setNewName] = useState("");
 
   const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
-  const workspaceId = harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
+  const workspaceId = run?.workspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const projects = useMemo(
     () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
     [context?.projects, workspaceId],
   );
-  const projectId = harness?.settings.defaultProjectId;
+  const projectId = run?.projectId || harness?.settings.defaultProjectId;
   const project = projects.find((item) => item.id === projectId) ?? context?.projects.find((item) => item.id === projectId);
   const repo = (context?.githubRepos ?? []).find(
     (item) => item.projectId === project?.id || (!project && item.workspaceId === workspaceId),
@@ -51,27 +60,49 @@ export function AgentScopeBar() {
     const stillValid = (context?.projects ?? []).some(
       (item) => item.id === projectId && item.workspaceId === id,
     );
+    const nextProjectId = stillValid ? projectId : undefined;
     updateHarness.mutate({
       json: {
         settings: {
           defaultWorkspaceId: id,
-          defaultProjectId: stillValid ? projectId : undefined,
+          defaultProjectId: nextProjectId,
         },
       },
     });
+    if (run?.id) {
+      patchRun.mutate({
+        param: { runId: run.id },
+        json: {
+          workspaceId: id,
+          projectId: nextProjectId || "",
+        },
+      });
+    }
+    onScopeChange?.(id, nextProjectId);
     setWorkspaceOpen(false);
     setSearch("");
   };
 
   const selectProject = (id: string, nextWorkspaceId?: string) => {
+    const targetWorkspaceId = nextWorkspaceId || workspaceId;
     updateHarness.mutate({
       json: {
         settings: {
-          defaultWorkspaceId: nextWorkspaceId || workspaceId,
+          defaultWorkspaceId: targetWorkspaceId,
           defaultProjectId: id,
         },
       },
     });
+    if (run?.id) {
+      patchRun.mutate({
+        param: { runId: run.id },
+        json: {
+          projectId: id,
+          ...(targetWorkspaceId ? { workspaceId: targetWorkspaceId } : {}),
+        },
+      });
+    }
+    onScopeChange?.(targetWorkspaceId, id);
     setProjectOpen(false);
     setSearch("");
   };

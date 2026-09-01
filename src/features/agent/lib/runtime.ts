@@ -1,6 +1,11 @@
 import type { Databases } from "node-appwrite";
 
-import { DEEPSEEK_FLASH_MODEL_ID, GROK_46_MODEL_ID } from "../constants";
+import {
+  DEEPSEEK_FLASH_MODEL_ID,
+  GROK_46_MODEL_ID,
+  getPlatformDefaultModelId,
+  isPlatformGrokEnabled,
+} from "../constants";
 import type {
   AgentAiConfigStored,
   AgentChatMessage,
@@ -107,11 +112,12 @@ function defaultByokBase(provider: string): string {
 
 export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
   const models = stored.models.map(overlayPlatformModel);
+  const defaultModelId = getPlatformDefaultModelId();
   const selectedId =
-    stored.mode === "auto" || !stored.selectedModelId ? GROK_46_MODEL_ID : stored.selectedModelId;
+    stored.mode === "auto" || !stored.selectedModelId ? defaultModelId : stored.selectedModelId;
   const model =
     models.find((item) => item.id === selectedId && item.isEnabled) ??
-    models.find((item) => item.id === GROK_46_MODEL_ID && item.isEnabled) ??
+    (isPlatformGrokEnabled() ? models.find((item) => item.id === GROK_46_MODEL_ID && item.isEnabled) : undefined) ??
     models.find((item) => item.id === DEEPSEEK_FLASH_MODEL_ID && item.isEnabled) ??
     models.find((item) => item.isEnabled) ??
     models[0];
