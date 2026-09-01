@@ -2,9 +2,17 @@ import { invalidParams, notFoundError } from "../protocol/errors";
 import type { McpToolResult } from "../protocol/types";
 import type { AuthContext } from "../auth/context";
 import { PERMISSIONS, type McpQuery, type McpRuntime } from "../runtime/types";
-import { compactWorkItem, hydrateMembers, toolResult, withId, wrapUntrusted } from "../runtime/output";
+import {
+  compactWorkItem,
+  hydrateMembers,
+  isWorkItemKeyCursor,
+  paginationMeta,
+  toolResult,
+  withId,
+  wrapUntrusted,
+} from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
-import { loadProject, loadWorkItem } from "../runtime/tenant";
+import { loadProject, loadWorkItem, paginationQueries } from "../runtime/tenant";
 import { listQuery, optionalString, requireString, redactGithubRepo } from "./helpers";
 import { handlePersonalTool } from "../personal/load";
 
@@ -203,13 +211,23 @@ async function workItemList(
   if (sprintId) extra.push({ type: "equal", field: "sprintId", value: sprintId });
   if (status) extra.push({ type: "equal", field: "status", value: status });
   if (type) extra.push({ type: "equal", field: "type", value: type });
+  const { limit, cursorAfter } = paginationQueries(args);
+  const cursorError = isWorkItemKeyCursor(cursorAfter)
+    ? "cursorAfter must be nextCursor from the previous list result"
+    : undefined;
+  const listArgs = cursorError ? { ...args, cursorAfter: undefined } : args;
   const result = await runtime.store.list<Record<string, unknown>>(
     runtime.collections.workItems,
-    listQuery(args, extra)
+    listQuery(listArgs, extra)
   );
+  const page = paginationMeta(result.documents, result.total, limit);
   return toolResult({
+    hasMore: page.hasMore,
+    nextCursor: page.nextCursor,
+    returned: page.returned,
+    total: page.total,
+    ...(cursorError ? { error: cursorError } : {}),
     workItems: result.documents.map((d) => compactWorkItem(d)),
-    total: result.total,
   });
 }
 

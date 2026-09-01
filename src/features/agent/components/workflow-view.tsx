@@ -9,10 +9,8 @@ import {
   AlertTriangle,
   Loader2,
   XCircle,
-  Share2,
-  Bookmark,
+  Pin,
   Trash2,
-  Square,
   RotateCcw,
   Pencil,
   Server,
@@ -32,6 +30,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 import {
   Select,
   SelectContent,
@@ -922,7 +921,11 @@ function WorkflowViewInner() {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [tab, setTab] = useState<"context" | "changes" | "terminal" | "preview">("context");
-  const [copied, setCopied] = useState(false);
+  const [DeleteDialog, confirmDelete] = useConfirm(
+    "Delete Run",
+    "Are you sure you want to delete this chat run? This action cannot be undone.",
+    "destructive"
+  );
 
   useEffect(() => {
     if (run?.title) setTitle(run.title);
@@ -1057,17 +1060,7 @@ function WorkflowViewInner() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {running || awaiting ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={stopRun.isPending}
-                onClick={() => stopRun.mutate({ runId: run.id })}
-                className="h-8 text-xs font-medium text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5"
-              >
-                <Square className="size-3.5 fill-current" /> Stop
-              </Button>
-            ) : run.status === "failed" || run.status === "stopped" ? (
+            {run.status === "failed" || run.status === "stopped" ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -1078,20 +1071,6 @@ function WorkflowViewInner() {
                 <RotateCcw className="size-3.5" /> Retry
               </Button>
             ) : null}
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium gap-1.5"
-              onClick={async () => {
-                await navigator.clipboard.writeText(window.location.href);
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              }}
-            >
-              <Share2 className="size-3.5" />
-              <span>{copied ? "Copied" : "Share"}</span>
-            </Button>
 
             <Button
               variant="ghost"
@@ -1110,7 +1089,7 @@ function WorkflowViewInner() {
               }}
               title={pinned ? "Unpin" : "Pin"}
             >
-              <Bookmark className={cn("size-4", pinned && "fill-primary text-primary")} />
+              <Pin className={cn("size-4", pinned && "fill-primary text-primary")} />
             </Button>
 
             <Button
@@ -1118,7 +1097,18 @@ function WorkflowViewInner() {
               size="sm"
               className="h-8 px-2 text-xs font-medium text-muted-foreground hover:text-destructive"
               disabled={deleteRun.isPending}
-              onClick={() => deleteRun.mutate({ runId: run.id }, { onSuccess: () => router.push("/agent/chats") })}
+              onClick={async () => {
+                const ok = await confirmDelete();
+                if (!ok) return;
+                deleteRun.mutate(
+                  { runId: run.id },
+                  {
+                    onSuccess: () => {
+                      router.push("/agent/chats");
+                    },
+                  }
+                );
+              }}
               title="Delete run"
             >
               <Trash2 className="size-4" />

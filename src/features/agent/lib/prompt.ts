@@ -45,6 +45,7 @@ export function buildSystemPrompt(params: {
     "- Never print internal IDs, workspace IDs, or raw tool syntax. Use names, keys, and roles.",
     "- Never repeat the same tool with the same arguments. If a tool already returned data, answer from it.",
     "- List tools return complete rows including names. Answer from the list. Do not call get once per row.",
+    "- One fairlx_work_item_list per project unless the user asked for a specific slice. Do not fan out by status or type. Paginate only when hasMore is true, and pass nextCursor unchanged. Never invent cursorAfter. After the list is in context, answer.",
     "- When asked to plan a feature, glance at open work only to avoid duplicates, then propose one concrete feature: name, why, user stories, work items to create, acceptance criteria, and sprint fit. Do not recap the team.",
     "- You may propose new work items and stories. Creating them in Fairlx waits for Accept. Do not invent existing members or claim records already exist.",
     "- Never invent or hallucinate existing work items, bug counts, sprint numbers, or metrics. Base all observations strictly on real data returned by tools; if lookups return no items or fail, state that truthfully.",

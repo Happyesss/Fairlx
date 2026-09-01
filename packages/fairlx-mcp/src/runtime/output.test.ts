@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactMember, hydrateMembers, toolResult, wrapUntrusted } from "./output";
+import { compactMember, hydrateMembers, isWorkItemKeyCursor, paginationMeta, toolResult, wrapUntrusted } from "./output";
 
 describe("output envelope", () => {
   it("wraps payloads as text content", () => {
@@ -14,6 +14,29 @@ describe("output envelope", () => {
     expect(wrapped).toContain("<fairlx_untrusted_content");
     expect(wrapped).toContain('label="title"');
     expect(wrapped).toContain("user text");
+  });
+});
+
+describe("paginationMeta", () => {
+  it("exposes nextCursor only when another page exists", () => {
+    const docs = Array.from({ length: 50 }, (_, index) => ({ $id: `doc_${index}` }));
+    const page = paginationMeta(docs, 55, 50);
+    expect(page).toEqual({
+      hasMore: true,
+      nextCursor: "doc_49",
+      returned: 50,
+      total: 55,
+    });
+    expect(paginationMeta(docs.slice(0, 11), 11, 50).hasMore).toBe(false);
+    expect(paginationMeta(docs.slice(0, 11), 11, 50).nextCursor).toBeNull();
+  });
+});
+
+describe("isWorkItemKeyCursor", () => {
+  it("rejects work-item keys and accepts document ids", () => {
+    expect(isWorkItemKeyCursor("PROJ-2")).toBe(true);
+    expect(isWorkItemKeyCursor("WEB-12")).toBe(true);
+    expect(isWorkItemKeyCursor("6a79fedd0023d3c1f3e9")).toBe(false);
   });
 });
 

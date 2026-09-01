@@ -38,6 +38,33 @@ export function compactWorkItem(doc: Record<string, unknown>): Record<string, un
   };
 }
 
+/** Work-item keys like WEB-12 are not Appwrite document cursors. */
+export function isWorkItemKeyCursor(cursor: string | undefined): boolean {
+  if (!cursor) return false;
+  return /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(cursor.trim());
+}
+
+export function paginationMeta(
+  documents: Record<string, unknown>[],
+  total: number,
+  limit: number
+): {
+  hasMore: boolean;
+  nextCursor: string | null;
+  returned: number;
+  total: number;
+} {
+  const hasMore = documents.length === limit && total > documents.length;
+  const last = documents[documents.length - 1];
+  const lastId = last ? String(last.$id ?? last.id ?? "").trim() : "";
+  return {
+    hasMore,
+    nextCursor: hasMore && lastId ? lastId : null,
+    returned: documents.length,
+    total,
+  };
+}
+
 export function withId<T extends Record<string, unknown>>(doc: T): T & { id: string } {
   return { ...doc, id: String(doc.$id ?? doc.id) };
 }

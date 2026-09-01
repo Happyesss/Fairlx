@@ -54,7 +54,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_list",
-    description: "List work items in a project (compact fields)",
+    description:
+      "List work items in a project (compact fields). One call returns the project (or sprint) list — do not fan out by status or type. Paginate only when hasMore is true, and pass nextCursor unchanged as cursorAfter. Never pass a work-item key (WEB-12) as cursorAfter.",
     inputSchema: {
       type: "object",
       properties: {

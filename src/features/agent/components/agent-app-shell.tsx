@@ -21,20 +21,31 @@ import {
   ChevronRight,
   ChevronDown,
   Menu,
+  Pin,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ModeToggle } from "@/components/mode-toggle";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { UserButton } from "@/features/auth/components/user-button";
 import { NotificationBell } from "@/features/notifications";
 import { BugReportPopover } from "@/features/bug-reports/components/bug-report-popover";
+import { useConfirm } from "@/hooks/use-confirm";
 
 import { useGetAgentContext } from "../api/use-agent-context";
-import { useGetAgentHarness } from "../api/use-agent-harness";
-import { useGetAgentRuns } from "../api/use-agent-runs";
+import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
+import { useGetAgentRuns, useDeleteAgentRun } from "../api/use-agent-runs";
 import { relativeTime } from "../lib/agent-ui";
 import { useAgentUi } from "./agent-ui-context";
 
@@ -99,6 +110,101 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+function RecentRunItem({
+  run,
+  active,
+  pinned,
+  onNavigate,
+  onPinToggle,
+  onDelete,
+}: {
+  run: { id: string; title: string; status: string; updatedAt: string };
+  active: boolean;
+  pinned: boolean;
+  onNavigate?: () => void;
+  onPinToggle: (runId: string, isPinned: boolean) => void;
+  onDelete: (runId: string) => void;
+}) {
+  const running = run.status === "running";
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "group relative flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] transition",
+        running || active
+          ? "bg-sidebar-accent text-sidebar-foreground font-medium"
+          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      )}
+    >
+      <Link
+        href={`/agent/workflow?runId=${run.id}`}
+        onClick={onNavigate}
+        className="flex items-center gap-2 min-w-0 flex-1 truncate mr-1"
+      >
+        <span
+          className={cn(
+            "size-1.5 rounded-full shrink-0",
+            running ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
+          )}
+        />
+        {pinned ? <Pin className="size-3 text-primary shrink-0 fill-primary" /> : null}
+        <span className="truncate">{run.title}</span>
+      </Link>
+
+      <div className="flex items-center shrink-0">
+        <span
+          className={cn(
+            "text-[10px] text-muted-foreground shrink-0 pl-1",
+            menuOpen ? "hidden" : "group-hover:hidden"
+          )}
+        >
+          {relativeTime(run.updatedAt)}
+        </span>
+
+        <div className={cn("items-center shrink-0", menuOpen ? "flex" : "hidden group-hover:flex")}>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="size-5 flex items-center justify-center text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent-foreground/10 rounded transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <MoreHorizontal className="size-3.5" />
+                <span className="sr-only">Options</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-32 p-1">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPinToggle(run.id, pinned);
+                }}
+                className="cursor-pointer flex items-center gap-2 text-xs py-1.5"
+              >
+                <Pin className={cn("size-3.5", pinned && "fill-primary text-primary")} />
+                <span>{pinned ? "Unpin" : "Pin"}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(run.id);
+                }}
+                className="cursor-pointer flex items-center gap-2 text-xs py-1.5 text-destructive focus:text-destructive focus:bg-destructive/10"
+              >
+                <Trash2 className="size-3.5" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentSidebarNav({
   pathname,
   hash,
@@ -116,6 +222,45 @@ function AgentSidebarNav({
   openRecentWork: () => void;
   onNavigate?: () => void;
 }) {
+  const router = useRouter();
+  const { data: harness } = useGetAgentHarness();
+  const updateHarness = useUpdateAgentHarness();
+  const deleteRun = useDeleteAgentRun();
+  const [DeleteDialog, confirmDelete] = useConfirm(
+    "Delete Run",
+    "Are you sure you want to delete this chat run? This action cannot be undone.",
+    "destructive"
+  );
+
+  const handlePinToggle = (runId: string, isPinned: boolean) => {
+    const current = harness?.chatMeta?.pinnedRunIds ?? [];
+    updateHarness.mutate({
+      json: {
+        chatMeta: {
+          pinnedRunIds: isPinned
+            ? current.filter((id) => id !== runId)
+            : [...current.filter((id) => id !== runId), runId],
+          archivedRunIds: harness?.chatMeta?.archivedRunIds ?? [],
+        },
+      },
+    });
+  };
+
+  const handleDeleteRun = async (runId: string) => {
+    const ok = await confirmDelete();
+    if (!ok) return;
+    deleteRun.mutate(
+      { runId },
+      {
+        onSuccess: () => {
+          toast.success("Chat deleted");
+          if (activeRunId === runId) {
+            router.push("/agent/dashboard");
+          }
+        },
+      }
+    );
+  };
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     NAV_SECTIONS.forEach((section) => {
@@ -252,33 +397,17 @@ function AgentSidebarNav({
             </button>
           </div>
           {(runs ?? []).slice(0, 4).map((run) => {
-            const running = run.status === "running";
-            const active = activeRunId === run.id;
+            const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
             return (
-              <Link
+              <RecentRunItem
                 key={run.id}
-                href={`/agent/workflow?runId=${run.id}`}
-                onClick={onNavigate}
-                className={cn(
-                  "flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] transition truncate",
-                  running || active
-                    ? "bg-sidebar-accent text-sidebar-foreground font-medium"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full shrink-0",
-                      running ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
-                    )}
-                  />
-                  <span className="truncate">{run.title}</span>
-                </div>
-                <span className="text-[10px] text-muted-foreground shrink-0 pl-1">
-                  {relativeTime(run.updatedAt)}
-                </span>
-              </Link>
+                run={run}
+                active={activeRunId === run.id}
+                pinned={pinned}
+                onNavigate={onNavigate}
+                onPinToggle={handlePinToggle}
+                onDelete={handleDeleteRun}
+              />
             );
           })}
           {(runs ?? []).length === 0 ? (
@@ -291,6 +420,7 @@ function AgentSidebarNav({
       <div className="flex-shrink-0 border-t border-sidebar-border">
         <WorkspaceSwitcher />
       </div>
+      <DeleteDialog />
     </div>
   );
 }

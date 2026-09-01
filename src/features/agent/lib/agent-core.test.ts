@@ -128,6 +128,7 @@ describe("graph and prompt", () => {
     expect(prompt).not.toMatch(/Use mcp_list/);
     expect(prompt).toMatch(/change a member's role/i);
     expect(prompt).toContain("Task: New high-priority bug on login");
+    expect(prompt).toMatch(/One fairlx_work_item_list per project/);
   });
 
   it("tells the agent to write a feature plan instead of a workspace census", () => {

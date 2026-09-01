@@ -1,6 +1,6 @@
 import type { Databases } from "node-appwrite";
 
-import { DEEPSEEK_FLASH_MODEL_ID } from "../constants";
+import { DEEPSEEK_FLASH_MODEL_ID, GROK_46_MODEL_ID } from "../constants";
 import type {
   AgentAiConfigStored,
   AgentChatMessage,
@@ -19,12 +19,18 @@ import { buildSystemPrompt } from "./prompt";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
 import { decryptSecret } from "./secrets";
 import {
+  coalescedListMessage,
+  collapseWorkItemListFanOut,
   fingerprintsFromMessages,
+  hydrateListSliceCache,
   isFailedToolContent,
   MAX_CONSECUTIVE_TOOL_FAILURES,
   MAX_DUPLICATE_SKIPS,
+  rememberListSlice,
   repeatedToolMessage,
+  resolveListSliceCall,
   toolCallFingerprint,
+  unwrapListCall,
 } from "./tool-loop";
 import { executeTool, openaiToolsForTurn } from "./tools";
 import { compactJsonString } from "./truncate";
@@ -100,9 +106,10 @@ function defaultByokBase(provider: string): string {
 export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
   const models = stored.models.map(overlayPlatformModel);
   const selectedId =
-    stored.mode === "auto" || !stored.selectedModelId ? DEEPSEEK_FLASH_MODEL_ID : stored.selectedModelId;
+    stored.mode === "auto" || !stored.selectedModelId ? GROK_46_MODEL_ID : stored.selectedModelId;
   const model =
     models.find((item) => item.id === selectedId && item.isEnabled) ??
+    models.find((item) => item.id === GROK_46_MODEL_ID && item.isEnabled) ??
     models.find((item) => item.id === DEEPSEEK_FLASH_MODEL_ID && item.isEnabled) ??
     models.find((item) => item.isEnabled) ??
     models[0];
@@ -411,6 +418,7 @@ export async function runAgentTurn(params: {
   });
 
   const seenCalls = fingerprintsFromMessages(run.messages);
+  const listSlices = hydrateListSliceCache(run.messages);
   let failStreak = 0;
   let duplicateSkips = 0;
   let forceAnswer = false;
@@ -419,16 +427,34 @@ export async function runAgentTurn(params: {
     call: AgentToolCall,
     nextMessages: AgentChatMessage[],
     nextEvents: AgentToolEvent[],
+    options?: { coalesced?: boolean },
   ) => {
     const fingerprint = toolCallFingerprint(call.name, call.arguments);
     const previous = seenCalls.get(fingerprint);
     if (previous !== undefined) {
       duplicateSkips += 1;
-      nextEvents.push(thoughtEvent(run.id, "Reused previous result"));
+      nextEvents.push(thoughtEvent(run.id, options?.coalesced ? "Combined overlapping lists" : "Reused previous result"));
       nextMessages.push({
         id: crypto.randomUUID(),
         role: "tool",
-        content: repeatedToolMessage(previous),
+        content: options?.coalesced ? coalescedListMessage(previous) : repeatedToolMessage(previous),
+        toolCallId: call.id,
+        toolName: call.name,
+        createdAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const listed = unwrapListCall(call);
+    const slice = resolveListSliceCall(listSlices, listed.tool, listed.args);
+    if (slice.action === "skip") {
+      duplicateSkips += 1;
+      seenCalls.set(fingerprint, slice.content);
+      nextEvents.push(thoughtEvent(run.id, "Skipped extra list page"));
+      nextMessages.push({
+        id: crypto.randomUUID(),
+        role: "tool",
+        content: slice.content,
         toolCallId: call.id,
         toolName: call.name,
         createdAt: new Date().toISOString(),
@@ -458,6 +484,7 @@ export async function runAgentTurn(params: {
       );
     }
     seenCalls.set(fingerprint, toolContent);
+    rememberListSlice(listSlices, listed.tool, listed.args, toolContent);
     failStreak = isFailedToolContent(toolContent) ? failStreak + 1 : 0;
     nextMessages.push({
       id: crypto.randomUUID(),
@@ -643,12 +670,13 @@ export async function runAgentTurn(params: {
         const nextMessages = [...run.messages, assistantMessage];
         const nextEvents = [...run.events];
         const writes = collected.toolCalls.filter((call) => isWriteToolCall(call));
-        const reads = collected.toolCalls.filter((call) => !isWriteToolCall(call));
+        const rawReads = collected.toolCalls.filter((call) => !isWriteToolCall(call));
+        const { calls: reads, coalescedIds } = collapseWorkItemListFanOut(rawReads);
 
         for (const call of reads) {
           const stoppedBeforeTool = await haltIfStopped();
           if (stoppedBeforeTool) return stoppedBeforeTool;
-          await applyToolCall(call, nextMessages, nextEvents);
+          await applyToolCall(call, nextMessages, nextEvents, { coalesced: coalescedIds.has(call.id) });
         }
 
         if (writes.length) {

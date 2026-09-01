@@ -14,7 +14,7 @@ import {
   GitBranch,
   Server,
   Search,
-  Bookmark,
+  Pin,
   GitMerge,
 } from "lucide-react";
 
@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateProject } from "@/features/projects/api/use-create-project";
+import { useConfirm } from "@/hooks/use-confirm";
 import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
@@ -171,7 +172,7 @@ function ChatRow({
         ) : (
           <Link href={`/agent/workflow?runId=${run.id}`} className="block">
             <p className="text-sm font-semibold text-foreground truncate flex items-center gap-1.5">
-              {pinned ? <Bookmark className="size-3.5 fill-primary text-primary shrink-0" /> : null}
+              {pinned ? <Pin className="size-3.5 fill-primary text-primary shrink-0" /> : null}
               <span>{run.title}</span>
             </p>
             <p className="mt-1 text-xs text-muted-foreground capitalize">
@@ -185,10 +186,11 @@ function ChatRow({
           type="button"
           size="sm"
           variant="ghost"
-          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
           onClick={onPin}
         >
-          {pinned ? "Unpin" : "Pin"}
+          <Pin className={cn("size-3.5", pinned && "fill-primary text-primary")} />
+          <span>{pinned ? "Unpin" : "Pin"}</span>
         </Button>
         <Button
           type="button"
@@ -226,6 +228,11 @@ export function AgentChatsScreen() {
   const updateHarness = useUpdateAgentHarness();
   const patchRun = usePatchAgentRun();
   const deleteRun = useDeleteAgentRun();
+  const [DeleteDialog, confirmDelete] = useConfirm(
+    "Delete Run",
+    "Are you sure you want to delete this chat run? This action cannot be undone.",
+    "destructive"
+  );
   const pinned = new Set(harness?.chatMeta?.pinnedRunIds ?? []);
   const archived = new Set(harness?.chatMeta?.archivedRunIds ?? []);
   const visible = (runs ?? []).filter((run) => !archived.has(run.id));
@@ -242,6 +249,19 @@ export function AgentChatsScreen() {
         },
       },
     });
+  };
+
+  const handleDelete = async (runId: string) => {
+    const ok = await confirmDelete();
+    if (!ok) return;
+    deleteRun.mutate(
+      { runId },
+      {
+        onSuccess: () => {
+          toast.success("Chat deleted");
+        },
+      }
+    );
   };
 
   return (
@@ -268,7 +288,7 @@ export function AgentChatsScreen() {
                     run={run}
                     pinned
                     onPin={() => setPinned(run.id, false)}
-                    onDelete={() => deleteRun.mutate({ runId: run.id })}
+                    onDelete={() => handleDelete(run.id)}
                     onRename={(title) => patchRun.mutate({ param: { runId: run.id }, json: { title } })}
                   />
                 ))}
@@ -282,7 +302,7 @@ export function AgentChatsScreen() {
                   run={run}
                   pinned={false}
                   onPin={() => setPinned(run.id, true)}
-                  onDelete={() => deleteRun.mutate({ runId: run.id })}
+                  onDelete={() => handleDelete(run.id)}
                   onRename={(title) => patchRun.mutate({ param: { runId: run.id }, json: { title } })}
                 />
               ))}
@@ -290,6 +310,7 @@ export function AgentChatsScreen() {
           </div>
         )}
       </div>
+      <DeleteDialog />
     </AgentPageFrame>
   );
 }
