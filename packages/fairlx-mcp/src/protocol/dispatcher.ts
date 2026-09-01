@@ -28,6 +28,7 @@ export async function handleMcpRequest(
   const raw = typeof body === "string" ? body : JSON.stringify(body ?? {});
   const parsed = parseJsonRpc(raw);
   if (parsed.error) {
+    console.error("[Fairlx MCP] Parse error:", parsed.error);
     return { status: 400, json: parsed.error };
   }
   const req = parsed.request!;
@@ -47,9 +48,11 @@ export async function handleMcpRequest(
       return { status: 202, json: null };
     }
 
+    console.log(`[Fairlx MCP] 📨 Dispatching method "${req.method}" | Params:`, JSON.stringify(req.params));
     const result = await dispatch(runtime, auth, req);
     return { status: 200, json: { jsonrpc: "2.0", id, result } };
   } catch (error) {
+    console.error(`[Fairlx MCP] ⚠️ Method "${req.method}" threw error:`, error instanceof Error ? error.message : error);
     const rpc = errorToRpc(isNotification(req) ? null : id, error);
     const status = error instanceof McpError ? error.httpStatus : 200;
     return { status, json: rpc };
@@ -140,5 +143,13 @@ async function callNamedTool(
     if (confirmation) return confirmation;
   }
 
-  return callTool(name, args, runtime, auth);
+  console.log(`[Fairlx MCP Tool Execution] 🔧 Tool: "${name}" | Query/Args:`, JSON.stringify(args));
+  try {
+    const result = await callTool(name, args, runtime, auth);
+    console.log(`[Fairlx MCP Tool Execution] ✅ Tool "${name}" output:`, JSON.stringify(result));
+    return result;
+  } catch (error) {
+    console.error(`[Fairlx MCP Tool Execution] ❌ Tool "${name}" error:`, error instanceof Error ? error.message : error);
+    throw error;
+  }
 }

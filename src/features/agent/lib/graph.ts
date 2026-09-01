@@ -21,7 +21,7 @@ export const AGENT_SPECIALISTS: Array<{
   {
     id: "planner",
     name: "Planner",
-    role: "Break the request into ordered steps. Do not invent Fairlx data.",
+    role: "Write a shippable plan with ordered steps, stories, and work to create. Proposing new work is required.",
   },
   {
     id: "researcher",

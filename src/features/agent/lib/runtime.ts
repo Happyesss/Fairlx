@@ -18,7 +18,16 @@ import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform
 import { buildSystemPrompt } from "./prompt";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
 import { decryptSecret } from "./secrets";
+import {
+  fingerprintsFromMessages,
+  isFailedToolContent,
+  MAX_CONSECUTIVE_TOOL_FAILURES,
+  MAX_DUPLICATE_SKIPS,
+  repeatedToolMessage,
+  toolCallFingerprint,
+} from "./tool-loop";
 import { executeTool, openaiToolsForTurn } from "./tools";
+import { compactJsonString } from "./truncate";
 import { getRun, listRuns, updateRun } from "./runs";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
@@ -62,6 +71,7 @@ export type ChatTarget = {
   headers: Record<string, string>;
   model: string;
   modelId: string;
+  maxOutputTokens?: number;
 };
 
 function joinUrl(base: string, path: string): string {
@@ -112,6 +122,7 @@ export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
         [creds.authHeader]: creds.apiKey,
       },
       model: creds.deployment || model.modelId,
+      maxOutputTokens: model.maxOutputTokens,
       modelId: model.id,
     };
   }
@@ -130,6 +141,7 @@ export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
+    maxOutputTokens: model.maxOutputTokens,
     model: model.modelId,
     modelId: model.id,
   };
@@ -164,7 +176,7 @@ function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiM
     if (message.role === "tool") {
       return {
         role: "tool",
-        content: message.content,
+        content: compactJsonString(message.content ?? "", 8000),
         tool_call_id: message.toolCallId,
         name: message.toolName,
       };
@@ -398,29 +410,55 @@ export async function runAgentTurn(params: {
     mcpAuth,
   });
 
+  const seenCalls = fingerprintsFromMessages(run.messages);
+  let failStreak = 0;
+  let duplicateSkips = 0;
+  let forceAnswer = false;
+
   const applyToolCall = async (
     call: AgentToolCall,
     nextMessages: AgentChatMessage[],
     nextEvents: AgentToolEvent[],
   ) => {
+    const fingerprint = toolCallFingerprint(call.name, call.arguments);
+    const previous = seenCalls.get(fingerprint);
+    if (previous !== undefined) {
+      duplicateSkips += 1;
+      nextEvents.push(thoughtEvent(run.id, "Reused previous result"));
+      nextMessages.push({
+        id: crypto.randomUUID(),
+        role: "tool",
+        content: repeatedToolMessage(previous),
+        toolCallId: call.id,
+        toolName: call.name,
+        createdAt: new Date().toISOString(),
+      });
+      return;
+    }
+
     const result = await executeTool(call.name, call.arguments, toolContext());
     if (result.harnessPatch) {
       harness = await upsertHarness(databases, user.$id, result.harnessPatch);
     }
     nextEvents.push(result.event);
-    let toolContent = result.content;
+    let toolContent = compactJsonString(result.content, 8000);
     if (result.delegate) {
       const specialist = await runSpecialistPass(
         specialistById(result.delegate.agent),
         result.delegate.task,
       );
       nextEvents.push(...specialist.events);
-      toolContent = JSON.stringify({
-        agent: result.delegate.agent,
-        task: result.delegate.task,
-        result: specialist.content,
-      });
+      toolContent = compactJsonString(
+        JSON.stringify({
+          agent: result.delegate.agent,
+          task: result.delegate.task,
+          result: specialist.content,
+        }),
+        8000,
+      );
     }
+    seenCalls.set(fingerprint, toolContent);
+    failStreak = isFailedToolContent(toolContent) ? failStreak + 1 : 0;
     nextMessages.push({
       id: crypto.randomUUID(),
       role: "tool",
@@ -480,6 +518,7 @@ export async function runAgentTurn(params: {
           model: target.model,
           messages: toOpenAiMessages(specialistSystem, messages),
           temperature: 0.2,
+          ...(target.maxOutputTokens ? { max_tokens: target.maxOutputTokens } : {}),
           ...(specialistTools.length ? { tools: specialistTools, tool_choice: "auto" } : {}),
         },
         run.id,
@@ -511,7 +550,7 @@ export async function runAgentTurn(params: {
         messages.push({
           id: crypto.randomUUID(),
           role: "tool",
-          content: result.content,
+          content: compactJsonString(result.content, 8000),
           toolCallId: call.id,
           toolName: call.name,
           createdAt: new Date().toISOString(),
@@ -582,7 +621,8 @@ export async function runAgentTurn(params: {
           model: target.model,
           messages: toOpenAiMessages(system, run.messages),
           temperature: 0.2,
-          ...(tools.length ? { tools, tool_choice: "auto" } : {}),
+          ...(target.maxOutputTokens ? { max_tokens: target.maxOutputTokens } : {}),
+          ...(tools.length && !forceAnswer ? { tools, tool_choice: "auto" } : {}),
         },
         run.id,
       );
@@ -592,7 +632,7 @@ export async function runAgentTurn(params: {
       const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames);
       const content = sanitizeAssistantVisible(collected.content);
 
-      if (collected.toolCalls.length) {
+      if (collected.toolCalls.length && !forceAnswer) {
         const assistantMessage: AgentChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -621,13 +661,20 @@ export async function runAgentTurn(params: {
           status: "running",
         });
         if (run.status === "stopped") return run;
+        if (failStreak >= MAX_CONSECUTIVE_TOOL_FAILURES || duplicateSkips >= MAX_DUPLICATE_SKIPS) {
+          forceAnswer = true;
+        }
         continue;
       }
 
       const assistantMessage: AgentChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: content || "Done.",
+        content:
+          content ||
+          (forceAnswer
+            ? "I could not complete the lookup. Please retry or rephrase the request."
+            : "Done."),
         createdAt: new Date().toISOString(),
       };
       return persistUnlessStopped({

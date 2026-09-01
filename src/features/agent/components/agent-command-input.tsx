@@ -27,7 +27,8 @@ const QUICK_ACTIONS = [
   {
     icon: Lightbulb,
     label: "Plan new feature",
-    prompt: "Plan a new feature for the current Fairlx workspace.",
+    prompt:
+      "Propose one new feature for this Fairlx project. Glance at open work items only to avoid duplicates, then return: feature name, why it matters, user stories, work items to create (type, title, acceptance criteria), and sprint fit. Do not list members or recap project settings.",
   },
   {
     icon: Bug,

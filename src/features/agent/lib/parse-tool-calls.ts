@@ -3,6 +3,18 @@ import type { AgentToolCall } from "../types";
 
 const HARNESS_TOOL_IDS = new Set<string>(AGENT_TOOL_CATALOG.map((tool) => tool.id));
 
+export const HARNESS_TO_MCP: Record<string, string> = {
+  list_workspaces: "fairlx_workspace_list",
+  list_projects: "fairlx_project_list",
+  list_work_items: "fairlx_work_item_list",
+};
+
+function preferMcp(resolved: string, mcpToolNames: string[]): string {
+  const mapped = HARNESS_TO_MCP[resolved];
+  if (mapped && mcpToolNames.includes(mapped)) return mapped;
+  return resolved;
+}
+
 const ALIASES: Record<string, string> = {
   listworkitems: "list_work_items",
   list_work_items: "list_work_items",
@@ -58,14 +70,14 @@ function compactKey(value: string): string {
 export function resolveToolName(rawName: string, mcpToolNames: string[] = []): string {
   const trimmed = rawName.trim();
   if (!trimmed) return trimmed;
-  if (HARNESS_TOOL_IDS.has(trimmed)) return trimmed;
+  if (HARNESS_TOOL_IDS.has(trimmed)) return preferMcp(trimmed, mcpToolNames);
   if (mcpToolNames.includes(trimmed)) return trimmed;
 
   const snake = camelToSnake(stripToolPrefix(trimmed));
   const compact = compactKey(trimmed);
   const aliased = ALIASES[snake] || ALIASES[compact];
-  if (aliased) return aliased;
-  if (HARNESS_TOOL_IDS.has(snake)) return snake;
+  if (aliased) return preferMcp(aliased, mcpToolNames);
+  if (HARNESS_TOOL_IDS.has(snake)) return preferMcp(snake, mcpToolNames);
   if (mcpToolNames.includes(snake)) return snake;
 
   const fairlxPrefixed = snake.startsWith("fairlx_") ? snake : `fairlx_${snake}`;
@@ -85,7 +97,7 @@ export function resolveToolName(rawName: string, mcpToolNames: string[] = []): s
     const target = name.replace(/^fairlx_/, "").replace(/_list$/, "");
     return target === needle || target.replace(/s$/, "") === needle.replace(/s$/, "");
   });
-  return match || snake;
+  return preferMcp(match || snake, mcpToolNames);
 }
 
 function parseObjectLiteral(raw: string): Record<string, unknown> {
@@ -141,13 +153,6 @@ function toCall(
   id = crypto.randomUUID(),
 ): AgentToolCall {
   const resolved = resolveToolName(name, mcpToolNames);
-  if (mcpToolNames.includes(resolved) && !HARNESS_TOOL_IDS.has(resolved)) {
-    return {
-      id,
-      name: "mcp_call",
-      arguments: JSON.stringify({ server: "fairlx", tool: resolved, arguments: args }),
-    };
-  }
   return {
     id,
     name: resolved,
