@@ -108,7 +108,7 @@ export function AgentScopeBar({
   };
 
   return (
-    <div className="flex items-center gap-1 text-[11px] text-muted-foreground px-1 pb-1.5">
+    <div className="flex items-center gap-1 text-[11px] text-muted-foreground px-1 pb-1.5 bg-background">
       <ScopeMenu
         open={workspaceOpen}
         onOpenChange={(next) => {

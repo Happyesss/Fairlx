@@ -211,6 +211,8 @@ export const AGENT_RUNS_ID =
   process.env.NEXT_PUBLIC_APPWRITE_AGENT_RUNS_ID || "agent_runs";
 export const AGENT_HARNESS_ID =
   process.env.NEXT_PUBLIC_APPWRITE_AGENT_HARNESS_ID || "agent_harness";
+export const PERSONAL_AGENTS_ID =
+  process.env.NEXT_PUBLIC_APPWRITE_PERSONAL_AGENTS_ID || "personal_agents";
 
 // ===============================
 // Landing Page Supabase (GitHub Star Rewards)

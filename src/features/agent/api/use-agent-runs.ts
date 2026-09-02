@@ -44,8 +44,8 @@ export function shouldPollAgentRun(status?: string): boolean {
 }
 
 export function agentRunPollMs(status?: string): number | false {
-  if (status === "running") return 1000;
-  if (status === "awaiting_confirmation") return 2000;
+  if (status === "running") return 2000;
+  if (status === "awaiting_confirmation") return 2500;
   return false;
 }
 
@@ -71,7 +71,7 @@ export const useGetAgentRun = (runId?: string) => {
   return useQuery({
     queryKey: agentRunQueryKey(runId ?? ""),
     enabled: Boolean(runId),
-    staleTime: 0,
+    staleTime: QUERY_CONFIG.REALTIME.staleTime,
     gcTime: QUERY_CONFIG.REALTIME.gcTime,
     refetchInterval: (query) => agentRunPollMs(query.state.data?.status),
     refetchIntervalInBackground: false,

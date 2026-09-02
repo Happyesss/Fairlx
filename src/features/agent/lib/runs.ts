@@ -2,6 +2,7 @@ import { Databases, ID, Query } from "node-appwrite";
 
 import { AGENT_RUNS_ID, DATABASE_ID } from "@/config";
 import type { AgentChatMessage, AgentRun, AgentRunMode, AgentRunStatus, AgentToolEvent } from "../types";
+import { isTrainingRun } from "./personal-training";
 import { parseJson, stringifyBounded, truncateString } from "./truncate";
 
 type RunDocument = {
@@ -19,14 +20,18 @@ type RunDocument = {
   messagesJson: string;
   eventsJson: string;
   error?: string;
+  extraJson?: string;
 };
 
 export function parseRun(doc: RunDocument): AgentRun {
+  const extra = parseJson<{ kind?: string }>(doc.extraJson, {});
+  const prompt = doc.prompt;
+  const kind = isTrainingRun({ kind: extra.kind, prompt }) ? "training" : "chat";
   return {
     id: doc.$id,
     userId: doc.userId,
     title: doc.title,
-    prompt: doc.prompt,
+    prompt,
     status: doc.status,
     mode: doc.mode === "manual" ? "manual" : "agent",
     workspaceId: doc.workspaceId || undefined,
@@ -35,6 +40,7 @@ export function parseRun(doc: RunDocument): AgentRun {
     messages: parseJson<AgentChatMessage[]>(doc.messagesJson, []),
     events: parseJson<AgentToolEvent[]>(doc.eventsJson, []),
     error: doc.error || undefined,
+    kind,
     createdAt: doc.$createdAt,
     updatedAt: doc.$updatedAt || doc.$createdAt,
   };
@@ -70,10 +76,16 @@ export async function createRun(
     projectId?: string;
     modelId?: string;
     messages?: AgentChatMessage[];
+    kind?: "chat" | "training";
+    title?: string;
   },
 ): Promise<AgentRun> {
   const prompt = truncateString(input.prompt.trim(), 4000);
-  const title = truncateString(prompt.replace(/\s+/g, " "), 80);
+  const kind = isTrainingRun({ kind: input.kind, prompt }) ? "training" : "chat";
+  const title = truncateString(
+    input.title?.trim() || (kind === "training" ? "Train Personal Agent" : prompt.replace(/\s+/g, " ")),
+    80,
+  );
   const createdAt = new Date().toISOString();
   const messages = input.messages ?? [
     {
@@ -95,6 +107,7 @@ export async function createRun(
     modelId: input.modelId || "",
     messagesJson: stringifyBounded(messages),
     eventsJson: stringifyBounded([]),
+    extraJson: stringifyBounded({ kind }, 4096),
     error: "",
   });
 

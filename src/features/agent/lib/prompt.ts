@@ -1,6 +1,15 @@
 import type { AgentContext, AgentHarness, AgentRun, AgentSpecialistId, McpConfig } from "../types";
+import { compilePersonaPrompt, inferPersonaRole } from "@fairlx/multi-agent";
 import { AGENT_SPECIALISTS, resolveSpecialist, specialistById } from "./graph";
 import { matchingAutomations, rankKnowledge } from "./search";
+import { isPersonalSessionMode, SESSION_MODE_INSTRUCTIONS } from "./session-context";
+import { firstName } from "./agent-ui";
+import {
+  buildTrainingInterviewPrompt,
+  formatTrainingSnapshot,
+  isTrainingRun,
+  suggestedPersonaRole,
+} from "./personal-training";
 
 export function buildSystemPrompt(params: {
   harness: AgentHarness;
@@ -8,6 +17,7 @@ export function buildSystemPrompt(params: {
   run: AgentRun;
   mcp: McpConfig;
   specialist?: AgentSpecialistId;
+  personalPrompt?: string;
 }): string {
   const { harness, context, run } = params;
   const lastUser = [...run.messages].reverse().find((message) => message.role === "user");
@@ -23,9 +33,34 @@ export function buildSystemPrompt(params: {
   const knowledge = rankKnowledge(query, harness, 3);
   const automations = matchingAutomations(harness, query).slice(0, 3);
   const role = workspace?.role ? ` Role: ${workspace.role}.` : "";
+  const personaRole = inferPersonaRole({ workspaceRole: workspace?.role, prompt: query, title: run.title });
+  const persona = compilePersonaPrompt(personaRole, workspace?.name, project?.name);
+  const sessionMode = harness.settings.sessionMode;
+  const personal = isPersonalSessionMode(sessionMode);
+  const training = isTrainingRun(run);
+
+  if (training) {
+    const trainingRole = suggestedPersonaRole(context, run.workspaceId || harness.settings.defaultWorkspaceId);
+    return buildTrainingInterviewPrompt({
+      userName: firstName(context.user.name, context.user.email),
+      personaRole: trainingRole,
+      workspaceRole: workspace?.role,
+      workspaceName: workspace?.name,
+      projectName: project?.name,
+      retraining: Boolean(params.personalPrompt?.trim()),
+      snapshot: formatTrainingSnapshot(
+        context,
+        run.workspaceId || harness.settings.defaultWorkspaceId || workspace?.id,
+        run.projectId || harness.settings.defaultProjectId || project?.id,
+      ),
+    });
+  }
 
   const lines = [
-    "You are the Fairlx Agent. Talk to the user in plain language.",
+    personal
+      ? "You are the Fairlx Personal Agent, the user's Chief of Staff. Talk to the user in plain language."
+      : "You are the Fairlx Agent. Talk to the user in plain language.",
+    persona,
     `Mode: ${run.mode === "agent" ? "tools on" : "chat only"}.`,
     workspace
       ? `Workspace: ${workspace.name}.${role} workspaceId: ${workspace.id}`
@@ -34,6 +69,14 @@ export function buildSystemPrompt(params: {
       ? `Project: ${project.name}${project.key ? ` (${project.key})` : ""}. projectId: ${project.id}`
       : "No project selected.",
   ];
+  if (personal) lines.push(SESSION_MODE_INSTRUCTIONS.personal);
+  if (personal && params.personalPrompt?.trim()) {
+    lines.push(
+      "",
+      "Trained Personal Agent operating system (user-authored; follow over generic defaults):",
+      params.personalPrompt.trim(),
+    );
+  }
   if (query) lines.push(`Task: ${query.slice(0, 400)}`);
   lines.push(
     "",
@@ -73,7 +116,7 @@ export function buildSystemPrompt(params: {
       lines.push(`- ${item.name}: ${item.action}`);
     }
   }
-  if (specialist !== "orchestrator") {
+  if (specialist !== "orchestrator" && !personal) {
     const specialistDef = AGENT_SPECIALISTS.find((item) => item.id === specialist);
     lines.push("", `Stay in the ${specialistDef?.name ?? specialist} role: ${specialistDef?.role ?? ""}`.trim());
   }

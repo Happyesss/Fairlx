@@ -11,6 +11,7 @@ import { useGetAgentRuns } from "../api/use-agent-runs";
 import { firstName, greetingForNow, relativeTime } from "../lib/agent-ui";
 import { AgentCommandInput } from "./agent-command-input";
 import { AgentPageFrame } from "./agent-app-shell";
+import { DailyCockpit } from "./daily-cockpit";
 import { useAgentUi } from "./agent-ui-context";
 
 export function AgentHome() {
@@ -86,6 +87,7 @@ export function AgentHome() {
         </div>
 
         <div className="space-y-6">
+          <DailyCockpit />
           <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-foreground text-sm uppercase tracking-wider">Recent Runs</h3>

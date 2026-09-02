@@ -179,6 +179,31 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     permission: PERMISSIONS.VIEW_TASKS,
   },
   {
+    name: "fairlx_agent_briefing",
+    description:
+      "Role-aware daily briefing for the authenticated user (priorities, blockers, unassigned work). Used by Cursor/VS Code Personal Agent queries.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: id,
+        personaRole: { type: "string", enum: ["tech_lead", "frontend", "qa", "pm"] },
+      },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["tasks:read"],
+    permission: PERMISSIONS.VIEW_TASKS,
+  },
+  {
+    name: "fairlx_agent_next_assignment",
+    description: "Return the next open work item the Personal Agent would assign to this user.",
+    inputSchema: { type: "object", properties: { projectId: id } },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["tasks:read"],
+    permission: PERMISSIONS.VIEW_TASKS,
+  },
+  {
     name: "fairlx_project_create",
     description: "Create a project in a workspace",
     inputSchema: {

@@ -53,8 +53,8 @@ function toolNames(permissions: string[], isOwner = false) {
 }
 
 describe("MCP surface counts", () => {
-  it("exposes 78 tools, 10 resource templates, 7 prompts, 7 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(78);
+  it("exposes 80 tools, 10 resource templates, 7 prompts, 7 skills", () => {
+    expect(TOOL_CATALOG).toHaveLength(80);
     expect(RESOURCE_TEMPLATES).toHaveLength(10);
     expect(PROMPT_CATALOG).toHaveLength(7);
     expect(SKILLS).toHaveLength(7);
@@ -85,12 +85,14 @@ describe("listToolsForClient role filter", () => {
 
   it("gives owners the full catalog including project delete and member role updates", () => {
     const names = toolNames([], true);
-    expect(names).toHaveLength(78);
+    expect(names).toHaveLength(80);
     expect(names).toContain("fairlx_project_delete");
     expect(names).toContain("fairlx_workspace_member_update");
     expect(names).toContain("fairlx_workspace_member_add");
     expect(names).toContain("fairlx_workspace_member_remove");
     expect(names).toContain("fairlx_workspace_invite_get");
+    expect(names).toContain("fairlx_agent_briefing");
+    expect(names).toContain("fairlx_agent_next_assignment");
     expect(names).toContain("fairlx_organization_members_list");
   });
 

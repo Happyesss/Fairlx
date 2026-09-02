@@ -17,13 +17,14 @@ import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
-import { useCreateAgentRun } from "../api/use-agent-runs";
-import { chipKey, composeUserPrompt } from "../lib/session-context";
+import { useCreateAgentRun, useStopAgentRun } from "../api/use-agent-runs";
+import { chipKey, composeUserPrompt, isPersonalSessionMode } from "../lib/session-context";
 import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
 import { AgentModeSelector } from "./agent-mode-selector";
 import { ModelPicker } from "./model-picker";
+import { PersonalAgentBanner } from "./personal-agent-banner";
 
 const QUICK_ACTIONS = [
   {
@@ -67,6 +68,8 @@ export function AgentCommandInput({
   disabled = false,
   submitting = false,
   onFollowUp,
+  onStop,
+  isStopping = false,
 }: {
   run?: AgentRun;
   showQuickActions?: boolean;
@@ -75,20 +78,41 @@ export function AgentCommandInput({
   disabled?: boolean;
   submitting?: boolean;
   onFollowUp?: (content: string) => void;
+  onStop?: () => void;
+  isStopping?: boolean;
 }) {
   const router = useRouter();
   const { data: harness } = useGetAgentHarness();
   const { data: context } = useGetAgentContext();
   const createRun = useCreateAgentRun();
+  const stopRunMutation = useStopAgentRun();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState("");
   const [chips, setChips] = useState<AgentContextChip[]>([]);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
+  const isRunning = run?.status === "running";
+  const stopping = isStopping || stopRunMutation.isPending;
   const busy = submitting || createRun.isPending;
   const canSend = Boolean(prompt.trim()) && !busy && !disabled;
   const sessionMode = (harness?.settings.sessionMode as AgentSessionMode) || "agent";
+  const inputPlaceholder = run?.kind === "training"
+    ? "Type your own answer, or tap a choice above"
+    : isPersonalSessionMode(sessionMode)
+      ? "Command your Personal Agent — plan, build, test, review"
+      : placeholder;
+
+  const handleStop = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (stopping) return;
+    if (onStop) {
+      onStop();
+    } else if (run?.id) {
+      stopRunMutation.mutate({ runId: run.id });
+    }
+  };
 
   const toggleVoiceInput = () => {
     if (typeof window === "undefined") return;
@@ -195,6 +219,7 @@ export function AgentCommandInput({
 
   return (
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
+      {variant === "create" && isPersonalSessionMode(sessionMode) ? <PersonalAgentBanner /> : null}
       <AgentScopeBar run={run} />
       <form
         className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
@@ -220,7 +245,7 @@ export function AgentCommandInput({
               submit(prompt);
             }
           }}
-          placeholder={placeholder}
+          placeholder={inputPlaceholder}
           rows={1}
           disabled={busy}
           className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-relaxed px-4 pt-3.5 pb-2 resize-none focus:outline-none placeholder:text-muted-foreground/60 min-h-[58px] max-h-44 custom-scrollbar"
@@ -254,7 +279,46 @@ export function AgentCommandInput({
             >
               <Mic className="size-3.5" />
             </button>
-            {canSend || busy ? (
+            {isRunning || stopping ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                disabled={stopping}
+                className={cn(
+                  "relative size-7 rounded-full flex items-center justify-center transition-all shadow-2xs group cursor-pointer",
+                  "bg-muted/70 hover:bg-muted text-foreground border border-border/60",
+                  stopping && "opacity-60 cursor-not-allowed"
+                )}
+                title={stopping ? "Stopping..." : "Stop generation"}
+              >
+                <svg
+                  className="absolute inset-0 size-full animate-spin text-muted-foreground group-hover:text-foreground transition-colors"
+                  viewBox="0 0 28 28"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="14"
+                    cy="14"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    className="opacity-85"
+                    cx="14"
+                    cy="14"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="62.83"
+                    strokeDashoffset="44"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className="relative z-10 size-2.5 rounded-[1.5px] bg-foreground transition-transform group-hover:scale-90" />
+              </button>
+            ) : canSend || busy ? (
               <button
                 type="submit"
                 disabled={!canSend}

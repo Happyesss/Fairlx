@@ -12,6 +12,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "mcp": "tsx packages/fairlx-mcp/src/cli/stdio.ts",
+    "multi-agent": "tsx packages/fairlx-multi-agent/src/cli.ts",
     "db:setup": "tsx scripts/database-initialization/setup-database.ts",
     "db:setup:agent": "tsx scripts/database-initialization/setup-agent-collections.ts"
   },

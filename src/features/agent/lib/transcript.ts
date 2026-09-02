@@ -1,5 +1,6 @@
 import { AGENT_TOOL_CATALOG } from "../constants";
 import type { AgentChatMessage, AgentToolCall, AgentToolEvent } from "../types";
+import { isTrainingKickoffContent } from "./session-context";
 import { unwrapMcpToolContent } from "./truncate";
 import type { AgentWorkItem } from "./work-item-table";
 import { memberLookupKey, type AgentMember } from "./member-table";
@@ -63,6 +64,7 @@ export function groupTranscript(
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i]!;
     if (message.role === "user") {
+      if (isTrainingKickoffContent(message.content)) continue;
       blocks.push({ kind: "user", message });
       continue;
     }

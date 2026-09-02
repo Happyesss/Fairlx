@@ -12,7 +12,6 @@ import {
   Pin,
   Trash2,
   RotateCcw,
-  Square,
   Pencil,
   Server,
   GitBranch,
@@ -61,6 +60,7 @@ import { selectedModelLabel } from "../lib/client-defaults";
 import { clockTime, relativeTime } from "../lib/agent-ui";
 import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, isRepeatedToolResult, workItemListRows, collectWorkItemLookup, workspaceMemberRows, collectMemberLookup, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
+import { splitAssistantChoices } from "../lib/assistant-choices";
 import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/visible-content";
 import { findPendingConfirmation } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
@@ -74,9 +74,11 @@ import { splitMarkdownMemberTable, type AgentMember } from "../lib/member-table"
 
 function FloatingComposer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 bg-gradient-to-t from-background via-background/95 to-transparent pt-16">
-      <div className="pointer-events-auto mx-auto w-full max-w-[760px] px-4 pb-5">
-        {children}
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40">
+      <div className="bg-gradient-to-t from-background via-background to-transparent pt-12">
+        <div className="pointer-events-auto mx-auto w-full max-w-[760px] px-4 pb-5 bg-background">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -311,15 +313,20 @@ function AgentBubble({
   members,
   workspaceId,
   projectId,
+  choicesEnabled = false,
+  onPickChoice,
 }: {
   message: AgentChatMessage;
   workItems?: Map<string, AgentWorkItem>;
   members?: Map<string, AgentMember>;
   workspaceId?: string;
   projectId?: string;
+  choicesEnabled?: boolean;
+  onPickChoice?: (choice: string) => void;
 }) {
   const visible = sanitizeAssistantVisible(message.content);
   if (!visible) return null;
+  const { text, choices } = splitAssistantChoices(visible);
   return (
     <div className="flex gap-3.5">
       <div className="size-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 shadow-sm">
@@ -332,13 +339,35 @@ function AgentBubble({
           <span>{clockTime(message.createdAt)}</span>
         </div>
         <div className="max-w-4xl">
-          <MarkdownContent
-            content={visible}
-            workItems={workItems}
-            members={members}
-            workspaceId={workspaceId}
-            projectId={projectId}
-          />
+          {text ? (
+            <MarkdownContent
+              content={text}
+              workItems={workItems}
+              members={members}
+              workspaceId={workspaceId}
+              projectId={projectId}
+            />
+          ) : null}
+          {choices.length ? (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {choices.map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  disabled={!choicesEnabled}
+                  onClick={() => onPickChoice?.(choice)}
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-colors shadow-sm",
+                    choicesEnabled
+                      ? "border-violet-200 dark:border-violet-800 bg-violet-50/90 dark:bg-violet-950/50 text-foreground hover:bg-violet-100 dark:hover:bg-violet-900/60"
+                      : "border-border bg-muted/40 text-muted-foreground cursor-default",
+                  )}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <TruncationNote content={message.content} />
         </div>
       </div>
@@ -1130,7 +1159,7 @@ function WorkflowViewInner() {
   if (!runId) {
     return (
       <div className="relative h-full min-h-0 overflow-hidden bg-background">
-        <div className="absolute inset-0 overflow-y-auto custom-scrollbar px-8 pt-12 pb-40">
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar px-8 pt-12 pb-56">
           <div className="max-w-3xl mx-auto space-y-3">
             <h1 className="text-3xl font-bold text-foreground">Start an Agent Run</h1>
             <p className="text-sm text-muted-foreground">
@@ -1168,6 +1197,7 @@ function WorkflowViewInner() {
   const running = run.status === "running";
   const awaiting = run.status === "awaiting_confirmation";
   const lastBlock = blocks[blocks.length - 1];
+  const lastAssistantId = [...blocks].reverse().find((block) => block.kind === "assistant")?.message.id;
   const showThinking = running && !awaiting && lastBlock?.kind !== "steps";
   const thinkingLabel = !lastBlock || lastBlock.kind === "user" ? "Thinking…" : "Answering…";
   const pending = findPendingConfirmation(run.events ?? []);
@@ -1239,17 +1269,6 @@ function WorkflowViewInner() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {running ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={stopRun.isPending}
-                onClick={() => stopRun.mutate({ runId: run.id })}
-                className="h-8 text-xs font-medium gap-1.5 text-destructive hover:text-destructive"
-              >
-                <Square className="size-3.5 fill-current" /> Stop
-              </Button>
-            ) : null}
             {run.status === "failed" || run.status === "stopped" ? (
               <Button
                 variant="outline"
@@ -1310,7 +1329,7 @@ function WorkflowViewInner() {
         <div className="relative flex-1 min-h-0">
           <div
             ref={scrollerRef}
-            className="absolute inset-0 overflow-y-auto custom-scrollbar px-6 py-6 pb-40"
+            className="absolute inset-0 overflow-y-auto custom-scrollbar px-6 py-6 pb-8"
             onScroll={(event) => {
               const target = event.currentTarget;
               const gap = target.scrollHeight - target.scrollTop - target.clientHeight;
@@ -1344,6 +1363,11 @@ function WorkflowViewInner() {
                       members={members}
                       workspaceId={run.workspaceId}
                       projectId={run.projectId}
+                      choicesEnabled={!running && !awaiting && block.message.id === lastAssistantId}
+                      onPickChoice={(choice) => {
+                        stickToBottomRef.current = true;
+                        sendMessage.mutate({ param: { runId: run.id }, json: { content: choice } });
+                      }}
                     />
                   );
                 }
@@ -1406,6 +1430,8 @@ function WorkflowViewInner() {
                   {run.error}
                 </div>
               ) : null}
+
+              <div aria-hidden className="h-56 shrink-0" />
             </div>
           </div>
 
@@ -1415,11 +1441,19 @@ function WorkflowViewInner() {
               variant="followup"
               showQuickActions={false}
               submitting={sendMessage.isPending || awaiting || running}
-              placeholder={awaiting ? "Accept or deny the pending action first" : "Plan, Build, / for skills, @ for context"}
+              placeholder={
+                awaiting
+                  ? "Accept or deny the pending action first"
+                  : run.kind === "training"
+                    ? "Type your own answer, or tap a choice above"
+                    : "Plan, Build, / for skills, @ for context"
+              }
               onFollowUp={(content) => {
                 stickToBottomRef.current = true;
                 sendMessage.mutate({ param: { runId: run.id }, json: { content } });
               }}
+              onStop={() => stopRun.mutate({ runId: run.id })}
+              isStopping={stopRun.isPending}
             />
           </FloatingComposer>
         </div>
