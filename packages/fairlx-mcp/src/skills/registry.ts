@@ -14,7 +14,7 @@ export const SKILLS: McpSkill[] = [
     description: "Plan a sprint from backlog, velocity, and capacity",
     content: `# Plan sprint
 
-Use Fairlx MCP tools to draft a sprint plan. Do not start the sprint unless the user confirms.
+Use Fairlx MCP tools to draft a sprint plan. The first sprint created on a project starts automatically. For later sprints, do not start unless the user confirms.
 
 ## Steps
 1. \`fairlx_project_get\` and \`fairlx_sprint_list\` for the project.

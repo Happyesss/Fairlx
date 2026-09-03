@@ -42,6 +42,27 @@ export function confirmationSummary(call: AgentToolCall): string {
     .replace(/^fairlx_/, "")
     .replaceAll("_", " ")
     .trim();
+  if (/work_item_create/i.test(mcpName) && label) {
+    const type = String(nested.type || "Task").toLowerCase();
+    const formattedType = type.charAt(0).toUpperCase() + type.slice(1);
+    const priority = nested.priority ? ` [${String(nested.priority)}]` : "";
+    return `Create ${formattedType}: "${label}"${priority}?`;
+  }
+  if (/project_team_member_add/i.test(mcpName)) {
+    const person = String(nested.name || nested.email || "").trim();
+    const team = String(nested.teamName || nested.team || "").trim();
+    if (person && team) return `Add ${person} to ${team}?`;
+    if (person) return `Add ${person} to the team?`;
+  }
+  if (/project_team_member_remove/i.test(mcpName)) {
+    const person = String(nested.name || nested.email || "").trim();
+    const team = String(nested.teamName || nested.team || "").trim();
+    if (person && team) return `Remove ${person} from ${team}?`;
+    if (person) return `Remove ${person} from the team?`;
+  }
+  if (/project_team_create/i.test(mcpName) && label) {
+    return `Create team "${label}"?`;
+  }
   if (/workspace_member_add/i.test(mcpName) && label) {
     return role ? `Add ${label} as ${role}?` : `Add ${label} to the workspace?`;
   }
@@ -63,6 +84,88 @@ export function confirmationSummary(call: AgentToolCall): string {
     return label ? `Create ${label}?` : `Create via ${action}?`;
   }
   return label ? `Apply ${action} to ${label}?` : `Apply ${action}?`;
+}
+
+export type ParsedWorkItemCall = {
+  id: string;
+  toolName: string;
+  projectId?: string;
+  title: string;
+  type: string;
+  priority: string;
+  description?: string;
+  labels: string[];
+  sprintId?: string;
+};
+
+export function parseWorkItemCall(call: AgentToolCall): ParsedWorkItemCall | null {
+  const mcpName = mcpToolNameFromCall(call) ?? call.name;
+  if (!/work_item_create/i.test(mcpName)) return null;
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
+  } catch {
+    args = {};
+  }
+  const nested =
+    args.arguments && typeof args.arguments === "object"
+      ? (args.arguments as Record<string, unknown>)
+      : args;
+  const title = String(nested.title || nested.name || "").trim();
+  if (!title) return null;
+  const type = String(nested.type || "TASK").toUpperCase();
+  const priority = String(nested.priority || "MEDIUM").toUpperCase();
+  const description = typeof nested.description === "string" ? nested.description.trim() : undefined;
+  const labels = Array.isArray(nested.labels)
+    ? nested.labels.map(String).filter(Boolean)
+    : [];
+  return {
+    id: call.id,
+    toolName: mcpName,
+    projectId: typeof nested.projectId === "string" ? nested.projectId : undefined,
+    title,
+    type,
+    priority,
+    description,
+    labels,
+    sprintId: typeof nested.sprintId === "string" ? nested.sprintId : undefined,
+  };
+}
+
+export type ParsedConfirmationCall = {
+  id: string;
+  call: AgentToolCall;
+  toolName: string;
+  action: string;
+  label: string;
+  summary: string;
+  workItem?: ParsedWorkItemCall;
+};
+
+export function parseConfirmationCall(call: AgentToolCall): ParsedConfirmationCall {
+  const mcpName = mcpToolNameFromCall(call) ?? call.name;
+  const workItem = parseWorkItemCall(call) ?? undefined;
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
+  } catch {
+    args = {};
+  }
+  const nested =
+    args.arguments && typeof args.arguments === "object"
+      ? (args.arguments as Record<string, unknown>)
+      : args;
+  const label = String(nested.name || nested.title || nested.key || "").trim();
+  const action = mcpName.replace(/^fairlx_/, "").replaceAll("_", " ").trim();
+  return {
+    id: call.id,
+    call,
+    toolName: mcpName,
+    action,
+    label,
+    summary: confirmationSummary(call),
+    workItem,
+  };
 }
 
 export function pendingFromEvent(event: AgentToolEvent | undefined): AgentPendingConfirmation | undefined {

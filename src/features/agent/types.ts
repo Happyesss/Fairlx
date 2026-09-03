@@ -112,7 +112,7 @@ export type AgentRunStatus =
   | "stopped"
   | "awaiting_confirmation";
 export type AgentRunMode = "agent" | "manual";
-export type AgentSessionMode = "agent" | "plan" | "debug" | "multitask" | "ask";
+export type AgentSessionMode = "agent" | "personal" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
 
 export type AgentToolCall = {
@@ -227,6 +227,7 @@ export type AgentToolEventType =
   | "git_commit_plan"
   | "run_automation"
   | "personal_read"
+  | "save_personal_agent"
   | "thought"
   | "confirmation"
   | "confirmation_resolved"
@@ -255,6 +256,7 @@ export type AgentRun = {
   messages: AgentChatMessage[];
   events: AgentToolEvent[];
   error?: string;
+  kind?: "chat" | "training";
   createdAt: string;
   updatedAt: string;
 };
@@ -350,6 +352,7 @@ export type AgentContextProject = {
   description?: string;
   status?: string;
   key?: string;
+  customLabels?: Array<{ name: string; color?: string }>;
 };
 
 export type AgentContextWorkItem = {
@@ -361,6 +364,10 @@ export type AgentContextWorkItem = {
   priority?: string;
   workspaceId?: string;
   projectId?: string;
+  labels?: string[];
+  dueDate?: string;
+  flagged?: boolean;
+  createdAt?: string;
 };
 
 export type AgentContextNotification = {
@@ -413,4 +420,53 @@ export type AgentContext = {
   githubRepos: AgentContextRepo[];
   integrations: AgentContextIntegration[];
   docs: AgentContextDoc[];
+};
+
+export type PersonalPersonaRole = "tech_lead" | "frontend" | "qa" | "pm";
+export type PersonalAgentStatus = "draft" | "trained" | "retraining";
+
+export type PersonalTrainingAnswerSource = "user" | "inferred";
+
+export type PersonalTrainingAnswer = {
+  questionId: string;
+  question: string;
+  answer: string;
+  source?: PersonalTrainingAnswerSource;
+};
+
+export type TrainingProgress = {
+  answered: number;
+  inferred: number;
+  total: number;
+  percent: number;
+};
+
+export type PersonalTrainingQuestion = {
+  id: string;
+  prompt: string;
+  hint?: string;
+  placeholder?: string;
+  required?: boolean;
+};
+
+export type PersonalAgentVersion = {
+  version: number;
+  personaRole: PersonalPersonaRole;
+  compiledPrompt: string;
+  trainedAt: string;
+};
+
+export type PersonalAgentProfile = {
+  id: string;
+  userId: string;
+  personaRole: PersonalPersonaRole;
+  jobTitle?: string;
+  workspaceRole?: string;
+  status: PersonalAgentStatus;
+  answers: PersonalTrainingAnswer[];
+  compiledPrompt: string;
+  promptVersion: number;
+  history: PersonalAgentVersion[];
+  trainedAt?: string;
+  updatedAt: string;
 };

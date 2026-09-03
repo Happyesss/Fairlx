@@ -1,0 +1,17 @@
+{
+  "name": "@fairlx/multi-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fairlx autonomous multi-agent hierarchy: personal orchestrator, specialized sub-agents, sleep/wake lifecycle, verification gateway",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "fairlx-multi-agent": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "test": "vitest run --config ../../vitest.config.ts src"
+  }
+}

@@ -28,8 +28,15 @@ export async function setupAgentRuns(databases: Databases, databaseId: string): 
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'messagesJson', 16384, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'eventsJson', 16384, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'error', 2048, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'parentRunId', 256, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'subAgentType', 32, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'waitingForRunId', 256, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'allowedToolsJson', 4096, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'qaReportJson', 16384, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'extraJson', 16384, false);
 
     await sleep(2000);
 
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'userId_idx', IndexType.Key, ['userId']);
+    await ensureIndex(databases, databaseId, COLLECTION_ID, 'parentRunId_idx', IndexType.Key, ['parentRunId']);
 }

@@ -39,6 +39,41 @@ Here are the items:
       },
     ]);
   });
+
+  it("parses numbered tables with Type, Priority, and Description (proposals)", () => {
+    const parsed = splitMarkdownWorkItemTable(`
+Initial proposed items:
+
+| # | Title | Type | Priority | Description | Labels |
+|---|---|---|---|---|---|
+| 1 | Set up project tech stack | Task | High | Configure Next.js and Tailwind | frontend, infra |
+| 2 | Design database schema | Story | Urgent | Set up Appwrite collections | backend |
+`);
+    expect(parsed?.rows).toEqual([
+      {
+        key: "#1",
+        title: "Set up project tech stack",
+        status: "TODO",
+        type: "TASK",
+        priority: "HIGH",
+        unassigned: true,
+        assignees: [],
+        labels: ["frontend", "infra"],
+        description: "Configure Next.js and Tailwind",
+      },
+      {
+        key: "#2",
+        title: "Design database schema",
+        status: "TODO",
+        type: "STORY",
+        priority: "URGENT",
+        unassigned: true,
+        assignees: [],
+        labels: ["backend"],
+        description: "Set up Appwrite collections",
+      },
+    ]);
+  });
 });
 
 describe("mergeWorkItem", () => {
@@ -72,5 +107,13 @@ describe("normalize tags", () => {
   it("maps human labels to board enums", () => {
     expect(normalizeStatus("In Progress")).toBe("IN_PROGRESS");
     expect(normalizePriority("urgent")).toBe("URGENT");
+    expect(normalizePriority("— 🔴 high")).toBe("HIGH");
+    expect(normalizePriority("🔴 high")).toBe("HIGH");
+    expect(normalizePriority("— 🟡 medium")).toBe("MEDIUM");
+    expect(normalizePriority("🟡 medium")).toBe("MEDIUM");
+    expect(normalizePriority("🟢 low")).toBe("LOW");
+    expect(normalizePriority("🔥 urgent")).toBe("URGENT");
+    expect(normalizeStatus("🟡 In Progress")).toBe("IN_PROGRESS");
+    expect(normalizeStatus("✅ Done")).toBe("DONE");
   });
 });

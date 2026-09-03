@@ -15,6 +15,7 @@ export default defineConfig({
         alias: {
             '@': path.resolve(__dirname, './src'),
             '@fairlx/mcp-server': path.resolve(__dirname, './packages/fairlx-mcp/src/index.ts'),
+            '@fairlx/multi-agent': path.resolve(__dirname, './packages/fairlx-multi-agent/src/index.ts'),
         },
     },
 })

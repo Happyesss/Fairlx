@@ -22,6 +22,7 @@ function runtimeWithMembers(
   options?: {
     workspace?: Record<string, unknown>;
     orgMembers?: Record<string, unknown>[];
+    inviteOrganizationMember?: McpRuntime["inviteOrganizationMember"];
   },
 ) {
   const members = docs.map((doc) => ({ ...doc }));
@@ -56,7 +57,12 @@ function runtimeWithMembers(
         Object.assign(doc, data);
         return doc;
       },
-      create: async (_collection: string, data: Record<string, unknown>) => {
+      create: async (collection: string, data: Record<string, unknown>) => {
+        if (collection === "organization_members") {
+          const doc = { $id: `org_${orgMembers.length + 1}`, ...data };
+          orgMembers.push(doc);
+          return doc;
+        }
         const doc = { $id: `mem_${members.length + 1}`, ...data };
         members.push(doc);
         return doc;
@@ -73,9 +79,10 @@ function runtimeWithMembers(
     lookupUsers: async (userIds: string[]) =>
       userIds.map((id) => profiles.get(id) ?? { id, name: "", email: "" }),
     onMembershipChanged,
+    inviteOrganizationMember: options?.inviteOrganizationMember,
   } as unknown as McpRuntime;
 
-  return { runtime, members, onMembershipChanged };
+  return { runtime, members, orgMembers, onMembershipChanged, profiles };
 }
 
 const adminAuth = jwtToAuthContext("admin_1", {
@@ -134,6 +141,11 @@ describe("fairlx_workspace_member_update", () => {
       ),
     ).rejects.toMatchObject({ httpStatus: 403 });
   });
+});
+
+const ownerAuth = jwtToAuthContext("admin_1", {
+  workspaceId: "ws_1",
+  scopes: ["admin:manage", "members:read"],
 });
 
 describe("fairlx_workspace_member_add", () => {
@@ -228,6 +240,97 @@ describe("fairlx_workspace_member_add", () => {
 
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0]?.text ?? "{}").error).toMatch(/invite/i);
+  });
+
+  it("invites a new email into the organization and workspace", async () => {
+    const inviteOrganizationMember = vi.fn(async ({ email, name }: { email: string; name: string }) => ({
+      userId: "user_surendra",
+      email,
+      name,
+      isExistingUser: false,
+      emailSent: true,
+    }));
+    const { runtime, members } = runtimeWithMembers(
+      [memberDoc({ displayName: "Ada Admin", role: "OWNER" })],
+      vi.fn(),
+      {
+        workspace: { $id: "ws_1", name: "Stemlen", organizationId: "org_1" },
+        orgMembers: [
+          {
+            $id: "org_ada",
+            organizationId: "org_1",
+            userId: "admin_1",
+            displayName: "Ada Admin",
+            displayEmail: "ada@fairlx.dev",
+          },
+        ],
+        inviteOrganizationMember,
+      },
+    );
+
+    const result = await callTool(
+      "fairlx_workspace_member_add",
+      {
+        workspaceId: "ws_1",
+        name: "surendra",
+        email: "surendrakumar246810.bits@gmail.com",
+        role: "ADMIN",
+      },
+      runtime,
+      ownerAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(inviteOrganizationMember).toHaveBeenCalledWith({
+      actorUserId: "admin_1",
+      organizationId: "org_1",
+      email: "surendrakumar246810.bits@gmail.com",
+      name: "surendra",
+    });
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
+      added: true,
+      invitedToOrganization: true,
+      member: {
+        name: "surendra",
+        email: "surendrakumar246810.bits@gmail.com",
+        role: "ADMIN",
+      },
+    });
+    expect(members.some((doc) => doc.userId === "user_surendra" && doc.role === "ADMIN")).toBe(true);
+  });
+
+  it("tells non-owners to stay inside the organization when invite is refused", async () => {
+    const { runtime } = runtimeWithMembers(
+      [memberDoc({ displayName: "Ada Admin" })],
+      vi.fn(),
+      {
+        workspace: { $id: "ws_1", name: "Stemlen", organizationId: "org_1" },
+        orgMembers: [
+          {
+            $id: "org_ada",
+            organizationId: "org_1",
+            userId: "admin_1",
+            displayName: "Ada Admin",
+            displayEmail: "ada@fairlx.dev",
+          },
+        ],
+        inviteOrganizationMember: async () => {
+          throw new Error(
+            "Only the organization owner can invite someone who is not already in the organization.",
+          );
+        },
+      },
+    );
+
+    const result = await callTool(
+      "fairlx_workspace_member_add",
+      { workspaceId: "ws_1", email: "new.person@fairlx.dev" },
+      runtime,
+      adminAuth,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? "{}").error).toMatch(/organization owner/i);
   });
 });
 

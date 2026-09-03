@@ -22,11 +22,26 @@ interface PriorityIconProps {
   color?: string;
 }
 
+const cleanPriorityKey = (priority: TaskPriority | string): TaskPriority | string => {
+  if (!priority) return priority;
+  const str = String(priority)
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji}]/gu, "")
+    .replace(/[—–\-•·*`_]/g, " ")
+    .trim()
+    .toUpperCase();
+  if (str === "HIGH" || str === "URGENT" || str === "MEDIUM" || str === "LOW") {
+    return str as TaskPriority;
+  }
+  return priority;
+};
+
 const PriorityIcon = ({ priority, className, color }: PriorityIconProps) => {
-  const getIconStyle = (priority: TaskPriority | string) => {
+  const normalized = cleanPriorityKey(priority);
+
+  const getIconStyle = (p: TaskPriority | string) => {
     if (color) return ""; // allow inline style override if color is passed
 
-    switch (priority) {
+    switch (p) {
       case TaskPriority.LOW:
         return "text-blue-500";
       case TaskPriority.MEDIUM:
@@ -34,30 +49,30 @@ const PriorityIcon = ({ priority, className, color }: PriorityIconProps) => {
       case TaskPriority.HIGH:
         return "text-orange-500";
       case TaskPriority.URGENT:
-        return "text-red-900";
+        return "text-red-600";
       default:
         return "text-gray-500";
     }
   };
 
-  const getIcon = (priority: TaskPriority | string) => {
-    switch (priority) {
+  const getIcon = (p: TaskPriority | string) => {
+    switch (p) {
       case TaskPriority.LOW:
-        return <ArrowDown className="h-4 w-4" />;
+        return <ArrowDown className="h-3.5 w-3.5" />;
       case TaskPriority.MEDIUM:
-        return <Minus className="h-4 w-4" />;
+        return <Minus className="h-3.5 w-3.5" />;
       case TaskPriority.HIGH:
-        return <ArrowUp className="h-4 w-4" />;
+        return <ArrowUp className="h-3.5 w-3.5" />;
       case TaskPriority.URGENT:
-        return <AlertTriangle className="h-4 w-4" />;
+        return <AlertTriangle className="h-3.5 w-3.5" />;
       default:
-        return <Minus className="h-4 w-4" />;
+        return <Minus className="h-3.5 w-3.5" />;
     }
   };
 
   return (
-    <span className={cn(getIconStyle(priority), className)} style={{ color }}>
-      {getIcon(priority)}
+    <span className={cn(getIconStyle(normalized), className)} style={{ color }}>
+      {getIcon(normalized)}
     </span>
   );
 };
@@ -69,10 +84,12 @@ interface PriorityBadgeProps {
 }
 
 export const PriorityBadge = ({ priority, className, color }: PriorityBadgeProps) => {
-  const getVariant = (priority: TaskPriority | string): "secondary" | "default" | "destructive" | "outline" => {
+  const normalized = cleanPriorityKey(priority);
+
+  const getVariant = (p: TaskPriority | string): "secondary" | "default" | "destructive" | "outline" => {
     if (color) return "outline"; // Use outline for custom colors to apply style
 
-    switch (priority) {
+    switch (p) {
       case TaskPriority.LOW:
         return "secondary";
       case TaskPriority.MEDIUM:
@@ -85,17 +102,24 @@ export const PriorityBadge = ({ priority, className, color }: PriorityBadgeProps
         return "secondary";
     }
   };
-const formatPriorityLabel = (value: string) =>
-  value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+
+  const formatPriorityLabel = (value: string) => {
+    const cleaned = value
+      .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji}]/gu, "")
+      .replace(/[—–\-•·*`_]/g, " ")
+      .trim();
+    const label = cleaned || value;
+    return label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+  };
 
   return (
     <Badge
-      variant={getVariant(priority)}
-      className={cn("text-xs", className)}
+      variant={getVariant(normalized)}
+      className={cn("text-xs inline-flex items-center gap-1", className)}
       style={color ? { borderColor: color, color: color, backgroundColor: `${color}1A` } : undefined}
     >
-      <PriorityIcon priority={priority} className="text-[8px] mr-1" color={color} />
-      <p className="text-[11px] font-medium ">{formatPriorityLabel(String(priority))}</p>
+      <PriorityIcon priority={normalized} className="shrink-0" color={color} />
+      <p className="text-[11px] font-medium leading-none">{formatPriorityLabel(String(normalized))}</p>
     </Badge>
   );
 };

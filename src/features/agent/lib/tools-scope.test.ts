@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import type { AgentContext } from "../types";
 import { defaultHarnessData } from "./harness";
-import { applyScopeDefaults, openaiToolsForTurn } from "./tools";
+import { applyScopeDefaults, openaiToolsForTurn, trainingSaveTool } from "./tools";
 import { DEFAULT_ENABLED_TOOLS } from "../constants";
 
 function context(): AgentContext {
@@ -87,5 +87,15 @@ describe("openaiToolsForTurn", () => {
     expect(names).not.toContain("list_work_items");
     expect(names).not.toContain("list_workspaces");
     expect(names).not.toContain("list_projects");
+  });
+
+  it("does not expose save_personal_agent on normal agent turns", () => {
+    const tools = openaiToolsForTurn({
+      mode: "agent",
+      enabledTools: [...DEFAULT_ENABLED_TOOLS],
+      mcpTools: [],
+    });
+    expect(tools.map((tool) => tool.function.name)).not.toContain("save_personal_agent");
+    expect(trainingSaveTool().function.name).toBe("save_personal_agent");
   });
 });

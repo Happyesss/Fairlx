@@ -12,6 +12,8 @@ export const AGENT_AI_QUERY_KEY = ["agent-ai-config"] as const;
 export const AGENT_RUNS_QUERY_KEY = ["agent-runs"] as const;
 export const AGENT_HARNESS_QUERY_KEY = ["agent-harness"] as const;
 export const AGENT_CONTEXT_QUERY_KEY = ["agent-context"] as const;
+export const AGENT_BRIEFING_QUERY_KEY = ["agent-briefing"] as const;
+export const PERSONAL_AGENT_QUERY_KEY = ["personal-agent"] as const;
 
 export const PLATFORM_XAI_PROVIDER_ID = "platform-xai";
 export const PLATFORM_DEEPSEEK_PROVIDER_ID = "platform-deepseek";

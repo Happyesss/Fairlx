@@ -35,10 +35,35 @@ import {
 import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
+import { runNeedsAgentTurn } from "../lib/run-turn";
 import { findPendingConfirmation } from "../lib/write-guard";
 import { ensurePersonalMcp } from "../lib/mcp-bridge";
 import { searchAgentIndex } from "../lib/search";
 import { parseGitStaging, parseChatMeta } from "../lib/git-staging";
+import { briefingFromAgentContext, createMultiAgentEngine, agentContextToInjected } from "../lib/multi-agent";
+import { emitToUser } from "@/lib/socket";
+import { isPersonalSessionMode } from "../lib/session-context";
+import { compileTrainedPersonalPrompt } from "../lib/personal-compile";
+import { runPersonalSelfTrain } from "../lib/personal-self-train";
+import {
+  getPersonalAgent,
+  resetPersonalAgent,
+  upsertPersonalAgent,
+} from "../lib/personal-agent-store";
+import { syncTrainingDraftFromRun, syncTrainingDraftFromRuns } from "../lib/personal-training-sync";
+import {
+  findActiveTrainingRun,
+  isPersonalPersonaRole,
+  mergeAnswers,
+  personaFocus,
+  personaLabel,
+  profileIsTrained,
+  questionsForRole,
+  requiredAnswersMissing,
+  suggestedPersonaRole,
+  trainingKickoffPrompt,
+  trainingProgress,
+} from "../lib/personal-training";
 
 const mcpServerSchema = z
   .object({
@@ -191,7 +216,7 @@ const harnessSchema = z.object({
       enabledTools: z.array(z.string()).optional(),
       defaultWorkspaceId: z.string().optional(),
       defaultProjectId: z.string().optional(),
-      sessionMode: z.enum(["agent", "plan", "debug", "multitask", "ask"]).optional(),
+      sessionMode: z.enum(["agent", "personal", "plan", "debug", "multitask", "ask"]).optional(),
     })
     .optional(),
 });
@@ -335,6 +360,12 @@ const app = new Hono()
     const { databases } = await createAdminClient();
     try {
       const harness = await getOrCreateHarness(databases, user.$id);
+      if (isPersonalSessionMode(harness.settings.sessionMode)) {
+        const profile = await getPersonalAgent(databases, user.$id);
+        if (!profileIsTrained(profile)) {
+          return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+        }
+      }
       const run = await createRun(databases, {
         userId: user.$id,
         prompt: json.prompt,
@@ -387,6 +418,15 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.kind !== "training") {
+        const harness = await getOrCreateHarness(databases, user.$id);
+        if (isPersonalSessionMode(harness.settings.sessionMode)) {
+          const profile = await getPersonalAgent(databases, user.$id);
+          if (!profileIsTrained(profile)) {
+            return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+          }
+        }
+      }
       if (existing.status === "running") {
         return c.json({ error: "Run is already in progress." }, 409);
       }
@@ -418,10 +458,20 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.kind !== "training") {
+        const harness = await getOrCreateHarness(databases, user.$id);
+        if (isPersonalSessionMode(harness.settings.sessionMode)) {
+          const profile = await getPersonalAgent(databases, user.$id);
+          if (!profileIsTrained(profile)) {
+            return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+          }
+        }
+      }
       if (existing.status === "awaiting_confirmation") return c.json({ data: existing });
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
       if (findPendingConfirmation(existing.events ?? [])) return c.json({ data: existing });
+      if (!runNeedsAgentTurn(existing)) return c.json({ data: existing });
 
       const run =
         existing.status === "running"
@@ -446,6 +496,17 @@ const app = new Hono()
         return c.json({ data: existing });
       }
       const data = await updateRun(databases, runId, { status: "stopped" });
+      if (data.kind === "training") {
+        try {
+          const context = await loadAgentContext(databases, user);
+          const harness = await getOrCreateHarness(databases, user.$id);
+          const profile = await getPersonalAgent(databases, user.$id);
+          const role = profile?.personaRole ?? suggestedPersonaRole(context, harness.settings.defaultWorkspaceId);
+          await syncTrainingDraftFromRun(databases, user.$id, profile, data, role);
+        } catch (error) {
+          console.error("[agent] failed to persist training draft on stop", error);
+        }
+      }
       return c.json({ data });
     } catch (error) {
       console.error("[agent] failed to stop run", error);
@@ -617,6 +678,333 @@ const app = new Hono()
     } catch (error) {
       console.error("[agent] failed to load context", error);
       return c.json({ error: "Failed to load agent context." }, 500);
+    }
+  })
+  .get("/briefing", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const context = await loadAgentContext(databases, user);
+      const profile = await getPersonalAgent(databases, user.$id);
+      const workspaceId = c.req.query("workspaceId") || undefined;
+      const projectId = c.req.query("projectId") || undefined;
+      const personaRole = profile && profileIsTrained(profile) ? profile.personaRole : undefined;
+      const data = briefingFromAgentContext(context, { workspaceId, projectId, personaRole });
+      return c.json({ data });
+    } catch (error) {
+      console.error("[agent] failed to build briefing", error);
+      return c.json({ error: "Failed to build daily briefing." }, 500);
+    }
+  })
+  .post(
+    "/autonomous",
+    sessionMiddleware,
+    zValidator(
+      "json",
+      z.object({
+        prompt: z.string().trim().min(1).max(8000),
+        workspaceId: z.string().optional(),
+        projectId: z.string().optional(),
+        personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]).optional(),
+      }),
+    ),
+    async (c) => {
+      const user = sessionUser(c);
+      const { prompt, workspaceId, projectId, personaRole } = c.req.valid("json");
+      const { databases } = await createAdminClient();
+      try {
+        const context = await loadAgentContext(databases, user);
+        const injected = agentContextToInjected(context, { workspaceId, projectId, personaRole });
+        const engine = createMultiAgentEngine();
+        const data = await engine.runGoal({
+          userId: user.$id,
+          prompt,
+          workspaceId: workspaceId || injected.workspaceId,
+          projectId: projectId || injected.projectId,
+          personaRole,
+          workspaceRole: injected.workspaceRole,
+          context: injected,
+        });
+        emitToUser(user.$id, {
+          notificationId: data.parent.id,
+          type: "agent_run_completed",
+          title: data.parent.status === "completed" ? "Task complete & verified!" : "Autonomous run update",
+          message: data.decision?.reason || data.parent.title,
+          workspaceId: workspaceId || injected.workspaceId || "",
+          createdAt: new Date().toISOString(),
+        });
+        return c.json({ data });
+      } catch (error) {
+        console.error("[agent] autonomous run failed", error);
+        return c.json({ error: "Failed to start the autonomous run." }, 500);
+      }
+    },
+  )
+  .get("/personal", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const context = await loadAgentContext(databases, user);
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const suggestedRole = suggestedPersonaRole(context, harness.settings.defaultWorkspaceId);
+      let profile = await getPersonalAgent(databases, user.$id);
+      const runs = await listRuns(databases, user.$id, 40);
+      try {
+        profile = await syncTrainingDraftFromRuns(
+          databases,
+          user.$id,
+          profile,
+          runs,
+          profile?.personaRole ?? suggestedRole,
+        );
+      } catch (error) {
+        console.error("[agent] failed to overlay training draft", error);
+      }
+      const role = profile?.personaRole ?? suggestedRole;
+      const progress = trainingProgress(profile?.answers, role);
+      const active = findActiveTrainingRun(runs);
+      return c.json({
+        data: {
+          profile,
+          progress,
+          activeTrainingRunId: active?.id ?? null,
+          suggestedRole,
+          suggestedRoleLabel: personaLabel(suggestedRole),
+          suggestedRoleFocus: personaFocus(suggestedRole),
+          roles: (["tech_lead", "frontend", "qa", "pm"] as const).map((id) => ({
+            id,
+            label: personaLabel(id),
+            focus: personaFocus(id),
+          })),
+        },
+      });
+    } catch (error) {
+      console.error("[agent] failed to load personal agent", error);
+      return c.json({ error: "Failed to load personal agent." }, 500);
+    }
+  })
+  .get(
+    "/personal/questions",
+    sessionMiddleware,
+    zValidator(
+      "query",
+      z.object({
+        personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]).optional(),
+      }),
+    ),
+    async (c) => {
+    const roleParam = c.req.valid("query").personaRole;
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const context = await loadAgentContext(databases, user);
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const profile = await getPersonalAgent(databases, user.$id);
+      const personaRole = isPersonalPersonaRole(roleParam)
+        ? roleParam
+        : profile?.personaRole ?? suggestedPersonaRole(context, harness.settings.defaultWorkspaceId);
+      const questions = questionsForRole(personaRole);
+      return c.json({
+        data: {
+          personaRole,
+          label: personaLabel(personaRole),
+          focus: personaFocus(personaRole),
+          questions,
+          previousAnswers: profile?.answers ?? [],
+        },
+      });
+    } catch (error) {
+      console.error("[agent] failed to load training questions", error);
+      return c.json({ error: "Failed to load training questions." }, 500);
+    }
+  })
+  .post(
+    "/personal/compile",
+    sessionMiddleware,
+    zValidator(
+      "json",
+      z.object({
+        personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]),
+        jobTitle: z.string().trim().max(160).optional(),
+        workspaceId: z.string().optional(),
+        projectId: z.string().optional(),
+        answers: z
+          .array(
+            z.object({
+              questionId: z.string().min(1),
+              answer: z.string().max(4000),
+            }),
+          )
+          .min(1)
+          .max(24),
+      }),
+    ),
+    async (c) => {
+      const user = sessionUser(c);
+      const json = c.req.valid("json");
+      const { databases } = await createAdminClient();
+      try {
+        const context = await loadAgentContext(databases, user);
+        const harness = await getOrCreateHarness(databases, user.$id);
+        const profile = await getPersonalAgent(databases, user.$id);
+        const questions = questionsForRole(json.personaRole);
+        const answers = mergeAnswers(questions, profile?.answers, json.answers);
+        const missing = requiredAnswersMissing(answers, questions);
+        if (missing.length) {
+          return c.json({ error: "Answer every required question in a full sentence.", missing }, 400);
+        }
+        const workspace =
+          context.workspaces.find((item) => item.id === (json.workspaceId || harness.settings.defaultWorkspaceId)) ??
+          context.workspaces[0];
+        const compiled = await compileTrainedPersonalPrompt({
+          databases,
+          userId: user.$id,
+          userName: user.name || user.email || "this user",
+          context,
+          personaRole: json.personaRole,
+          jobTitle: json.jobTitle,
+          workspaceRole: workspace?.role,
+          workspaceId: workspace?.id,
+          projectId: json.projectId || harness.settings.defaultProjectId,
+          answers,
+        });
+        return c.json({ data: { ...compiled, answers, personaRole: json.personaRole } });
+      } catch (error) {
+        console.error("[agent] failed to compile personal prompt", error);
+        return c.json({ error: "Failed to compile the personal agent prompt." }, 500);
+      }
+    },
+  )
+  .put(
+    "/personal",
+    sessionMiddleware,
+    zValidator(
+      "json",
+      z.object({
+        personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]),
+        jobTitle: z.string().trim().max(160).optional(),
+        compiledPrompt: z.string().trim().min(80).max(65000),
+        answers: z
+          .array(
+            z.object({
+              questionId: z.string().min(1),
+              question: z.string().min(1),
+              answer: z.string().max(4000),
+            }),
+          )
+          .min(1)
+          .max(24),
+      }),
+    ),
+    async (c) => {
+      const user = sessionUser(c);
+      const json = c.req.valid("json");
+      const { databases } = await createAdminClient();
+      try {
+        const context = await loadAgentContext(databases, user);
+        const harness = await getOrCreateHarness(databases, user.$id);
+        const workspace =
+          context.workspaces.find((item) => item.id === harness.settings.defaultWorkspaceId) ?? context.workspaces[0];
+        const data = await upsertPersonalAgent(databases, user.$id, {
+          personaRole: json.personaRole,
+          jobTitle: json.jobTitle,
+          workspaceRole: workspace?.role,
+          status: "trained",
+          answers: json.answers,
+          compiledPrompt: json.compiledPrompt,
+        });
+        return c.json({ data });
+      } catch (error) {
+        console.error("[agent] failed to save personal agent", error);
+        return encryptionErrorResponse(error, c) ?? c.json({ error: "Failed to save personal agent." }, 500);
+      }
+    },
+  )
+  .post("/personal/start", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await upsertHarness(databases, user.$id, {
+        settings: { sessionMode: "personal", mode: "agent" },
+      });
+      const runs = await listRuns(databases, user.$id, 40);
+      const active = findActiveTrainingRun(runs);
+      if (active) return c.json({ data: active });
+      const run = await createRun(databases, {
+        userId: user.$id,
+        prompt: trainingKickoffPrompt(),
+        title: "Train Personal Agent",
+        kind: "training",
+        mode: "agent",
+        workspaceId: harness.settings.defaultWorkspaceId,
+        projectId: harness.settings.defaultProjectId,
+        messages: [],
+      });
+      return c.json({ data: run });
+    } catch (error) {
+      const encrypted = encryptionErrorResponse(error, c);
+      if (encrypted) return encrypted;
+      console.error("[agent] failed to start personal training chat", error);
+      return c.json({ error: "Failed to start the training chat." }, 500);
+    }
+  })
+  .post("/personal/self-train", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (event: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+        try {
+          await runPersonalSelfTrain({
+            databases,
+            user,
+            emit,
+          });
+        } catch (error) {
+          const encrypted = error instanceof AgentEncryptionRequiredError;
+          emit({
+            error: encrypted
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : "Failed to self-train the personal agent.",
+            percent: 0,
+          });
+          console.error("[agent] failed to self-train personal agent", error);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        Connection: "keep-alive",
+      },
+    });
+  })
+  .post("/personal/reset", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const runs = await listRuns(databases, user.$id, 200);
+      for (const run of runs) {
+        if (run.kind !== "training") continue;
+        cancelAgentTurn(run.id);
+        await deleteRun(databases, user.$id, run.id);
+      }
+      await resetPersonalAgent(databases, user.$id);
+      return c.json({ data: null });
+    } catch (error) {
+      const encrypted = encryptionErrorResponse(error, c);
+      if (encrypted) return encrypted;
+      console.error("[agent] failed to reset personal agent", error);
+      return c.json({ error: "Failed to reset the personal agent." }, 500);
     }
   });
 

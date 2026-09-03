@@ -7,7 +7,9 @@ import { resolveSpecialist, buildContextGraph } from "./graph";
 import { readPersonalContent } from "./personal";
 import { defaultHarnessData } from "./harness";
 import { groupTranscript, summarizeToolResult } from "./transcript";
-import { composeUserPrompt, displayUserContent } from "./session-context";
+import { composeUserPrompt, displayUserContent, AGENT_SESSION_MODES, trainingSaveReady } from "./session-context";
+import { trainingKickoffPrompt } from "./personal-training";
+import { compileFairlxListIntent } from "./intent-compiler";
 import type { AgentContext, AgentRun } from "../types";
 
 function harness() {
@@ -121,12 +123,14 @@ describe("graph and prompt", () => {
       mcp: { mcpServers: { "fairlx-personal": { url: "in-process://personal" } } },
     });
     expect(prompt).toContain("Fairlx Agent");
+    expect(prompt).toContain("Personal Agent");
     expect(prompt).toContain("Triage bugs");
     expect(prompt).toContain("Release checklist");
     expect(prompt).not.toContain("(w1)");
     expect(prompt).toContain("workspaceId: w1");
     expect(prompt).not.toMatch(/Use mcp_list/);
     expect(prompt).toMatch(/change a member's role/i);
+    expect(prompt).toMatch(/adds them to the organization and the workspace/i);
     expect(prompt).toContain("Task: New high-priority bug on login");
     expect(prompt).toMatch(/One fairlx_work_item_list per project/);
   });
@@ -141,6 +145,70 @@ describe("graph and prompt", () => {
     expect(prompt).toMatch(/propose one concrete feature/i);
     expect(prompt).toMatch(/Stay in the Planner role/);
     expect(prompt).not.toMatch(/return findings only/);
+  });
+
+  it("tells the agent the first sprint on a new project starts automatically", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Create a school management project"),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toMatch(/first sprint.*starts automatically/i);
+    expect(prompt).toMatch(/do not call fairlx_sprint_start/i);
+  });
+
+  it("tells the agent to create project teams with tools instead of Settings", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Create a Developers team and add Surendra"),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toMatch(/fairlx_project_team_create/);
+    expect(prompt).toMatch(/fairlx_project_team_member_add/);
+    expect(prompt).toMatch(/Do not send the user to Settings → Teams/);
+  });
+
+  it("keeps the Personal Agent as orchestrator instead of a specialist", () => {
+    const prompt = buildSystemPrompt({
+      harness: { ...harness(), settings: { ...harness().settings, sessionMode: "personal" } },
+      context: context(),
+      run: run("Plan a new feature for the current Fairlx workspace."),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toContain("You are the Fairlx Personal Agent, the user's Chief of Staff");
+    expect(prompt).toMatch(/delegate to planner, builder, QA\/tester/i);
+    expect(prompt).not.toMatch(/Stay in the Planner role/);
+  });
+
+  it("injects the trained standing prompt into Personal Agent turns", () => {
+    const prompt = buildSystemPrompt({
+      harness: { ...harness(), settings: { ...harness().settings, sessionMode: "personal" } },
+      context: context(),
+      run: run("What should I work on first today?"),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+      personalPrompt: "## Identity and role\nYou operate as Ada's Staff frontend with a shippable-slice quality bar.",
+    });
+    expect(prompt).toContain("Trained Personal Agent operating system");
+    expect(prompt).toContain("Ada's Staff frontend");
+  });
+
+  it("uses the interview prompt for training runs instead of the standing Personal Agent prompt", () => {
+    const prompt = buildSystemPrompt({
+      harness: { ...harness(), settings: { ...harness().settings, sessionMode: "personal" } },
+      context: context(),
+      run: { ...run(trainingKickoffPrompt()), kind: "training" },
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+      personalPrompt: "## Identity\nDo not inject this during training.",
+    });
+    expect(prompt).toMatch(/Hi Ada/i);
+    expect(prompt).toMatch(/one agenda question per turn/i);
+    expect(prompt).toContain("[[choices]]");
+    expect(prompt).toContain("Acme");
+    expect(prompt).toContain("save_personal_agent");
+    expect(prompt).not.toContain("Trained Personal Agent operating system");
+    expect(prompt).not.toContain("Do not inject this during training");
   });
 });
 
@@ -168,6 +236,40 @@ describe("session context", () => {
     expect(content).toContain("[Session mode: debug]");
     expect(content).toContain("work_item: Fix login");
     expect(displayUserContent(content)).toBe("Fix the login redirect");
+  });
+
+  it("exposes Personal Agent in the chat session modes", () => {
+    expect(AGENT_SESSION_MODES.map((mode) => mode.id)).toContain("personal");
+    const content = composeUserPrompt("Fix mobile sidebar overflow and test it.", [], "personal");
+    expect(content).toContain("[Session mode: personal]");
+    expect(content).toContain("Chief of Staff");
+    expect(displayUserContent(content)).toBe("Fix mobile sidebar overflow and test it.");
+  });
+
+  it("strips the train-personal marker from displayed user content", () => {
+    expect(displayUserContent(trainingKickoffPrompt())).toBe(trainingKickoffPrompt());
+    expect(displayUserContent("[Train personal agent] Retrain me in this chat.")).toBe(
+      "Retrain me in this chat.",
+    );
+    expect(
+      compileFairlxListIntent(displayUserContent(trainingKickoffPrompt()), { projectId: "p1" }),
+    ).toBeNull();
+  });
+
+  it("does not allow saving the Personal Agent until several real replies exist", () => {
+    expect(trainingSaveReady([{ role: "user", content: trainingKickoffPrompt() }])).toBe(false);
+    expect(
+      trainingSaveReady([
+        { role: "user", content: "Yes, Tech Lead" },
+        { role: "user", content: "Skip this" },
+        { role: "user", content: "Keep it simple" },
+      ]),
+    ).toBe(false);
+    expect(
+      trainingSaveReady(
+        Array.from({ length: 6 }, (_, index) => ({ role: "user", content: `Answer ${index + 1}` })),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -202,6 +304,27 @@ describe("transcript grouping", () => {
     if (steps.kind !== "steps") return;
     expect(steps.lead?.content).toBe("Looking that up.");
     expect(summarizeToolResult("git_status", steps.steps[0]?.result?.content).detail).toContain("repos");
+  });
+
+  it("summarizes an auto-started sprint", () => {
+    const summary = summarizeToolResult(
+      "fairlx_sprint_create",
+      JSON.stringify({
+        sprint: { name: "Sprint 1 — Foundation", status: "ACTIVE" },
+        started: true,
+      }),
+    );
+    expect(summary.ok).toBe(true);
+    expect(summary.detail).toContain("Started Sprint 1 — Foundation");
+  });
+
+  it("hides the training kickoff so the agent speaks first", () => {
+    const now = new Date().toISOString();
+    const blocks = groupTranscript([
+      { id: "u0", role: "user", content: "[Train personal agent]", createdAt: now },
+      { id: "a1", role: "assistant", content: "Does Tech Lead sound right?", createdAt: now },
+    ]);
+    expect(blocks.map((block) => block.kind)).toEqual(["assistant"]);
   });
 
   it("surfaces MCP method errors as a failed step summary", () => {

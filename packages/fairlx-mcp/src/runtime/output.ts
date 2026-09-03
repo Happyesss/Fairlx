@@ -65,6 +65,7 @@ export function compactWorkItem(
     status: doc.status,
     type: doc.type,
     priority: doc.priority,
+    labels: Array.isArray(doc.labels) ? doc.labels : [],
     assignees: people,
     unassigned: hydrated ? people.length === 0 : ids.length === 0,
   };

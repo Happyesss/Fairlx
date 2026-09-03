@@ -20,9 +20,10 @@ import { getOrCreateHarness, upsertHarness } from "./harness";
 import { ensurePersonalMcp } from "./mcp-bridge";
 import { compileFairlxListIntent } from "./intent-compiler";
 import { extractToolCallsFromText, mergeToolCalls, normalizeAgentToolCall, stripToolCallMarkup } from "./parse-tool-calls";
-import { displayUserContent } from "./session-context";
+import { displayUserContent, isPersonalSessionMode, trainingSaveReady } from "./session-context";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
 import { buildSystemPrompt } from "./prompt";
+import { isTrainingKickoffContent, isTrainingRun, profileIsTrained } from "./personal-training";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
 import { decryptSecret } from "./secrets";
 import {
@@ -39,12 +40,14 @@ import {
   toolCallFingerprint,
   unwrapListCall,
 } from "./tool-loop";
-import { executeTool, openaiToolsForTurn } from "./tools";
+import { executeTool, openaiToolsForTurn, trainingSaveTool } from "./tools";
 import { compactJsonString } from "./truncate";
 import { getRun, listRuns, updateRun } from "./runs";
+import { getPersonalAgent } from "./personal-agent-store";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
 import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
+import { extractBoardProjectFromTool } from "./project-launch";
 import { specialistById } from "./graph";
 
 const MAX_TOOL_ITERATIONS = 12;
@@ -174,8 +177,17 @@ type OpenAiMessage = {
   name?: string;
 };
 
-function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiMessage[] {
-  const recent = messages.slice(-MAX_HISTORY);
+const TRAINING_OPEN_SEED =
+  "Begin the training interview now. Greet me by my first name from the system prompt. I have not answered any questions yet. Do not say Hey there or Hi there.";
+
+function toOpenAiMessages(
+  system: string,
+  messages: AgentChatMessage[],
+  options?: { seedTraining?: boolean },
+): OpenAiMessage[] {
+  const recent = messages
+    .slice(-MAX_HISTORY)
+    .filter((message) => !(message.role === "user" && isTrainingKickoffContent(message.content)));
   const mapped: OpenAiMessage[] = recent.map((message) => {
     if (message.role === "assistant") {
       return {
@@ -198,6 +210,9 @@ function toOpenAiMessages(system: string, messages: AgentChatMessage[]): OpenAiM
     }
     return { role: "user", content: message.content };
   });
+  if (options?.seedTraining && !mapped.some((message) => message.role === "user")) {
+    mapped.push({ role: "user", content: TRAINING_OPEN_SEED });
+  }
   return [{ role: "system", content: system }, ...mapped];
 }
 
@@ -290,10 +305,11 @@ function extractMessageContent(message?: OpenAiChoiceMessage): string {
 function collectToolCalls(
   choice: OpenAiChoice | undefined,
   mcpToolNames: string[],
+  options?: { fromText?: boolean },
 ): { content: string; toolCalls: AgentToolCall[] } {
   const rawContent = extractMessageContent(choice?.message);
   const native = extractToolCalls(choice).map((call) => normalizeAgentToolCall(call, mcpToolNames));
-  const fromText = extractToolCallsFromText(rawContent, mcpToolNames);
+  const fromText = options?.fromText === false ? [] : extractToolCallsFromText(rawContent, mcpToolNames);
   return {
     content: stripToolCallMarkup(rawContent),
     toolCalls: mergeToolCalls(native, fromText),
@@ -370,16 +386,28 @@ export async function runAgentTurn(params: {
     return null;
   };
 
-  const [initialHarness, context, mcpDoc, aiDoc, runs] = await Promise.all([
+  const [initialHarness, context, mcpDoc, aiDoc, runs, personalProfile] = await Promise.all([
     getOrCreateHarness(databases, user.$id),
     loadAgentContext(databases, user),
     getMcpDocument(databases, user.$id),
     getAiDocument(databases, user.$id),
     listRuns(databases, user.$id, 40),
+    getPersonalAgent(databases, user.$id),
   ]);
   let harness = initialHarness;
   const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
   const stored = parseAiConfig(aiDoc);
+
+  if (
+    isPersonalSessionMode(harness.settings.sessionMode) &&
+    !isTrainingRun(run) &&
+    !profileIsTrained(personalProfile)
+  ) {
+    return persistUnlessStopped({
+      status: "failed",
+      error: "Personal Agent is not trained yet. Train or self-train first.",
+    });
+  }
 
   const stoppedBeforeModel = await haltIfStopped();
   if (stoppedBeforeModel) return stoppedBeforeModel;
@@ -393,7 +421,8 @@ export async function runAgentTurn(params: {
   }
 
   const mcpAuth = await buildAgentMcpAuth({ databases, userId: user.$id, context, run });
-  const mcpToolDefs = run.mode === "agent" ? mcpToolsForAuth(mcpAuth) : [];
+  const training = isTrainingRun(run);
+  const mcpToolDefs = !training && run.mode === "agent" ? mcpToolsForAuth(mcpAuth) : [];
   const mcpToolNames = mcpToolDefs.map((tool) => tool.name);
 
   run = await persistUnlessStopped({
@@ -404,13 +433,24 @@ export async function runAgentTurn(params: {
   });
   if (run.status === "stopped") return run;
 
-  const tools = openaiToolsForTurn({
-    mode: run.mode,
-    enabledTools: harness.settings.enabledTools ?? [],
-    mcpTools: mcpToolDefs,
-  });
+  const tools = training
+    ? trainingSaveReady(run.messages) ? [trainingSaveTool()] : []
+    : openaiToolsForTurn({
+        mode: run.mode,
+        enabledTools: harness.settings.enabledTools ?? [],
+        mcpTools: mcpToolDefs,
+      });
   const specialistTools = tools.filter((tool) => tool.function.name !== "delegate_agent");
-  const system = buildSystemPrompt({ harness, context, run, mcp });
+  const personalPrompt =
+    personalProfile && profileIsTrained(personalProfile) ? personalProfile.compiledPrompt : undefined;
+  const system = buildSystemPrompt({
+    harness,
+    context,
+    run,
+    mcp,
+    personalPrompt,
+    personalAnswers: personalProfile?.answers,
+  });
 
   const toolContext = () => ({
     runId: run.id,
@@ -423,6 +463,7 @@ export async function runAgentTurn(params: {
     workspaceId: run.workspaceId || mcpAuth.workspaceId,
     projectId: run.projectId || mcpAuth.projectId,
     mcpAuth,
+    allowPersonalSave: training,
   });
 
   const seenCalls = fingerprintsFromMessages(run.messages);
@@ -502,6 +543,24 @@ export async function runAgentTurn(params: {
       toolName: call.name,
       createdAt: new Date().toISOString(),
     });
+
+    const launch = extractBoardProjectFromTool(call.name, toolContent, call.arguments);
+    if (launch?.projectId) {
+      const workspaceId = launch.workspaceId || run.workspaceId || "";
+      if (run.projectId !== launch.projectId || (workspaceId && run.workspaceId !== workspaceId)) {
+        run = await persistUnlessStopped({
+          projectId: launch.projectId,
+          ...(workspaceId ? { workspaceId } : {}),
+        });
+        if (run.status === "stopped") return;
+        harness = await upsertHarness(databases, user.$id, {
+          settings: {
+            defaultProjectId: launch.projectId,
+            ...(workspaceId ? { defaultWorkspaceId: workspaceId } : {}),
+          },
+        });
+      }
+    }
   };
 
   const pauseForConfirmation = async (
@@ -646,7 +705,7 @@ export async function runAgentTurn(params: {
       if (run.status === "stopped") return run;
     }
 
-    if (!resume && run.mode === "agent") {
+    if (!resume && run.mode === "agent" && !training) {
       const lastUser = [...run.messages].reverse().find((message) => message.role === "user");
       const intent = compileFairlxListIntent(displayUserContent(lastUser?.content || run.prompt || ""), {
         projectId: run.projectId || mcpAuth.projectId,
@@ -680,7 +739,8 @@ export async function runAgentTurn(params: {
       }
     }
 
-    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+    const maxIterations = training ? 2 : MAX_TOOL_ITERATIONS;
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const stopped = await haltIfStopped();
       if (stopped) return stopped;
 
@@ -688,7 +748,7 @@ export async function runAgentTurn(params: {
         target,
         {
           model: target.model,
-          messages: toOpenAiMessages(system, run.messages),
+          messages: toOpenAiMessages(system, run.messages, { seedTraining: training }),
           temperature: 0.2,
           ...(target.maxOutputTokens ? { max_tokens: target.maxOutputTokens } : {}),
           ...(tools.length && !forceAnswer ? { tools, tool_choice: "auto" } : {}),
@@ -698,21 +758,26 @@ export async function runAgentTurn(params: {
       const stoppedAfterChat = await haltIfStopped();
       if (stoppedAfterChat) return stoppedAfterChat;
 
-      const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames);
+      const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames, {
+        fromText: !training,
+      });
       const content = sanitizeAssistantVisible(collected.content);
+      const toolCalls = training
+        ? collected.toolCalls.filter((call) => call.name === "save_personal_agent")
+        : collected.toolCalls;
 
-      if (collected.toolCalls.length && !forceAnswer) {
+      if (toolCalls.length && !forceAnswer) {
         const assistantMessage: AgentChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content,
-          toolCalls: collected.toolCalls,
+          toolCalls,
           createdAt: new Date().toISOString(),
         };
         const nextMessages = [...run.messages, assistantMessage];
         const nextEvents = [...run.events];
-        const writes = collected.toolCalls.filter((call) => isWriteToolCall(call));
-        const rawReads = collected.toolCalls.filter((call) => !isWriteToolCall(call));
+        const writes = toolCalls.filter((call) => isWriteToolCall(call));
+        const rawReads = toolCalls.filter((call) => !isWriteToolCall(call));
         const { calls: reads, coalescedIds } = collapseWorkItemListFanOut(rawReads);
 
         for (const call of reads) {
@@ -731,7 +796,9 @@ export async function runAgentTurn(params: {
           status: "running",
         });
         if (run.status === "stopped") return run;
-        if (failStreak >= MAX_CONSECUTIVE_TOOL_FAILURES || duplicateSkips >= MAX_DUPLICATE_SKIPS) {
+        if (training) {
+          forceAnswer = true;
+        } else if (failStreak >= MAX_CONSECUTIVE_TOOL_FAILURES || duplicateSkips >= MAX_DUPLICATE_SKIPS) {
           forceAnswer = true;
         }
         continue;

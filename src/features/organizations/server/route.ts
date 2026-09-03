@@ -28,6 +28,7 @@ import {
 } from "../schemas";
 
 import { invalidateCache, CK } from "@/lib/redis";
+import { inviteOrganizationMember, InviteOrgMemberError } from "../services/invite-org-member";
 
 // NEW SECURITY IMPORTS
 import { resolveUserOrgAccess, hasOrgPermissionFromAccess } from "@/lib/permissions/resolveUserOrgAccess";
@@ -980,170 +981,38 @@ const app = new Hono()
                 }, 400);
             }
 
-            // Temporary password placeholder (will be set for new users)
-            let tempPassword = "";
-
             try {
-                const { users, databases: adminDatabases } = await createAdminClient();
-                const targetEmail = email.toLowerCase();
-                let targetUserId: string;
-                let isExistingUser = false;
-
-                // 1. Try to find existing Appwrite user by email
-                const existingUsers = await users.list([
-                    Query.equal("email", targetEmail),
-                ]);
-
-                if (existingUsers.total > 0) {
-                    // EXISTING USER: Reuse identity
-                    isExistingUser = true;
-                    const existingUser = existingUsers.users[0];
-                    targetUserId = existingUser.$id;
-
-                    // Update verification status (Org Admin verification)
-                    if (!existingUser.emailVerification) {
-                        await users.updateEmailVerification(targetUserId, true);
-                    }
-
-                    // Update user prefs if needed
-                    const existingPrefs = existingUser.prefs || {};
-                    // If they have no account type, set to ORG
-                    if (!existingPrefs.accountType) {
-                        await users.updatePrefs(targetUserId, {
-                            ...existingPrefs,
-                            accountType: "ORG",
-                            // Only set primaryOrg if not set
-                            primaryOrganizationId: existingPrefs.primaryOrganizationId || orgId,
-                        });
-                    }
-
-                    // Do NOT update password for existing users!
-                } else {
-                    // NEW USER: Create identity
-                    isExistingUser = false;
-
-                    // Generate secure temporary password
-                    const crypto = await import("crypto");
-                    tempPassword = crypto.randomBytes(12).toString("base64").slice(0, 16);
-
-                    const newUser = await users.create(
-                        ID.unique(),
-                        targetEmail,
-                        undefined, // phone
-                        tempPassword,
-                        fullName
-                    );
-                    targetUserId = newUser.$id;
-
-                    // Auto-verify & Set Prefs
-                    await users.updateEmailVerification(targetUserId, true);
-                    await users.updatePrefs(targetUserId, {
-                        mustResetPassword: true,
-                        accountType: "ORG",
-                        primaryOrganizationId: orgId,
-                    });
-                }
-
-                // 2. Generate Magic Link Token (for both new and existing)
-                const crypto = await import("crypto");
-                const rawToken = crypto.randomBytes(32).toString("hex");
-                const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-                const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
-
-                // Store hashed token
-                const { LOGIN_TOKENS_ID } = await import("@/config");
-                if (LOGIN_TOKENS_ID) {
-                    await adminDatabases.createDocument(
-                        DATABASE_ID,
-                        LOGIN_TOKENS_ID,
-                        ID.unique(),
-                        {
-                            userId: targetUserId,
-                            orgId,
-                            tokenHash,
-                            expiresAt,
-                            usedAt: null,
-                            purpose: "FIRST_LOGIN",
-                        }
-                    );
-                }
-
-                // 3. Create org_member record
-                const member = await databases.createDocument(
-                    DATABASE_ID,
-                    ORGANIZATION_MEMBERS_ID,
-                    ID.unique(),
-                    {
-                        organizationId: orgId,
-                        userId: targetUserId,
-                        role,
-                        status: OrgMemberStatus.INVITED,
-                        mustResetPassword: !isExistingUser, // Only force reset for NEW users
-                        name: fullName,
-                        email: targetEmail,
-                    }
-                );
-
-                // 4. Log audit events
-                const { logOrgAudit, OrgAuditAction } = await import("../audit");
-                await logOrgAudit({
-                    databases: adminDatabases,
-                    organizationId: orgId,
+                const invited = await inviteOrganizationMember({
+                    databases,
                     actorUserId: user.$id,
-                    actionType: OrgAuditAction.MEMBER_ADDED,
-                    metadata: {
-                        targetUserId,
-                        targetEmail: targetEmail,
-                        role,
-                        creationType: isExistingUser ? "readded_existing_user" : "admin_created",
-                        isExistingUser,
-                        verifiedByDefault: true,
-                    },
+                    organizationId: orgId,
+                    email,
+                    fullName,
+                    role,
                 });
-
-                // 5. Send Email
-                const { sendWelcomeEmail, logEmailSent } = await import("../services/email-service");
-                const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL}/sign-in`;
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
-
-                const emailResult = await sendWelcomeEmail({
-                    recipientEmail: targetEmail,
-                    recipientName: fullName,
-                    recipientUserId: targetUserId,
-                    organizationName: organization.name,
-                    tempPassword: isExistingUser ? undefined : tempPassword, // Only send password to NEW users
-                    loginUrl,
-                    firstLoginToken: LOGIN_TOKENS_ID ? rawToken : undefined,
-                    appUrl: LOGIN_TOKENS_ID ? appUrl : undefined,
-                    logoUrl: organization.imageUrl || undefined,
-                });
-
-                if (emailResult.success) {
-                    logEmailSent({
-                        organizationId: orgId,
-                        recipientUserId: targetUserId,
-                        recipientEmail: targetEmail,
-                        emailType: "welcome",
-                    });
-                }
 
                 return c.json({
                     data: {
-                        member,
-                        userId: targetUserId,
-                        emailSent: emailResult.success,
-                        emailError: emailResult.success ? undefined : emailResult.error,
-                        isExistingUser,
-                        hasMagicLink: !!LOGIN_TOKENS_ID,
-                        // SECURITY: In production, remove this - send via email only
-                        tempPassword: (process.env.NODE_ENV === "development" && !isExistingUser) ? tempPassword : undefined,
+                        userId: invited.userId,
+                        emailSent: invited.emailSent,
+                        emailError: invited.emailError,
+                        isExistingUser: invited.isExistingUser,
+                        hasMagicLink: invited.hasMagicLink,
+                        tempPassword: invited.tempPassword,
                     },
-                    message: isExistingUser
+                    message: invited.isExistingUser
                         ? "Existing user invited. Login link sent."
                         : "Member created successfully. Welcome email sent.",
                 });
-
             } catch (error: unknown) {
+                if (error instanceof InviteOrgMemberError && error.code === "EMAIL_EXISTS") {
+                    return c.json({
+                        error: "EMAIL_EXISTS",
+                        code: "EMAIL_EXISTS",
+                        orgName: error.orgName,
+                        message: error.message,
+                    }, 400);
+                }
                 const appwriteError = error as { code?: number; message?: string };
                 if (appwriteError.code === 409) {
                     return c.json({

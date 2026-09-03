@@ -17,6 +17,8 @@ import { commitStaged, stageItem, unstageItem } from "./git-staging";
 import { callMcpServerTool, ensurePersonalMcp, listMcpResourcesForServer } from "./mcp-bridge";
 import { createFairlxProject } from "./mutations";
 import { readPersonalContent } from "./personal";
+import { compilePersonalPrompt, isPersonalPersonaRole } from "./personal-training";
+import { upsertPersonalAgent } from "./personal-agent-store";
 import { toPublicMcpConfig } from "./public-mcp";
 import { matchingAutomations, searchAgentIndex } from "./search";
 import { HARNESS_TO_MCP } from "./parse-tool-calls";
@@ -42,6 +44,7 @@ export type ToolExecutionContext = {
   workspaceId?: string;
   projectId?: string;
   mcpAuth?: AuthContext;
+  allowPersonalSave?: boolean;
 };
 
 export type ToolExecutionResult = {
@@ -237,6 +240,30 @@ const TOOL_PARAMETERS: Record<string, { description: string; parameters: Record<
       },
     },
   },
+  save_personal_agent: {
+    description:
+      "Save the trained Personal Agent standing prompt from this interview. Call only after covering the agenda. Include every question and answer plus a detailed compiledPrompt.",
+    parameters: {
+      type: "object",
+      properties: {
+        personaRole: { type: "string", enum: ["tech_lead", "frontend", "qa", "pm"] },
+        jobTitle: { type: "string" },
+        compiledPrompt: { type: "string" },
+        answers: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string" },
+              answer: { type: "string" },
+            },
+            required: ["question", "answer"],
+          },
+        },
+      },
+      required: ["personaRole", "answers", "compiledPrompt"],
+    },
+  },
 };
 
 export function openaiToolsForMode(mode: AgentRunMode, enabledTools: string[]): OpenAiTool[] {
@@ -300,6 +327,18 @@ export function openaiToolsForTurn(params: {
       },
     }));
   return [...harness, ...mcp];
+}
+
+export function trainingSaveTool(): OpenAiTool {
+  const spec = TOOL_PARAMETERS.save_personal_agent;
+  return {
+    type: "function",
+    function: {
+      name: "save_personal_agent",
+      description: spec?.description ?? "Save the trained Personal Agent standing prompt.",
+      parameters: spec?.parameters ?? { type: "object", properties: {} },
+    },
+  };
 }
 
 function compactEventPayload(payload: unknown): unknown {
@@ -826,6 +865,85 @@ export async function executeTool(
         content: JSON.stringify(payload),
         event: event(runId, "personal_read", `Personal ${kind}`, undefined, payload),
       };
+    }
+    case "save_personal_agent": {
+      if (!ctx.allowPersonalSave) {
+        const payload = { error: "save_personal_agent is only available during Personal Agent training." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Save personal agent unavailable", undefined, payload),
+        };
+      }
+      if (!ctx.databases) {
+        const payload = { error: "Saving the Personal Agent is unavailable in this turn." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Save personal agent unavailable", undefined, payload),
+        };
+      }
+      const personaRole = isPersonalPersonaRole(parsed.personaRole) ? parsed.personaRole : "frontend";
+      const rawAnswers = Array.isArray(parsed.answers) ? parsed.answers : [];
+      const answers = rawAnswers
+        .map((item, index) => {
+          const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const question = asString(row.question);
+          const answer = asString(row.answer);
+          return {
+            questionId: asString(row.questionId) || `q${index + 1}`,
+            question,
+            answer,
+          };
+        })
+        .filter((item) => item.question && item.answer);
+      if (answers.length < 4) {
+        const payload = { error: "Need at least four detailed question/answer pairs before saving." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Interview incomplete", undefined, payload),
+        };
+      }
+      const workspace =
+        context.workspaces.find((item) => item.id === ctx.workspaceId) ?? context.workspaces[0];
+      const project =
+        context.projects.find((item) => item.id === ctx.projectId) ??
+        context.projects.find((item) => item.workspaceId === workspace?.id);
+      const compiled =
+        asString(parsed.compiledPrompt).trim().length >= 400
+          ? asString(parsed.compiledPrompt).trim()
+          : compilePersonalPrompt({
+              userName: context.user.name || context.user.email || "this user",
+              personaRole,
+              jobTitle: asString(parsed.jobTitle) || undefined,
+              workspaceRole: workspace?.role,
+              workspaceName: workspace?.name,
+              projectName: project?.name,
+              answers,
+            });
+      try {
+        const profile = await upsertPersonalAgent(ctx.databases, ctx.userId, {
+          personaRole,
+          jobTitle: asString(parsed.jobTitle) || undefined,
+          workspaceRole: workspace?.role,
+          status: "trained",
+          answers,
+          compiledPrompt: compiled,
+        });
+        const payload = {
+          saved: true,
+          version: profile.promptVersion,
+          personaRole: profile.personaRole,
+        };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "save_personal_agent", "Personal Agent trained", `v${profile.promptVersion}`, payload),
+        };
+      } catch (error) {
+        const payload = { error: error instanceof Error ? error.message : "Failed to save personal agent." };
+        return {
+          content: JSON.stringify(payload),
+          event: event(runId, "error", "Save personal agent failed", payload.error, payload),
+        };
+      }
     }
     default: {
       const payload = { name, args: parsed };

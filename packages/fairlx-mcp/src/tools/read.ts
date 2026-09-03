@@ -19,6 +19,7 @@ import { loadProject, loadWorkItem, paginationQueries } from "../runtime/tenant"
 import { listQuery, optionalBoolean, optionalString, requireString, redactGithubRepo, workspaceInviteUrl, listAllDocuments } from "./helpers";
 import { isWorkspaceAdminRole } from "./member-match";
 import { handlePersonalTool } from "../personal/load";
+import { generateDailyBriefing, type PersonaRole } from "@fairlx/multi-agent";
 
 export async function handleReadTool(
   name: string,
@@ -57,6 +58,10 @@ export async function handleReadTool(
       return workflowGet(args, runtime, auth);
     case "fairlx_agent_context_get":
       return agentContextGet(args, runtime, auth);
+    case "fairlx_agent_briefing":
+      return agentBriefing(args, runtime, auth);
+    case "fairlx_agent_next_assignment":
+      return agentNextAssignment(args, runtime, auth);
     // ── New read tools ──
     case "fairlx_workspace_members_list":
       return workspaceMembersList(args, runtime, auth);
@@ -581,6 +586,66 @@ async function agentContextGet(
       description: item.description,
       comments: comments.documents.map((d) => d.content),
     }),
+  });
+}
+
+function toBriefingItem(doc: Record<string, unknown>) {
+  return {
+    id: String(doc.$id ?? doc.id ?? ""),
+    key: typeof doc.key === "string" ? doc.key : undefined,
+    title: String(doc.title ?? "Untitled"),
+    status: typeof doc.status === "string" ? doc.status : undefined,
+    priority: typeof doc.priority === "string" ? doc.priority : undefined,
+    type: typeof doc.type === "string" ? doc.type : undefined,
+  };
+}
+
+async function loadProjectItems(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext,
+) {
+  const projectId = optionalString(args, "projectId");
+  if (!projectId) return [];
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.VIEW_TASKS, ["tasks:read"]);
+  const result = await runtime.store.list<Record<string, unknown>>(
+    runtime.collections.workItems,
+    listQuery({ limit: 40 }, [{ type: "equal", field: "projectId", value: projectId }]),
+  );
+  return result.documents.map(toBriefingItem);
+}
+
+async function agentBriefing(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext,
+): Promise<McpToolResult> {
+  const workItems = await loadProjectItems(args, runtime, auth);
+  const persona = optionalString(args, "personaRole") as PersonaRole | undefined;
+  const briefing = generateDailyBriefing({
+    personaRole: persona,
+    workItems,
+    unassigned: workItems.filter((item) => !item.status),
+    blockers: workItems.filter((item) => /block/i.test(item.status || "")),
+  });
+  return toolResult(briefing);
+}
+
+async function agentNextAssignment(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext,
+): Promise<McpToolResult> {
+  const workItems = await loadProjectItems(args, runtime, auth);
+  const next = workItems.find((item) => {
+    const status = String(item.status || "").toUpperCase();
+    return status !== "DONE" && status !== "CLOSED" && status !== "COMPLETE";
+  });
+  return toolResult({
+    next: next ?? null,
+    message: next
+      ? `Your Fairlx Personal Agent would have you pick up ${[next.key, next.title].filter(Boolean).join(" — ")} next.`
+      : "No open work items in this project.",
   });
 }
 

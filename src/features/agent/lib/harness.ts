@@ -13,6 +13,7 @@ import type {
   AgentWorkPattern,
 } from "../types";
 import { emptyChatMeta, emptyGitStaging, parseChatMeta, parseGitStaging } from "./git-staging";
+import { isAgentSessionMode } from "./session-context";
 import { parseJson, stringifyBounded } from "./truncate";
 
 type HarnessDocument = {
@@ -81,14 +82,8 @@ export function parseHarness(doc: HarnessDocument): AgentHarness {
   };
   settings.enabledTools = mergeEnabledTools(settings.enabledTools);
   const sessionMode = settings.sessionMode;
-  if (
-    sessionMode === "plan" ||
-    sessionMode === "debug" ||
-    sessionMode === "multitask" ||
-    sessionMode === "ask" ||
-    sessionMode === "agent"
-  ) {
-    settings.sessionMode = sessionMode;
+  if (isAgentSessionMode(sessionMode)) {
+    settings.sessionMode = sessionMode === "multitask" ? "personal" : sessionMode;
   } else {
     settings.sessionMode = "agent";
   }
