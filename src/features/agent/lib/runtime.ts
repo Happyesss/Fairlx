@@ -47,6 +47,7 @@ import { getPersonalAgentPrompt } from "./personal-agent-store";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
 import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
+import { extractBoardProjectFromTool } from "./project-launch";
 import { specialistById } from "./graph";
 
 const MAX_TOOL_ITERATIONS = 12;
@@ -522,6 +523,24 @@ export async function runAgentTurn(params: {
       toolName: call.name,
       createdAt: new Date().toISOString(),
     });
+
+    const launch = extractBoardProjectFromTool(call.name, toolContent, call.arguments);
+    if (launch?.projectId) {
+      const workspaceId = launch.workspaceId || run.workspaceId || "";
+      if (run.projectId !== launch.projectId || (workspaceId && run.workspaceId !== workspaceId)) {
+        run = await persistUnlessStopped({
+          projectId: launch.projectId,
+          ...(workspaceId ? { workspaceId } : {}),
+        });
+        if (run.status === "stopped") return;
+        harness = await upsertHarness(databases, user.$id, {
+          settings: {
+            defaultProjectId: launch.projectId,
+            ...(workspaceId ? { defaultWorkspaceId: workspaceId } : {}),
+          },
+        });
+      }
+    }
   };
 
   const pauseForConfirmation = async (

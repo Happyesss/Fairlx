@@ -256,6 +256,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         sprintId: id,
         assigneeIds: { type: "array", items: { type: "string" } },
         storyPoints: { type: "number" },
+        labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
         idempotencyKey,
       },
       required: ["projectId", "title"],
@@ -279,6 +280,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         sprintId: id,
         assigneeIds: { type: "array", items: { type: "string" } },
         storyPoints: { type: "number" },
+        labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
       },
       required: ["workItemId"],
     },
@@ -326,7 +328,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_sprint_create",
-    description: "Create a sprint",
+    description:
+      "Create a sprint. The first sprint on a project starts automatically as ACTIVE — do not call fairlx_sprint_start after creating that first sprint.",
     inputSchema: {
       type: "object",
       properties: {

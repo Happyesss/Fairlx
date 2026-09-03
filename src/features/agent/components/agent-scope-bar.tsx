@@ -13,6 +13,7 @@ import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harn
 import { usePatchAgentRun } from "../api/use-agent-runs";
 import { AGENT_CONTEXT_QUERY_KEY } from "../constants";
 import type { AgentRun } from "../types";
+import { extractBoardProject } from "../lib/project-launch";
 import { useAgentUi } from "./agent-ui-context";
 
 export function AgentScopeBar({
@@ -35,14 +36,24 @@ export function AgentScopeBar({
   const [newName, setNewName] = useState("");
 
   const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
-  const workspaceId = run?.workspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
+  const launch = useMemo(() => extractBoardProject(run?.messages ?? []), [run?.messages]);
+  const workspaceId =
+    run?.workspaceId || launch?.workspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
   const workspace = workspaces.find((item) => item.id === workspaceId);
-  const projects = useMemo(
-    () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
-    [context?.projects, workspaceId],
-  );
-  const projectId = run?.projectId || harness?.settings.defaultProjectId;
+  const projects = useMemo(() => {
+    const list = (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId);
+    if (launch?.projectId && !list.some((item) => item.id === launch.projectId)) {
+      list.unshift({
+        id: launch.projectId,
+        name: launch.name || "Project",
+        workspaceId: launch.workspaceId || workspaceId || "",
+      } as (typeof list)[number]);
+    }
+    return list;
+  }, [context?.projects, workspaceId, launch]);
+  const projectId = run?.projectId || launch?.projectId || harness?.settings.defaultProjectId;
   const project = projects.find((item) => item.id === projectId) ?? context?.projects.find((item) => item.id === projectId);
+  const projectLabel = project?.name || launch?.name || "Project";
   const repo = (context?.githubRepos ?? []).find(
     (item) => item.projectId === project?.id || (!project && item.workspaceId === workspaceId),
   );
@@ -156,7 +167,7 @@ export function AgentScopeBar({
           setSearch("");
           setNewName("");
         }}
-        label={project?.name || "Project"}
+        label={projectLabel}
         icon={Code}
         searchPlaceholder="Search folders, projects..."
         search={search}

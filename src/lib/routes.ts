@@ -35,6 +35,8 @@ export const routes = {
     // === PROJECT ===
     project: (workspaceId: string, projectId: string) =>
         `/workspaces/${workspaceId}/projects/${projectId}`,
+    projectKanban: (workspaceId: string, projectId: string) =>
+        `/workspaces/${workspaceId}/projects/${projectId}?task-view=kanban`,
     projectSettings: (workspaceId: string, projectId: string) =>
         `/workspaces/${workspaceId}/projects/${projectId}/settings`,
     projectBacklog: (workspaceId: string, projectId: string) =>

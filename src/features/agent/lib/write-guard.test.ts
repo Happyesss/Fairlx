@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
+import {
+  confirmationSummary,
+  findPendingConfirmation,
+  isWriteToolCall,
+  parseConfirmationCall,
+  parseWorkItemCall,
+} from "./write-guard";
 import type { AgentToolCall } from "../types";
 
 function call(name: string, args: Record<string, unknown> = {}): AgentToolCall {
@@ -66,5 +72,51 @@ describe("findPendingConfirmation", () => {
       },
     ]);
     expect(pending).toBeUndefined();
+  });
+});
+
+describe("parseWorkItemCall", () => {
+  it("extracts structured work item parameters", () => {
+    const parsed = parseWorkItemCall(
+      call("fairlx_work_item_create", {
+        projectId: "p1",
+        title: "Setup auth",
+        type: "STORY",
+        priority: "HIGH",
+        description: "Configure OAuth and RBAC",
+        labels: ["backend", "security"],
+      })
+    );
+    expect(parsed).toEqual({
+      id: "c1",
+      toolName: "fairlx_work_item_create",
+      projectId: "p1",
+      title: "Setup auth",
+      type: "STORY",
+      priority: "HIGH",
+      description: "Configure OAuth and RBAC",
+      labels: ["backend", "security"],
+      sprintId: undefined,
+    });
+  });
+
+  it("returns null for non-work-item-create calls", () => {
+    expect(parseWorkItemCall(call("fairlx_workspace_member_add", { name: "Ada" }))).toBeNull();
+  });
+});
+
+describe("parseConfirmationCall", () => {
+  it("parses work item calls with workItem details", () => {
+    const confirmation = parseConfirmationCall(
+      call("fairlx_work_item_create", {
+        title: "Fix crash",
+        type: "BUG",
+        priority: "URGENT",
+      })
+    );
+    expect(confirmation.workItem).toBeDefined();
+    expect(confirmation.workItem?.type).toBe("BUG");
+    expect(confirmation.workItem?.priority).toBe("URGENT");
+    expect(confirmation.summary).toContain("Fix crash");
   });
 });

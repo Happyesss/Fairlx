@@ -66,7 +66,11 @@ export function buildSystemPrompt(params: {
       ? `Workspace: ${workspace.name}.${role} workspaceId: ${workspace.id}`
       : "No workspace selected.",
     project
-      ? `Project: ${project.name}${project.key ? ` (${project.key})` : ""}. projectId: ${project.id}`
+      ? `Project: ${project.name}${project.key ? ` (${project.key})` : ""}. projectId: ${project.id}${
+          project.customLabels?.length
+            ? ` Labels: ${project.customLabels.map((l) => l.name).join(", ")}.`
+            : ""
+        }`
       : "No project selected.",
   ];
   if (personal) lines.push(SESSION_MODE_INSTRUCTIONS.personal);
@@ -93,6 +97,8 @@ export function buildSystemPrompt(params: {
     "- Answer work-item lists as a markdown table of key, title, status, priority, and assignees. Never print document IDs.",
     "- One fairlx_work_item_list per project unless the user asked for a specific slice. Do not fan out by status or type. Paginate only when hasMore is true, and pass nextCursor unchanged. Never invent cursorAfter. After the list is in context, answer.",
     "- When asked to plan a feature, glance at open work only to avoid duplicates, then propose one concrete feature: name, why, user stories, work items to create, acceptance criteria, and sprint fit. Do not recap the team.",
+    "- When creating or proposing work items (fairlx_work_item_create), always specify: type (TASK, STORY, BUG, or EPIC), priority (LOW, MEDIUM, HIGH, or URGENT), a descriptive title, clear description, and relevant labels/tags.",
+    "- When creating a new project's first sprint with fairlx_sprint_create, that sprint starts automatically. Do not ask the user to start it, and do not call fairlx_sprint_start.",
     "- You may propose new work items and stories. Creating them in Fairlx waits for Accept. Do not invent existing members or claim records already exist.",
     "- Never invent or hallucinate existing work items, bug counts, sprint numbers, or metrics. Base all observations strictly on real data returned by tools; if lookups return no items or fail, state that truthfully.",
     "- When asked to change a member's role, update it with their name (or email) and the new role. Wait for Accept. Do not send the user to the Members page.",

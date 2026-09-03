@@ -146,6 +146,17 @@ describe("graph and prompt", () => {
     expect(prompt).not.toMatch(/return findings only/);
   });
 
+  it("tells the agent the first sprint on a new project starts automatically", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Create a school management project"),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toMatch(/first sprint.*starts automatically/i);
+    expect(prompt).toMatch(/do not call fairlx_sprint_start/i);
+  });
+
   it("keeps the Personal Agent as orchestrator instead of a specialist", () => {
     const prompt = buildSystemPrompt({
       harness: { ...harness(), settings: { ...harness().settings, sessionMode: "personal" } },
@@ -280,6 +291,18 @@ describe("transcript grouping", () => {
     if (steps.kind !== "steps") return;
     expect(steps.lead?.content).toBe("Looking that up.");
     expect(summarizeToolResult("git_status", steps.steps[0]?.result?.content).detail).toContain("repos");
+  });
+
+  it("summarizes an auto-started sprint", () => {
+    const summary = summarizeToolResult(
+      "fairlx_sprint_create",
+      JSON.stringify({
+        sprint: { name: "Sprint 1 — Foundation", status: "ACTIVE" },
+        started: true,
+      }),
+    );
+    expect(summary.ok).toBe(true);
+    expect(summary.detail).toContain("Started Sprint 1 — Foundation");
   });
 
   it("hides the training kickoff so the agent speaks first", () => {

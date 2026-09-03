@@ -1,13 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Lightbulb,
-  Bug,
-  Code,
-  FlaskConical,
-  FileText,
   ArrowUp,
   Loader2,
   Mic,
@@ -19,41 +14,13 @@ import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useCreateAgentRun, useStopAgentRun } from "../api/use-agent-runs";
 import { chipKey, composeUserPrompt, isPersonalSessionMode } from "../lib/session-context";
+import { countWorkspaceProjects, getQuickActions } from "../lib/quick-actions";
 import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
 import { AgentModeSelector } from "./agent-mode-selector";
 import { ModelPicker } from "./model-picker";
 import { PersonalAgentBanner } from "./personal-agent-banner";
-
-const QUICK_ACTIONS = [
-  {
-    icon: Lightbulb,
-    label: "Plan new feature",
-    prompt:
-      "Propose one new feature for this Fairlx project. Glance at open work items only to avoid duplicates, then return: feature name, why it matters, user stories, work items to create (type, title, acceptance criteria), and sprint fit. Do not list members or recap project settings.",
-  },
-  {
-    icon: Bug,
-    label: "Fix a bug",
-    prompt: "Help me investigate and fix a bug in the current Fairlx project.",
-  },
-  {
-    icon: Code,
-    label: "Refactor code",
-    prompt: "Propose a focused refactor for the current Fairlx project.",
-  },
-  {
-    icon: FlaskConical,
-    label: "Write tests",
-    prompt: "Write tests for the current Fairlx work.",
-  },
-  {
-    icon: FileText,
-    label: "Add docs",
-    prompt: "Draft documentation for the current Fairlx work.",
-  },
-] as const;
 
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = "auto";
@@ -90,6 +57,7 @@ export function AgentCommandInput({
   const [prompt, setPrompt] = useState("");
   const [chips, setChips] = useState<AgentContextChip[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const isRunning = run?.status === "running";
@@ -102,6 +70,24 @@ export function AgentCommandInput({
     : isPersonalSessionMode(sessionMode)
       ? "Command your Personal Agent — plan, build, test, review"
       : placeholder;
+
+  const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
+  const activeWorkspaceId =
+    selectedWorkspaceId ||
+    run?.workspaceId ||
+    harness?.settings.defaultWorkspaceId ||
+    workspaces[0]?.id;
+
+  const projectCount = useMemo(
+    () => countWorkspaceProjects(context?.projects, activeWorkspaceId),
+    [context?.projects, activeWorkspaceId]
+  );
+  const hasProjects = context ? projectCount > 0 : true;
+
+  const quickActions = useMemo(
+    () => getQuickActions(hasProjects),
+    [hasProjects]
+  );
 
   const handleStop = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -198,12 +184,16 @@ export function AgentCommandInput({
       if (textareaRef.current) textareaRef.current.style.height = "56px";
       return;
     }
+    const targetWorkspaceId =
+      activeWorkspaceId || harness?.settings.defaultWorkspaceId || context?.workspaces[0]?.id;
+    const targetProjectId = hasProjects ? harness?.settings.defaultProjectId : undefined;
+
     createRun.mutate(
       {
         json: {
           prompt: content,
-          workspaceId: harness?.settings.defaultWorkspaceId || context?.workspaces[0]?.id,
-          projectId: harness?.settings.defaultProjectId,
+          workspaceId: targetWorkspaceId,
+          projectId: targetProjectId,
         },
       },
       {
@@ -220,7 +210,10 @@ export function AgentCommandInput({
   return (
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
       {variant === "create" && isPersonalSessionMode(sessionMode) ? <PersonalAgentBanner /> : null}
-      <AgentScopeBar run={run} />
+      <AgentScopeBar
+        run={run}
+        onScopeChange={(wsId) => setSelectedWorkspaceId(wsId)}
+      />
       <form
         className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
         onSubmit={(event) => {
@@ -336,9 +329,9 @@ export function AgentCommandInput({
           </div>
         </div>
       </form>
-      {showQuickActions && variant === "create" ? (
+      {showQuickActions ? (
         <div className="flex flex-wrap gap-2 px-1">
-          {QUICK_ACTIONS.map((action) => {
+          {quickActions.map((action) => {
             const Icon = action.icon;
             return (
               <button

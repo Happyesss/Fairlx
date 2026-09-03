@@ -6,6 +6,7 @@ import { StatusDisplay } from "@/features/custom-columns/components/status-displ
 import { useGetMembers } from "@/features/members/api/use-get-members";
 import { useGetProject } from "@/features/projects/api/use-get-project";
 import { AssigneeAvatarGroup } from "@/features/tasks/components/assignee-avatar-group";
+import { LabelBadge } from "@/features/tasks/components/LabelBadge";
 import { PriorityBadge } from "@/features/tasks/components/priority-selector";
 import { WorkItemIcon } from "@/features/timeline/components/work-item-icon";
 
@@ -94,6 +95,28 @@ export function AgentWorkItemTable({
                   <span className="line-clamp-2 font-medium text-foreground" title={row.title}>
                     {row.title || "—"}
                   </span>
+                  {row.description ? (
+                    <span className="block text-xs text-muted-foreground line-clamp-1 mt-0.5" title={row.description}>
+                      {row.description}
+                    </span>
+                  ) : null}
+                  {row.labels && row.labels.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                      {row.labels.map((label, lIdx) => {
+                        const customLabels = project?.customLabels || [];
+                        const customLabel = customLabels.find(
+                          (l) => l.name.toLowerCase() === label.toLowerCase()
+                        );
+                        return (
+                          <LabelBadge
+                            key={`${label}-${lIdx}`}
+                            label={label}
+                            color={customLabel?.color}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   {row.status ? (

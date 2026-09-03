@@ -352,6 +352,7 @@ export type AgentContextProject = {
   description?: string;
   status?: string;
   key?: string;
+  customLabels?: Array<{ name: string; color?: string }>;
 };
 
 export type AgentContextWorkItem = {
@@ -363,6 +364,7 @@ export type AgentContextWorkItem = {
   priority?: string;
   workspaceId?: string;
   projectId?: string;
+  labels?: string[];
 };
 
 export type AgentContextNotification = {

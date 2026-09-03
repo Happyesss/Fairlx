@@ -24,6 +24,7 @@ type ProjectDoc = Models.Document & {
   status?: string;
   key?: string;
   imageUrl?: string;
+  customLabels?: string | Array<{ name: string; color?: string }>;
 };
 type WorkItemDoc = Models.Document & {
   key?: string;
@@ -33,7 +34,21 @@ type WorkItemDoc = Models.Document & {
   priority?: string;
   workspaceId?: string;
   projectId?: string;
+  labels?: string[];
 };
+
+function parseCustomLabels(raw: unknown): Array<{ name: string; color?: string }> | undefined {
+  if (Array.isArray(raw)) return raw as Array<{ name: string; color?: string }>;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as Array<{ name: string; color?: string }>;
+    } catch {
+      // ignore
+    }
+  }
+  return undefined;
+}
 
 async function safeList(
   databases: Databases,
@@ -152,6 +167,7 @@ export async function loadAgentContext(
       description: project.description,
       status: project.status,
       key: project.key,
+      customLabels: parseCustomLabels(project.customLabels),
     })),
     workItems: workItems.map((item) => ({
       id: item.$id,
@@ -162,6 +178,7 @@ export async function loadAgentContext(
       priority: item.priority,
       workspaceId: item.workspaceId,
       projectId: item.projectId,
+      labels: Array.isArray(item.labels) ? item.labels : [],
     })),
     notifications: notifications.map((item) => ({
       id: item.$id,

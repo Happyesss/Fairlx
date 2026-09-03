@@ -182,8 +182,15 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
     const query = String(parsed.query || "");
     return { ok: true, detail: query ? `${query}${hits ? ` · ${hits} hits` : ""}` : `${hits} hits` };
   }
-  if (name === "create_project") {
-    return { ok: true, detail: String(parsed.name || "Project created") };
+  if (name === "create_project" || name === "fairlx_project_create") {
+    const project = parsed.project && typeof parsed.project === "object" ? (parsed.project as Record<string, unknown>) : parsed;
+    return { ok: true, detail: String(project.name || parsed.name || "Project created") };
+  }
+  if (name === "fairlx_sprint_create" || name === "fairlx_sprint_start") {
+    const sprint = parsed.sprint && typeof parsed.sprint === "object" ? (parsed.sprint as Record<string, unknown>) : parsed;
+    const sprintName = String(sprint.name || "Sprint");
+    const started = parsed.started === true || sprint.status === "ACTIVE" || name === "fairlx_sprint_start";
+    return { ok: true, detail: started ? `Started ${sprintName}` : `Created ${sprintName}` };
   }
   if (name === "database_query") {
     const collection = String(parsed.collection || parsed.table || parsed.from || "records");
@@ -200,6 +207,14 @@ export function summarizeToolResult(name: string, content?: string): { ok: boole
   }
   if (parsed.ok === false) {
     return { ok: false, detail: String(parsed.message || parsed.error || "Failed") };
+  }
+  if (parsed.workItem && typeof parsed.workItem === "object") {
+    const item = parsed.workItem as Record<string, unknown>;
+    const title = String(item.title || item.name || "").trim();
+    const key = String(item.key || "").trim();
+    const action = name.includes("update") ? "Updated" : "Created";
+    const label = key && title ? `${key}: ${title}` : title || key || "Work item";
+    return { ok: true, detail: `${action} ${label}` };
   }
   const countKeys = ["workspaces", "projects", "workItems", "docs", "servers", "skills", "items", "members"];
   for (const key of countKeys) {

@@ -7,6 +7,7 @@ import {
   Bot,
   CheckCircle2,
   AlertTriangle,
+  FolderKanban,
   Loader2,
   XCircle,
   Pin,
@@ -21,6 +22,7 @@ import {
   ChevronRight,
   Check,
   Copy,
+  ArrowUpRight,
 } from "lucide-react";
 import { RiAddCircleFill } from "react-icons/ri";
 import ReactMarkdown from "react-markdown";
@@ -28,6 +30,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -45,7 +48,7 @@ import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
-import { isInternalMcpServer } from "../constants";
+import { AGENT_CONTEXT_QUERY_KEY, isInternalMcpServer } from "../constants";
 import {
   useConfirmAgentRun,
   useContinueAgentRun,
@@ -58,6 +61,7 @@ import {
 } from "../api/use-agent-runs";
 import { selectedModelLabel } from "../lib/client-defaults";
 import { clockTime, relativeTime } from "../lib/agent-ui";
+import { extractBoardProject, kanbanCtasForBlocks, projectKanbanHref, withWorkspaceFallback } from "../lib/project-launch";
 import { groupTranscript, summarizeToolResult, toolLabel, activitySummary, isRepeatedToolResult, workItemListRows, collectWorkItemLookup, workspaceMemberRows, collectMemberLookup, type TranscriptStep } from "../lib/transcript";
 import { displayUserContent } from "../lib/session-context";
 import { splitAssistantChoices } from "../lib/assistant-choices";
@@ -68,9 +72,65 @@ import { AgentCommandInput } from "./agent-command-input";
 import { AgentWorkItemTable } from "./agent-work-item-table";
 import { AgentMemberTable } from "./agent-member-table";
 import { useAgentUi } from "./agent-ui-context";
+import { PendingConfirmationCard } from "./pending-confirmation-card";
 import { ModelPicker } from "./model-picker";
 import { splitMarkdownWorkItemTable, type AgentWorkItem } from "../lib/work-item-table";
 import { splitMarkdownMemberTable, type AgentMember } from "../lib/member-table";
+
+function ProjectKanbanCta({
+  workspaceId,
+  projectId,
+  name,
+}: {
+  workspaceId: string;
+  projectId: string;
+  name?: string;
+}) {
+  const href = projectKanbanHref({ workspaceId, projectId, name });
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group relative inline-flex w-full max-w-sm sm:max-w-md items-center gap-3 overflow-hidden rounded-xl border border-border/80 bg-card/90 p-2.5 pr-3 text-left shadow-2xs transition-all duration-200 hover:border-primary/40 hover:bg-card hover:shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {/* Subtle top shimmer accent on hover */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+      />
+
+      {/* Icon badge */}
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-all duration-200 group-hover:border-primary/40 group-hover:bg-primary/15 group-hover:scale-105">
+        <FolderKanban className="size-4" />
+      </div>
+
+      {/* Title & subtitle */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-xs font-semibold text-foreground tracking-tight transition-colors group-hover:text-primary">
+            Open Kanban board
+          </span>
+        </div>
+        <p className="truncate text-[11px] text-muted-foreground">
+          {name ? (
+            <>
+              <span className="font-medium text-foreground/80">{name}</span>
+              <span className="mx-1 opacity-50">·</span>
+            </>
+          ) : null}
+          <span>View board in new tab</span>
+        </p>
+      </div>
+
+      {/* Action button */}
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 bg-muted/60 px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-2xs transition-all duration-200 group-hover:border-primary/30 group-hover:bg-primary group-hover:text-primary-foreground">
+        <span>Open</span>
+        <ArrowUpRight className="size-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      </span>
+    </a>
+  );
+}
 
 function FloatingComposer({ children }: { children: React.ReactNode }) {
   return (
@@ -84,14 +144,99 @@ function FloatingComposer({ children }: { children: React.ReactNode }) {
   );
 }
 
-function UserBubble({ message }: { message: AgentChatMessage }) {
+function UserBubble({
+  message,
+  canEdit,
+  onSendEdit,
+}: {
+  message: AgentChatMessage;
+  canEdit?: boolean;
+  onSendEdit?: (content: string) => void;
+}) {
+  const visible = displayUserContent(message.content);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(visible);
+
+  const startEdit = () => {
+    setDraft(visible);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setDraft(visible);
+    setEditing(false);
+  };
+
+  const submitEdit = () => {
+    const next = draft.trim();
+    if (!next || !onSendEdit) return;
+    if (next === visible.trim()) {
+      setEditing(false);
+      return;
+    }
+    onSendEdit(next);
+    setEditing(false);
+  };
+
   return (
     <div className="flex gap-4 justify-end">
       <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4 max-w-2xl text-foreground relative group shadow-sm">
-        <div className="text-xs text-muted-foreground mb-1 font-medium">
-          You <span className="mx-1">•</span> {clockTime(message.createdAt)}
+        <div className="text-xs text-muted-foreground mb-1 font-medium flex items-center justify-between gap-3">
+          <span>
+            You <span className="mx-1">•</span> {clockTime(message.createdAt)}
+          </span>
+          {canEdit && !editing ? (
+            <button
+              type="button"
+              onClick={startEdit}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground transition-opacity"
+              title="Edit and send as a new question"
+            >
+              <Pencil className="size-3" />
+              Edit
+            </button>
+          ) : null}
         </div>
-        <p className="leading-relaxed whitespace-pre-wrap text-sm">{displayUserContent(message.content)}</p>
+        {editing ? (
+          <div className="space-y-2">
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelEdit();
+                }
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submitEdit();
+                }
+              }}
+              rows={Math.min(8, Math.max(2, draft.split("\n").length))}
+              className="w-full resize-none rounded-lg border border-primary/30 bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitEdit}
+                disabled={!draft.trim()}
+                className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                Send as new question
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="leading-relaxed whitespace-pre-wrap text-sm">{visible}</p>
+        )}
       </div>
     </div>
   );
@@ -444,12 +589,39 @@ function StepRow({
 
   const hasDetails = Boolean(formattedArgsString.trim() || formattedResultString.trim());
 
+  // Extract work item metadata if applicable
+  const workItemMeta = useMemo(() => {
+    if (!effectiveArgs || typeof effectiveArgs !== "object") return null;
+    const obj = effectiveArgs as Record<string, unknown>;
+    const isWorkItem = /work_item_(create|update)/i.test(step.call.name);
+    const title = String(obj.title || obj.name || "").trim();
+    if (!isWorkItem && !title) return null;
+    const type = typeof obj.type === "string" ? obj.type.toUpperCase() : undefined;
+    const priority = typeof obj.priority === "string" ? obj.priority.toUpperCase() : undefined;
+    const labels = Array.isArray(obj.labels) ? obj.labels.map(String).filter(Boolean) : [];
+    return { title, type, priority, labels };
+  }, [effectiveArgs, step.call.name]);
+
   // Extract a readable summary hint from arguments
   let argHint = "";
   if (effectiveArgs && typeof effectiveArgs === "object") {
     const obj = effectiveArgs as Record<string, unknown>;
-    const directQuery = obj.query || obj.q || obj.search || obj.prompt || obj.task || obj.command || obj.name;
-    const targetId = obj.workItemId || obj.projectId || obj.workspaceId || obj.sprintId || obj.docId;
+    const directQuery =
+      obj.title ||
+      obj.query ||
+      obj.q ||
+      obj.search ||
+      obj.prompt ||
+      obj.task ||
+      obj.command ||
+      obj.name;
+    const isCreateWorkItem = step.call.name === "fairlx_work_item_create";
+    const targetId =
+      obj.workItemId ||
+      obj.key ||
+      obj.sprintId ||
+      obj.docId ||
+      (isCreateWorkItem ? undefined : obj.projectId || obj.workspaceId);
     if (obj.unassigned === true) {
       argHint = "Unassigned";
     } else if (typeof directQuery === "string" && directQuery) {
@@ -470,29 +642,66 @@ function StepRow({
     }
   };
 
+  const isCompleted = Boolean(step.result && summary.ok);
+  const isFailed = Boolean(step.result && !summary.ok);
+  const isAwaiting = awaiting && !step.result;
+  const isRunning = active && !step.result;
+
   return (
     <div
       className={cn(
         "px-4 py-3 flex flex-col transition-colors",
-        active &&
+        (isRunning || isAwaiting) &&
           "bg-primary/5 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-primary"
       )}
     >
       <div className="flex items-start gap-3.5 w-full">
         <div className="mt-0.5 size-4 text-center shrink-0">
-          {active ? (
+          {isRunning ? (
             <span className="font-mono text-primary text-xs font-bold">{index + 1}</span>
-          ) : summary.ok ? (
+          ) : isAwaiting ? (
+            <span className="font-mono text-amber-600 dark:text-amber-400 text-xs font-bold">{index + 1}</span>
+          ) : isCompleted ? (
             <Check className="size-4 text-green-500" />
-          ) : (
+          ) : isFailed ? (
             <XCircle className="size-4 text-destructive" />
+          ) : (
+            <span className="font-mono text-muted-foreground text-xs">{index + 1}</span>
           )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("text-xs font-semibold", active ? "text-primary" : "text-foreground")}>
+            <span className={cn("text-xs font-semibold", isRunning ? "text-primary" : "text-foreground")}>
               {toolLabel(step.call.name)}
             </span>
+            {workItemMeta?.type ? (
+              <span
+                className={cn(
+                  "text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border tracking-wide",
+                  workItemMeta.type === "BUG"
+                    ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20"
+                    : workItemMeta.type === "STORY"
+                      ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                      : workItemMeta.type === "EPIC"
+                        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                        : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                )}
+              >
+                {workItemMeta.type}
+              </span>
+            ) : null}
+            {workItemMeta?.priority ? (
+              <span
+                className={cn(
+                  "text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border",
+                  workItemMeta.priority === "URGENT" || workItemMeta.priority === "HIGH"
+                    ? "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20"
+                    : "bg-muted text-muted-foreground border-border"
+                )}
+              >
+                {workItemMeta.priority}
+              </span>
+            ) : null}
             {argHint ? (
               <span className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded max-w-[260px] truncate">
                 {argHint}
@@ -511,21 +720,28 @@ function StepRow({
             ) : null}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 break-words">
-            {awaiting && !step.result
+            {isAwaiting
               ? "Needs your approval"
               : sanitizeAssistantVisible(step.event?.title || summary.detail)}
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs shrink-0">
-          {active ? (
+          {isRunning ? (
             <span className="text-primary font-medium flex items-center gap-1.5">
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-              {awaiting ? "Pending" : "In progress"}
+              In progress
             </span>
-          ) : summary.ok ? (
+          ) : isAwaiting ? (
+            <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Pending
+            </span>
+          ) : isCompleted ? (
             <span className="text-green-500 font-medium">Completed</span>
-          ) : (
+          ) : isFailed ? (
             <span className="text-destructive font-medium">Failed</span>
+          ) : (
+            <span className="text-muted-foreground font-medium">Queued</span>
           )}
         </div>
       </div>
@@ -843,8 +1059,23 @@ function WorkflowSidebar({
     () => (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId),
     [context?.projects, workspaceId]
   );
-  const effectiveProjectId = run.projectId || harness?.settings.defaultProjectId;
-  const project = context?.projects.find((item) => item.id === effectiveProjectId);
+  const launch = useMemo(
+    () => withWorkspaceFallback(extractBoardProject(run.messages), run.workspaceId || workspaceId),
+    [run.messages, run.workspaceId, workspaceId],
+  );
+  const effectiveProjectId = run.projectId || launch?.projectId || harness?.settings.defaultProjectId;
+  const project =
+    context?.projects.find((item) => item.id === effectiveProjectId) ??
+    (launch && launch.projectId === effectiveProjectId
+      ? { id: launch.projectId, name: launch.name || "Project", workspaceId: launch.workspaceId }
+      : undefined);
+  const projectsForSelect = useMemo(() => {
+    const list = [...workspaceProjects];
+    if (project && !list.some((item) => item.id === project.id)) {
+      list.unshift(project);
+    }
+    return list;
+  }, [workspaceProjects, project]);
   const connected = Object.entries(mcp?.mcpServers ?? {}).filter(
     ([name, server]) => !isInternalMcpServer(name, server) && !server.disabled
   ).length;
@@ -889,7 +1120,7 @@ function WorkflowSidebar({
             <div className="flex flex-col gap-3">
               <ProjectSelectorRow
                 run={run}
-                projects={workspaceProjects}
+                projects={projectsForSelect}
                 selectedProject={project}
                 workspaceId={workspace?.id}
               />
@@ -1113,6 +1344,7 @@ function WorkflowViewInner() {
   const patchRun = usePatchAgentRun();
   const { data: harness } = useGetAgentHarness();
   const updateHarness = useUpdateAgentHarness();
+  const queryClient = useQueryClient();
   const stickToBottomRef = useRef(true);
   const continuedRef = useRef<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -1155,6 +1387,57 @@ function WorkflowViewInner() {
     () => collectMemberLookup(run?.messages ?? []),
     [run?.messages],
   );
+  const boardProject = useMemo(
+    () => withWorkspaceFallback(extractBoardProject(run?.messages ?? []), run?.workspaceId),
+    [run?.messages, run?.workspaceId],
+  );
+  const kanbanCtas = useMemo(
+    () => kanbanCtasForBlocks(blocks, run?.workspaceId, boardProject),
+    [blocks, run?.workspaceId, boardProject],
+  );
+  const syncedScopeRef = useRef<{ bound?: string; context?: string }>({});
+
+  useEffect(() => {
+    if (!run?.id || !boardProject) return;
+    const scopeKey = `${run.id}:${boardProject.projectId}:${boardProject.workspaceId}`;
+    const known = (context?.projects ?? []).some((item) => item.id === boardProject.projectId);
+    if (!known && syncedScopeRef.current.context !== scopeKey) {
+      syncedScopeRef.current.context = scopeKey;
+      queryClient.invalidateQueries({ queryKey: AGENT_CONTEXT_QUERY_KEY });
+    }
+    const alreadyBound =
+      run.projectId === boardProject.projectId && run.workspaceId === boardProject.workspaceId;
+    if (alreadyBound) {
+      syncedScopeRef.current.bound = scopeKey;
+      return;
+    }
+    if (syncedScopeRef.current.bound === scopeKey) return;
+    syncedScopeRef.current.bound = scopeKey;
+    patchRun.mutate({
+      param: { runId: run.id },
+      json: {
+        projectId: boardProject.projectId,
+        workspaceId: boardProject.workspaceId,
+      },
+    });
+    updateHarness.mutate({
+      json: {
+        settings: {
+          defaultProjectId: boardProject.projectId,
+          defaultWorkspaceId: boardProject.workspaceId,
+        },
+      },
+    });
+  }, [
+    boardProject,
+    context?.projects,
+    patchRun,
+    queryClient,
+    run?.id,
+    run?.projectId,
+    run?.workspaceId,
+    updateHarness,
+  ]);
 
   if (!runId) {
     return (
@@ -1353,36 +1636,64 @@ function WorkflowViewInner() {
               ) : null}
 
               {blocks.map((block, index) => {
-                if (block.kind === "user") return <UserBubble key={block.message.id} message={block.message} />;
+                const kanban = kanbanCtas.get(index);
+                const cta = kanban ? (
+                  <div className="pl-11 max-w-4xl">
+                    <ProjectKanbanCta
+                      workspaceId={kanban.workspaceId}
+                      projectId={kanban.projectId}
+                      name={kanban.name}
+                    />
+                  </div>
+                ) : null;
+                if (block.kind === "user") {
+                  return (
+                    <div key={block.message.id} className="flex flex-col gap-3">
+                      <UserBubble
+                        message={block.message}
+                        canEdit={!running && !awaiting && !sendMessage.isPending}
+                        onSendEdit={(content) => {
+                          stickToBottomRef.current = true;
+                          sendMessage.mutate({ param: { runId: run.id }, json: { content } });
+                        }}
+                      />
+                      {cta}
+                    </div>
+                  );
+                }
                 if (block.kind === "assistant") {
                   return (
-                    <AgentBubble
-                      key={block.message.id}
-                      message={block.message}
+                    <div key={block.message.id} className="flex flex-col gap-3">
+                      <AgentBubble
+                        message={block.message}
+                        workItems={workItems}
+                        members={members}
+                        workspaceId={run.workspaceId}
+                        projectId={run.projectId}
+                        choicesEnabled={!running && !awaiting && block.message.id === lastAssistantId}
+                        onPickChoice={(choice) => {
+                          stickToBottomRef.current = true;
+                          sendMessage.mutate({ param: { runId: run.id }, json: { content: choice } });
+                        }}
+                      />
+                      {cta}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={block.lead?.id ?? `steps-${index}`} className="flex flex-col gap-3">
+                    <StepsCard
+                      lead={block.lead}
+                      steps={block.steps}
+                      running={running}
+                      awaiting={awaiting}
                       workItems={workItems}
                       members={members}
                       workspaceId={run.workspaceId}
                       projectId={run.projectId}
-                      choicesEnabled={!running && !awaiting && block.message.id === lastAssistantId}
-                      onPickChoice={(choice) => {
-                        stickToBottomRef.current = true;
-                        sendMessage.mutate({ param: { runId: run.id }, json: { content: choice } });
-                      }}
                     />
-                  );
-                }
-                return (
-                  <StepsCard
-                    key={block.lead?.id ?? `steps-${index}`}
-                    lead={block.lead}
-                    steps={block.steps}
-                    running={running}
-                    awaiting={awaiting}
-                    workItems={workItems}
-                    members={members}
-                    workspaceId={run.workspaceId}
-                    projectId={run.projectId}
-                  />
+                    {cta}
+                  </div>
                 );
               })}
 
@@ -1398,31 +1709,16 @@ function WorkflowViewInner() {
                 </div>
               ) : null}
 
-              {awaiting ? (
-                <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <p className="text-sm text-foreground flex-1">
-                    {pending?.summary || "The agent wants to create, update, or delete something in this workspace."}
-                  </p>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8"
-                      disabled={denyRun.isPending || confirmRun.isPending}
-                      onClick={() => denyRun.mutate({ runId: run.id })}
-                    >
-                      Deny
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="h-8"
-                      disabled={confirmRun.isPending || denyRun.isPending}
-                      onClick={() => confirmRun.mutate({ runId: run.id })}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                </div>
+              {awaiting && pending ? (
+                <PendingConfirmationCard
+                  pending={pending}
+                  workspaceId={run.workspaceId}
+                  projectId={run.projectId}
+                  onAccept={() => confirmRun.mutate({ runId: run.id })}
+                  onDeny={() => denyRun.mutate({ runId: run.id })}
+                  isAccepting={confirmRun.isPending}
+                  isDenying={denyRun.isPending}
+                />
               ) : null}
 
               {run.error ? (
@@ -1439,7 +1735,7 @@ function WorkflowViewInner() {
             <AgentCommandInput
               run={run}
               variant="followup"
-              showQuickActions={false}
+              showQuickActions={!awaiting && !running}
               submitting={sendMessage.isPending || awaiting || running}
               placeholder={
                 awaiting

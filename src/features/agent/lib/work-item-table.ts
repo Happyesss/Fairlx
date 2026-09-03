@@ -12,6 +12,8 @@ export type AgentWorkItem = {
   priority?: string;
   unassigned?: boolean;
   assignees?: Array<string | AgentWorkItemAssignee>;
+  labels?: string[];
+  description?: string;
 };
 
 const STATUS_ALIASES: Record<string, string> = {
@@ -45,6 +47,14 @@ const TYPE_ALIASES: Record<string, string> = {
   issue: "ISSUE",
 };
 
+export function stripEmojisAndSymbols(value: string): string {
+  return value
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji}]/gu, "")
+    .replace(/[—–\-•·*`_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function stripCell(value: string): string {
   return value
     .replace(/^\*+|\*+$/g, "")
@@ -60,13 +70,25 @@ function aliasKey(value: string): string {
 export function normalizeStatus(value?: string): string | undefined {
   if (!value) return value;
   const trimmed = stripCell(value);
+  const cleaned = stripEmojisAndSymbols(trimmed).toLowerCase();
+  if (STATUS_ALIASES[cleaned]) return STATUS_ALIASES[cleaned];
+  if (/in\s*progress/i.test(cleaned)) return "IN_PROGRESS";
+  if (/in\s*review/i.test(cleaned)) return "IN_REVIEW";
+  if (/todo|to\s*do|backlog/i.test(cleaned)) return "TODO";
+  if (/done|completed/i.test(cleaned)) return "DONE";
   return STATUS_ALIASES[aliasKey(trimmed)] || trimmed;
 }
 
 export function normalizePriority(value?: string): string | undefined {
   if (!value) return value;
   const trimmed = stripCell(value);
-  return PRIORITY_ALIASES[aliasKey(trimmed)] || trimmed;
+  const cleaned = stripEmojisAndSymbols(trimmed).toLowerCase();
+  if (PRIORITY_ALIASES[cleaned]) return PRIORITY_ALIASES[cleaned];
+  if (/urgent|critical/i.test(cleaned)) return "URGENT";
+  if (/high/i.test(cleaned)) return "HIGH";
+  if (/medium|med/i.test(cleaned)) return "MEDIUM";
+  if (/low/i.test(cleaned)) return "LOW";
+  return PRIORITY_ALIASES[aliasKey(trimmed)] || (cleaned ? cleaned.toUpperCase() : trimmed);
 }
 
 export function normalizeType(value?: string): string | undefined {
@@ -132,6 +154,8 @@ export function mergeWorkItem(base: AgentWorkItem, extra?: AgentWorkItem): Agent
     priority: normalizePriority(source.priority || base.priority),
     unassigned,
     assignees: unassigned ? [] : mergeAssignees(base.assignees, source.assignees),
+    labels: source.labels?.length ? source.labels : base.labels,
+    description: source.description || base.description,
   };
 }
 
@@ -145,14 +169,23 @@ export function splitMarkdownWorkItemTable(content: string): {
     const header = splitPipeRow(lines[index] ?? "");
     if (!header) continue;
     const labels = header.map((cell) => cell.toLowerCase().replace(/\s+/g, " ").trim());
-    const keyIdx = labels.findIndex((cell) => cell === "key");
-    if (keyIdx < 0) continue;
-    const titleIdx = labels.findIndex((cell) => cell.includes("title") || cell === "task" || cell === "name");
+    const keyIdx = labels.findIndex((cell) => cell === "key" || cell === "id");
+    const numIdx = labels.findIndex(
+      (cell) => cell === "#" || cell === "no" || cell === "num" || cell === "index" || cell === "item"
+    );
+    const titleIdx = labels.findIndex(
+      (cell) => cell.includes("title") || cell === "task" || cell === "name" || cell === "summary"
+    );
     const statusIdx = labels.findIndex((cell) => cell.includes("status"));
     const priorityIdx = labels.findIndex((cell) => cell.includes("priority"));
     const assigneeIdx = labels.findIndex((cell) => cell.includes("assignee"));
     const typeIdx = labels.findIndex((cell) => cell === "type" || cell.includes("type"));
-    if (statusIdx < 0 && priorityIdx < 0 && assigneeIdx < 0) continue;
+    const labelsIdx = labels.findIndex((cell) => cell.includes("label") || cell.includes("tag"));
+    const descIdx = labels.findIndex((cell) => cell.includes("desc") || cell.includes("detail") || cell.includes("criteria"));
+
+    if (titleIdx < 0) continue;
+    if (keyIdx < 0 && numIdx < 0 && typeIdx < 0) continue;
+    if (statusIdx < 0 && priorityIdx < 0 && assigneeIdx < 0 && typeIdx < 0 && labelsIdx < 0) continue;
 
     let cursor = index + 1;
     if (cursor < lines.length && isSeparatorRow(lines[cursor] ?? "")) cursor += 1;
@@ -165,15 +198,24 @@ export function splitMarkdownWorkItemTable(content: string): {
       }
       const cells = splitPipeRow(line);
       if (!cells) break;
-      const key = cells[keyIdx]?.trim() || "";
+      const rawKey = keyIdx >= 0 ? cells[keyIdx]?.trim() : numIdx >= 0 ? cells[numIdx]?.trim() : "";
+      const key = rawKey
+        ? rawKey.startsWith("#") || /^[A-Z0-9]+-\d+$/i.test(rawKey)
+          ? rawKey
+          : `#${rawKey}`
+        : `#${rows.length + 1}`;
       const assigneesRaw = assigneeIdx >= 0 ? cells[assigneeIdx] ?? "" : "";
-      const unassigned = /unassigned/i.test(assigneesRaw) || !assigneesRaw.trim();
-      rows.push({
+      const unassigned = assigneeIdx < 0 || /unassigned/i.test(assigneesRaw) || !assigneesRaw.trim();
+      const labelsRaw = labelsIdx >= 0 ? cells[labelsIdx] ?? "" : "";
+      const rowLabels = labelsRaw ? labelsRaw.split(",").map((l) => stripCell(l)).filter(Boolean) : [];
+      const description = descIdx >= 0 ? cells[descIdx]?.trim() : undefined;
+      const type = typeIdx >= 0 ? normalizeType(cells[typeIdx]) : "";
+      const row: AgentWorkItem = {
         key,
         title: titleIdx >= 0 ? cells[titleIdx] : "",
-        status: normalizeStatus(statusIdx >= 0 ? cells[statusIdx] : ""),
-        type: normalizeType(typeIdx >= 0 ? cells[typeIdx] : ""),
-        priority: normalizePriority(priorityIdx >= 0 ? cells[priorityIdx] : ""),
+        status: statusIdx >= 0 ? normalizeStatus(cells[statusIdx]) : "TODO",
+        type,
+        priority: priorityIdx >= 0 ? normalizePriority(cells[priorityIdx]) : "MEDIUM",
         unassigned,
         assignees: unassigned
           ? []
@@ -182,7 +224,10 @@ export function splitMarkdownWorkItemTable(content: string): {
               .map((name) => stripCell(name))
               .filter(Boolean)
               .map((name) => ({ name })),
-      });
+      };
+      if (rowLabels.length > 0) row.labels = rowLabels;
+      if (description) row.description = description;
+      rows.push(row);
       cursor += 1;
     }
     if (!rows.length) continue;

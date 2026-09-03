@@ -96,7 +96,7 @@ export async function createRun(
     },
   ];
 
-  const doc = await databases.createDocument(DATABASE_ID, AGENT_RUNS_ID, ID.unique(), {
+  const payload: Record<string, unknown> = {
     userId: input.userId,
     title,
     prompt,
@@ -109,7 +109,27 @@ export async function createRun(
     eventsJson: stringifyBounded([]),
     extraJson: stringifyBounded({ kind }, 4096),
     error: "",
-  });
+  };
+
+  let doc;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      doc = await databases.createDocument(DATABASE_ID, AGENT_RUNS_ID, ID.unique(), { ...payload });
+      break;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const match = message.match(/Unknown attribute:\s*"([^"]+)"/i);
+      if (match && match[1] && match[1] in payload) {
+        delete payload[match[1]];
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!doc) {
+    throw new Error("Failed to create agent run document.");
+  }
 
   return parseRun(doc as unknown as RunDocument);
 }
@@ -138,7 +158,26 @@ export async function updateRun(
   if (patch.events !== undefined) payload.eventsJson = stringifyBounded(patch.events);
   if (patch.error !== undefined) payload.error = truncateString(patch.error, 2048);
 
-  const doc = await databases.updateDocument(DATABASE_ID, AGENT_RUNS_ID, runId, payload);
+  let doc;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      doc = await databases.updateDocument(DATABASE_ID, AGENT_RUNS_ID, runId, { ...payload });
+      break;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const match = message.match(/Unknown attribute:\s*"([^"]+)"/i);
+      if (match && match[1] && match[1] in payload) {
+        delete payload[match[1]];
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!doc) {
+    throw new Error(`Failed to update agent run document ${runId}.`);
+  }
+
   return parseRun(doc as unknown as RunDocument);
 }
 

@@ -181,6 +181,7 @@ async function workItemCreate(
       sprintId: optionalString(args, "sprintId") ?? null,
       assigneeIds: Array.isArray(args.assigneeIds) ? args.assigneeIds : [],
       storyPoints: typeof args.storyPoints === "number" ? args.storyPoints : undefined,
+      labels: Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [],
       reporterId: auth.actorUserId,
       flagged: false,
     });
@@ -222,6 +223,9 @@ async function workItemUpdate(
   if (args.sprintId !== undefined) patch.sprintId = args.sprintId;
   if (args.assigneeIds !== undefined) patch.assigneeIds = args.assigneeIds;
   if (args.storyPoints !== undefined) patch.storyPoints = args.storyPoints;
+  if (args.labels !== undefined) {
+    patch.labels = Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [];
+  }
   if (args.status !== undefined) {
     const toStatus = requireString(args, "status");
     const fromStatus = String(item.status ?? "TODO");
@@ -344,6 +348,21 @@ async function sprintCreate(
     "sprints:manage",
   ]);
   const project = await loadProject(runtime, auth, projectId);
+  const existing = await runtime.store.list<Record<string, unknown>>(runtime.collections.sprints, [
+    { type: "equal", field: "projectId", value: projectId },
+    { type: "limit", value: 1 },
+  ]);
+  const isFirstSprint = existing.total === 0 && existing.documents.length === 0;
+  let startOnCreate = isFirstSprint;
+  if (startOnCreate) {
+    try {
+      await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.START_SPRINT, [
+        "sprints:manage",
+      ]);
+    } catch {
+      startOnCreate = false;
+    }
+  }
   const run = async () => {
     const sprint = await runtime.store.create<Record<string, unknown>>(runtime.collections.sprints, {
       name,
@@ -352,10 +371,19 @@ async function sprintCreate(
       goal: optionalString(args, "goal") ?? "",
       startDate: optionalString(args, "startDate"),
       endDate: optionalString(args, "endDate"),
-      status: "PLANNED",
+      status: startOnCreate ? "ACTIVE" : "PLANNED",
       position: 0,
     });
-    return toolResult({ sprint: withId(sprint) });
+    if (startOnCreate) {
+      await audit(runtime, {
+        projectId,
+        userId: auth.actorUserId,
+        action: "mcp.sprint.start",
+        resourceType: "sprint",
+        resourceId: sprint.$id,
+      });
+    }
+    return toolResult({ sprint: withId(sprint), started: startOnCreate });
   };
   const idem = optionalString(args, "idempotencyKey");
   if (idem) return withIdempotency(runtime, idem, "fairlx_sprint_create", run);
