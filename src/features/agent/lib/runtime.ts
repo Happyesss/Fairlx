@@ -20,10 +20,10 @@ import { getOrCreateHarness, upsertHarness } from "./harness";
 import { ensurePersonalMcp } from "./mcp-bridge";
 import { compileFairlxListIntent } from "./intent-compiler";
 import { extractToolCallsFromText, mergeToolCalls, normalizeAgentToolCall, stripToolCallMarkup } from "./parse-tool-calls";
-import { displayUserContent, trainingSaveReady } from "./session-context";
+import { displayUserContent, isPersonalSessionMode, trainingSaveReady } from "./session-context";
 import { getPlatformProviderCredentials, overlayPlatformModel } from "./platform-credentials";
 import { buildSystemPrompt } from "./prompt";
-import { isTrainingKickoffContent, isTrainingRun } from "./personal-training";
+import { isTrainingKickoffContent, isTrainingRun, profileIsTrained } from "./personal-training";
 import { getAiDocument, getMcpDocument, parseAiConfig, parseMcpConfig } from "./store";
 import { decryptSecret } from "./secrets";
 import {
@@ -43,7 +43,7 @@ import {
 import { executeTool, openaiToolsForTurn, trainingSaveTool } from "./tools";
 import { compactJsonString } from "./truncate";
 import { getRun, listRuns, updateRun } from "./runs";
-import { getPersonalAgentPrompt } from "./personal-agent-store";
+import { getPersonalAgent } from "./personal-agent-store";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
 import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
@@ -386,17 +386,28 @@ export async function runAgentTurn(params: {
     return null;
   };
 
-  const [initialHarness, context, mcpDoc, aiDoc, runs, personalPrompt] = await Promise.all([
+  const [initialHarness, context, mcpDoc, aiDoc, runs, personalProfile] = await Promise.all([
     getOrCreateHarness(databases, user.$id),
     loadAgentContext(databases, user),
     getMcpDocument(databases, user.$id),
     getAiDocument(databases, user.$id),
     listRuns(databases, user.$id, 40),
-    getPersonalAgentPrompt(databases, user.$id),
+    getPersonalAgent(databases, user.$id),
   ]);
   let harness = initialHarness;
   const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
   const stored = parseAiConfig(aiDoc);
+
+  if (
+    isPersonalSessionMode(harness.settings.sessionMode) &&
+    !isTrainingRun(run) &&
+    !profileIsTrained(personalProfile)
+  ) {
+    return persistUnlessStopped({
+      status: "failed",
+      error: "Personal Agent is not trained yet. Train or self-train first.",
+    });
+  }
 
   const stoppedBeforeModel = await haltIfStopped();
   if (stoppedBeforeModel) return stoppedBeforeModel;
@@ -430,7 +441,16 @@ export async function runAgentTurn(params: {
         mcpTools: mcpToolDefs,
       });
   const specialistTools = tools.filter((tool) => tool.function.name !== "delegate_agent");
-  const system = buildSystemPrompt({ harness, context, run, mcp, personalPrompt });
+  const personalPrompt =
+    personalProfile && profileIsTrained(personalProfile) ? personalProfile.compiledPrompt : undefined;
+  const system = buildSystemPrompt({
+    harness,
+    context,
+    run,
+    mcp,
+    personalPrompt,
+    personalAnswers: personalProfile?.answers,
+  });
 
   const toolContext = () => ({
     runId: run.id,

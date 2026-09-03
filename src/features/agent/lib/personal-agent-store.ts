@@ -48,6 +48,7 @@ function parseHistory(raw: string | undefined): PersonalAgentVersion[] {
 
 export function parsePersonalAgent(doc: PersonalAgentDocument): PersonalAgentProfile {
   const personaRole = isPersonalPersonaRole(doc.personaRole) ? doc.personaRole : "frontend";
+  const answers = parseJson<PersonalTrainingAnswer[]>(doc.answersJson, []);
   return {
     id: doc.$id,
     userId: doc.userId,
@@ -55,7 +56,14 @@ export function parsePersonalAgent(doc: PersonalAgentDocument): PersonalAgentPro
     jobTitle: doc.jobTitle || undefined,
     workspaceRole: doc.workspaceRole || undefined,
     status: asStatus(doc.status),
-    answers: parseJson<PersonalTrainingAnswer[]>(doc.answersJson, []),
+    answers: Array.isArray(answers)
+      ? answers.map((item) => ({
+          questionId: String(item.questionId ?? ""),
+          question: String(item.question ?? ""),
+          answer: String(item.answer ?? ""),
+          source: item.source === "inferred" || item.source === "user" ? item.source : undefined,
+        }))
+      : [],
     compiledPrompt: doc.compiledPrompt || "",
     promptVersion: Number(doc.promptVersion) || 0,
     history: parseHistory(doc.historyJson),
@@ -160,4 +168,14 @@ export async function upsertPersonalAgent(
       )) as unknown as PersonalAgentDocument);
 
   return parsePersonalAgent(saved);
+}
+
+export async function resetPersonalAgent(
+  databases: Databases,
+  userId: string,
+): Promise<null> {
+  const existing = await getDocument(databases, userId);
+  if (!existing) return null;
+  await databases.deleteDocument(DATABASE_ID, PERSONAL_AGENTS_ID, existing.$id);
+  return null;
 }

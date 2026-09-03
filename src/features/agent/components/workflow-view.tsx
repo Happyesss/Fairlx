@@ -1064,11 +1064,14 @@ function WorkflowSidebar({
     [run.messages, run.workspaceId, workspaceId],
   );
   const effectiveProjectId = run.projectId || launch?.projectId || harness?.settings.defaultProjectId;
-  const project =
-    context?.projects.find((item) => item.id === effectiveProjectId) ??
-    (launch && launch.projectId === effectiveProjectId
-      ? { id: launch.projectId, name: launch.name || "Project", workspaceId: launch.workspaceId }
-      : undefined);
+  const project = useMemo(() => {
+    const fromContext = context?.projects.find((item) => item.id === effectiveProjectId);
+    if (fromContext) return fromContext;
+    if (launch && launch.projectId === effectiveProjectId) {
+      return { id: launch.projectId, name: launch.name || "Project", workspaceId: launch.workspaceId };
+    }
+    return undefined;
+  }, [context?.projects, effectiveProjectId, launch]);
   const projectsForSelect = useMemo(() => {
     const list = [...workspaceProjects];
     if (project && !list.some((item) => item.id === project.id)) {

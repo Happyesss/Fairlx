@@ -365,6 +365,9 @@ export type AgentContextWorkItem = {
   workspaceId?: string;
   projectId?: string;
   labels?: string[];
+  dueDate?: string;
+  flagged?: boolean;
+  createdAt?: string;
 };
 
 export type AgentContextNotification = {
@@ -422,10 +425,20 @@ export type AgentContext = {
 export type PersonalPersonaRole = "tech_lead" | "frontend" | "qa" | "pm";
 export type PersonalAgentStatus = "draft" | "trained" | "retraining";
 
+export type PersonalTrainingAnswerSource = "user" | "inferred";
+
 export type PersonalTrainingAnswer = {
   questionId: string;
   question: string;
   answer: string;
+  source?: PersonalTrainingAnswerSource;
+};
+
+export type TrainingProgress = {
+  answered: number;
+  inferred: number;
+  total: number;
+  percent: number;
 };
 
 export type PersonalTrainingQuestion = {

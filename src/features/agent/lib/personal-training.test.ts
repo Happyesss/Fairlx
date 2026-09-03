@@ -10,9 +10,13 @@ import {
   isTrainingRun,
   buildTrainingInterviewPrompt,
   formatInterviewAgenda,
+  formatTrainingSnapshot,
   TRAIN_PERSONAL_MARKER,
+  trainingProgress,
+  answersFromTrainingTranscript,
+  inferAnswersFromSnapshot,
 } from "./personal-training";
-import type { AgentContext, PersonalTrainingAnswer } from "../types";
+import { profileIsTrained } from "./personal-agent-status";
 
 function context(): AgentContext {
   return {
@@ -91,5 +95,117 @@ describe("personal agent training", () => {
     expect(prompt).toContain("Describe your team");
     expect(prompt).not.toContain("You are the Fairlx Personal Agent, the user's Chief of Staff");
     expect(formatInterviewAgenda("tech_lead")).toContain("Describe your team");
+  });
+
+  it("skips covered agenda topics when resuming an interview", () => {
+    const prompt = buildTrainingInterviewPrompt({
+      userName: "Ada",
+      personaRole: "tech_lead",
+      covered: [
+        {
+          questionId: "tl_team",
+          question: "Describe your team",
+          answer: "We are six engineers and I own reviews.",
+          source: "user",
+        },
+      ],
+    });
+    expect(prompt).toContain("Already covered");
+    expect(prompt).toContain("We are six engineers");
+    expect(prompt).toContain("Skip the opening role question");
+  });
+
+  it("treats the agent as untrained until a compiled profile is saved", () => {
+    expect(profileIsTrained(null)).toBe(false);
+    expect(
+      profileIsTrained({
+        id: "p1",
+        userId: "u1",
+        personaRole: "frontend",
+        status: "draft",
+        answers: filled("frontend"),
+        compiledPrompt: "",
+        promptVersion: 0,
+        history: [],
+        updatedAt: new Date().toISOString(),
+      }),
+    ).toBe(false);
+    expect(
+      profileIsTrained({
+        id: "p1",
+        userId: "u1",
+        personaRole: "frontend",
+        status: "trained",
+        answers: filled("frontend"),
+        compiledPrompt: "You operate as Ada's Personal Agent.",
+        promptVersion: 1,
+        history: [],
+        updatedAt: new Date().toISOString(),
+      }),
+    ).toBe(true);
+  });
+
+  it("computes training progress from filled answers", () => {
+    const questions = questionsForRole("frontend");
+    const answers = questions.slice(0, 4).map((question) => ({
+      questionId: question.id,
+      question: question.prompt,
+      answer: "A complete sentence covering this topic in detail.",
+      source: "user" as const,
+    }));
+    const progress = trainingProgress(answers, "frontend");
+    expect(progress.answered).toBe(4);
+    expect(progress.inferred).toBe(0);
+    expect(progress.total).toBe(questions.length);
+    expect(progress.percent).toBe(Math.round((4 / questions.length) * 100));
+  });
+
+  it("maps training transcript replies onto the agenda after a role tap", () => {
+    const questions = questionsForRole("tech_lead");
+    const extracted = answersFromTrainingTranscript(
+      [
+        { role: "user", content: TRAIN_PERSONAL_MARKER },
+        { role: "assistant", content: "Hi Ada, are you a Tech Lead?" },
+        { role: "user", content: "Tech Lead" },
+        { role: "assistant", content: "Describe your team" },
+        { role: "user", content: "We are six people and reviews go to me first." },
+        { role: "user", content: "Ready means criteria exist. Done means merged with tests." },
+      ],
+      questions,
+    );
+    expect(extracted[0]?.questionId).toBe("tl_team");
+    expect(extracted[0]?.answer).toContain("six people");
+    expect(extracted[1]?.questionId).toBe("tl_process");
+    expect(extracted.every((item) => item.source === "user")).toBe(true);
+  });
+
+  it("fills remaining questions from an empty workspace snapshot", () => {
+    const empty: AgentContext = {
+      ...context(),
+      workspaces: [],
+      projects: [],
+      workItems: [],
+      docs: [],
+      githubRepos: [],
+    };
+    const snapshot = formatTrainingSnapshot(empty);
+    expect(snapshot).toMatch(/empty or new/i);
+    const answers = inferAnswersFromSnapshot({
+      role: "qa",
+      previous: [
+        {
+          questionId: "qa_strategy",
+          question: "strategy",
+          answer: "I automate regressions and always click the changed path.",
+          source: "user",
+        },
+      ],
+      snapshot,
+      userName: "Ada",
+    });
+    expect(answers.find((item) => item.questionId === "qa_strategy")?.source).toBe("user");
+    expect(answers.every((item) => item.answer.length >= 8)).toBe(true);
+    expect(answers.filter((item) => item.source === "inferred").length).toBeGreaterThan(5);
+    expect(trainingProgress(answers, "qa").percent).toBe(100);
   });
 });

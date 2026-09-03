@@ -7,6 +7,7 @@ import { requireProjectAccess } from "../runtime/rbac";
 import { loadWorkItem } from "../runtime/tenant";
 import { audit, requireString } from "./helpers";
 import { workspaceMemberRemove } from "./write";
+import { projectTeamDelete, projectTeamMemberRemove } from "./write-team";
 
 export async function handleDestructiveTool(
   name: string,
@@ -38,6 +39,10 @@ export async function handleDestructiveTool(
       return webhookDelete(args, runtime, auth);
     case "fairlx_workspace_member_remove":
       return workspaceMemberRemove(args, runtime, auth);
+    case "fairlx_project_team_delete":
+      return projectTeamDelete(args, runtime, auth);
+    case "fairlx_project_team_member_remove":
+      return projectTeamMemberRemove(args, runtime, auth);
     default:
       throw invalidParams(`Unknown destructive tool: ${name}`);
   }

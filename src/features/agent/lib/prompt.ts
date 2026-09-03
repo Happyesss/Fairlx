@@ -1,4 +1,4 @@
-import type { AgentContext, AgentHarness, AgentRun, AgentSpecialistId, McpConfig } from "../types";
+import type { AgentContext, AgentHarness, AgentRun, AgentSpecialistId, McpConfig, PersonalTrainingAnswer } from "../types";
 import { compilePersonaPrompt, inferPersonaRole } from "@fairlx/multi-agent";
 import { AGENT_SPECIALISTS, resolveSpecialist, specialistById } from "./graph";
 import { matchingAutomations, rankKnowledge } from "./search";
@@ -18,6 +18,7 @@ export function buildSystemPrompt(params: {
   mcp: McpConfig;
   specialist?: AgentSpecialistId;
   personalPrompt?: string;
+  personalAnswers?: PersonalTrainingAnswer[];
 }): string {
   const { harness, context, run } = params;
   const lastUser = [...run.messages].reverse().find((message) => message.role === "user");
@@ -53,6 +54,7 @@ export function buildSystemPrompt(params: {
         run.workspaceId || harness.settings.defaultWorkspaceId || workspace?.id,
         run.projectId || harness.settings.defaultProjectId || project?.id,
       ),
+      covered: params.personalAnswers,
     });
   }
 
@@ -102,7 +104,9 @@ export function buildSystemPrompt(params: {
     "- You may propose new work items and stories. Creating them in Fairlx waits for Accept. Do not invent existing members or claim records already exist.",
     "- Never invent or hallucinate existing work items, bug counts, sprint numbers, or metrics. Base all observations strictly on real data returned by tools; if lookups return no items or fail, state that truthfully.",
     "- When asked to change a member's role, update it with their name (or email) and the new role. Wait for Accept. Do not send the user to the Members page.",
-    "- When asked to add someone to this workspace, call fairlx_workspace_member_add with their name or email. Wait for Accept. That is Add from Org for organization workspaces. Do not send the user to Settings.",
+    "- When asked to add someone to this workspace, call fairlx_workspace_member_add with their email (and name if you have it). Wait for Accept. If they are not in the organization yet, the owner can still invite them — that adds them to the organization and the workspace. Use role ADMIN for a lead developer. Do not send the user to Settings.",
+    "- When asked to create a project team, call fairlx_project_team_create with the projectId and name. Wait for Accept. Do not send the user to Settings → Teams.",
+    "- When asked to add someone to a project team, call fairlx_project_team_member_add with their name or email and the team name (or teamId). They must already be in the workspace — invite them with fairlx_workspace_member_add first if needed. Wait for Accept. Do not send the user to Settings.",
     "- When asked to remove someone, call fairlx_workspace_member_remove with their name or email. Wait for Accept.",
     "- When asked for an invite, join, or share link, call fairlx_workspace_invite_get. If invite links are disabled, add the person with fairlx_workspace_member_add instead of sending the user to Settings.",
     "- Create, update, and delete wait for the user to Accept or Deny in the UI. Do not ask them to type confirm.",

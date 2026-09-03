@@ -43,6 +43,7 @@ const ADMIN_PERMISSIONS = [
   PERMISSIONS.EDIT_DOCS,
   PERMISSIONS.DELETE_DOCS,
   PERMISSIONS.EDIT_SETTINGS,
+  PERMISSIONS.MANAGE_TEAMS,
 ];
 
 function toolNames(permissions: string[], isOwner = false) {
@@ -53,8 +54,8 @@ function toolNames(permissions: string[], isOwner = false) {
 }
 
 describe("MCP surface counts", () => {
-  it("exposes 80 tools, 10 resource templates, 7 prompts, 7 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(80);
+  it("exposes 85 tools, 10 resource templates, 7 prompts, 7 skills", () => {
+    expect(TOOL_CATALOG).toHaveLength(85);
     expect(RESOURCE_TEMPLATES).toHaveLength(10);
     expect(PROMPT_CATALOG).toHaveLength(7);
     expect(SKILLS).toHaveLength(7);
@@ -85,8 +86,10 @@ describe("listToolsForClient role filter", () => {
 
   it("gives owners the full catalog including project delete and member role updates", () => {
     const names = toolNames([], true);
-    expect(names).toHaveLength(80);
+    expect(names).toHaveLength(85);
     expect(names).toContain("fairlx_project_delete");
+    expect(names).toContain("fairlx_project_team_create");
+    expect(names).toContain("fairlx_project_team_member_add");
     expect(names).toContain("fairlx_workspace_member_update");
     expect(names).toContain("fairlx_workspace_member_add");
     expect(names).toContain("fairlx_workspace_member_remove");
@@ -103,5 +106,13 @@ describe("listToolsForClient role filter", () => {
     expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_workspace_member_update");
     expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_workspace_member_add");
     expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_workspace_member_remove");
+  });
+
+  it("gives admins project team writes but not regular members", () => {
+    expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_create");
+    expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_member_add");
+    expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_delete");
+    expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_project_team_create");
+    expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_project_team_member_add");
   });
 });

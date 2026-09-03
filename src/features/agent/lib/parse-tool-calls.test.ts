@@ -27,6 +27,10 @@ describe("resolveToolName", () => {
     expect(resolveToolName("removeMember", ["fairlx_workspace_member_remove"])).toBe(
       "fairlx_workspace_member_remove",
     );
+    expect(resolveToolName("createTeam", ["fairlx_project_team_create"])).toBe("fairlx_project_team_create");
+    expect(resolveToolName("addTeamMember", ["fairlx_project_team_member_add"])).toBe(
+      "fairlx_project_team_member_add",
+    );
     expect(resolveToolName("mcp_list", MCP)).toBe("mcp_list");
   });
 });

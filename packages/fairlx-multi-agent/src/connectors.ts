@@ -235,8 +235,7 @@ export function createPlaywrightQa(): QaConnector {
         };
       }
       try {
-        const specifier = "playwright";
-        const playwright = (await import(specifier)) as {
+        const playwright = (await import(/* webpackIgnore: true */ "playwright")) as {
           chromium: {
             launch: (opts: { headless: boolean }) => Promise<{
               newPage: () => Promise<{

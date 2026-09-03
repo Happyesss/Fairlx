@@ -2,14 +2,16 @@ import { PERSONAS, inferPersonaRole, type PersonaRole } from "@fairlx/multi-agen
 
 import type {
   AgentContext,
-  PersonalAgentProfile,
+  AgentRun,
   PersonalPersonaRole,
   PersonalTrainingAnswer,
   PersonalTrainingQuestion,
+  TrainingProgress,
 } from "../types";
-import { TRAIN_PERSONAL_MARKER, isTrainingKickoffContent } from "./session-context";
+import { TRAIN_PERSONAL_MARKER, displayUserContent, isTrainingKickoffContent } from "./session-context";
+import { profileIsTrained } from "./personal-agent-status";
 
-export { TRAIN_PERSONAL_MARKER, isTrainingKickoffContent };
+export { TRAIN_PERSONAL_MARKER, isTrainingKickoffContent, profileIsTrained };
 
 const ROLE_LABEL: Record<PersonalPersonaRole, string> = {
   tech_lead: "Tech Lead",
@@ -351,26 +353,32 @@ export function compilerUserMessage(input: {
 export function mergeAnswers(
   questions: PersonalTrainingQuestion[],
   previous: PersonalTrainingAnswer[] | undefined,
-  incoming: Array<{ questionId: string; answer: string }>,
+  incoming: Array<{ questionId: string; answer: string; source?: PersonalTrainingAnswer["source"] }>,
 ): PersonalTrainingAnswer[] {
-  const prev = new Map((previous ?? []).map((item) => [item.questionId, item.answer]));
-  const next = new Map(incoming.map((item) => [item.questionId, item.answer]));
-  return questions.map((question) => ({
-    questionId: question.id,
-    question: question.prompt,
-    answer: (next.get(question.id) ?? prev.get(question.id) ?? "").trim(),
-  }));
+  const prev = new Map((previous ?? []).map((item) => [item.questionId, item]));
+  const next = new Map(incoming.map((item) => [item.questionId, item]));
+  return questions.map((question) => {
+    const incomingItem = next.get(question.id);
+    const prevItem = prev.get(question.id);
+    const answer = (incomingItem?.answer ?? prevItem?.answer ?? "").trim();
+    return {
+      questionId: question.id,
+      question: question.prompt,
+      answer,
+      source: incomingItem?.source ?? prevItem?.source,
+    };
+  });
+}
+
+export function isFilledAnswer(answer: string | undefined): boolean {
+  return Boolean(answer && answer.trim().length >= 8);
 }
 
 export function requiredAnswersMissing(answers: PersonalTrainingAnswer[], questions: PersonalTrainingQuestion[]): string[] {
   const required = new Set(questions.filter((item) => item.required !== false).map((item) => item.id));
   return answers
-    .filter((item) => required.has(item.questionId) && item.answer.length < 8)
+    .filter((item) => required.has(item.questionId) && !isFilledAnswer(item.answer))
     .map((item) => item.questionId);
-}
-
-export function profileIsTrained(profile: PersonalAgentProfile | null | undefined): boolean {
-  return Boolean(profile?.status === "trained" && profile.compiledPrompt.trim());
 }
 
 export function trainingKickoffPrompt() {
@@ -388,35 +396,57 @@ export function formatTrainingSnapshot(
   workspaceId?: string,
   projectId?: string,
 ): string {
-  const workspaces = context.workspaces.slice(0, 6);
+  const workspaces = context.workspaces.slice(0, 8);
   const projects = context.projects
     .filter((project) => !workspaceId || project.workspaceId === workspaceId)
-    .slice(0, 8);
+    .slice(0, 10);
   const items = context.workItems
     .filter((item) => {
       if (projectId) return item.projectId === projectId;
       if (workspaceId) return item.workspaceId === workspaceId;
       return true;
     })
-    .slice(0, 10);
+    .slice(0, 16);
   const repos = context.githubRepos
     .filter((repo) => !workspaceId || repo.workspaceId === workspaceId)
-    .slice(0, 6);
+    .slice(0, 8);
+  const docs = context.docs
+    .filter((doc) => !workspaceId || doc.workspaceId === workspaceId)
+    .slice(0, 10);
   const lines = [
     workspaces.length
       ? `Workspaces: ${workspaces.map((item) => `${item.name}${item.role ? ` (${item.role})` : ""}`).join("; ")}`
       : "",
     projects.length
-      ? `Projects: ${projects.map((item) => `${item.name}${item.key ? ` [${item.key}]` : ""}${item.status ? ` · ${item.status}` : ""}`).join("; ")}`
+      ? `Projects: ${projects
+          .map((item) => {
+            const bits = [item.name, item.key ? `[${item.key}]` : "", item.status, item.description?.slice(0, 80)]
+              .filter(Boolean)
+              .join(" · ");
+            return bits;
+          })
+          .join("; ")}`
       : "",
     items.length
-      ? `Recent work items: ${items.map((item) => `${item.key ? `${item.key} ` : ""}${item.title}${item.status ? ` (${item.status})` : ""}`).join("; ")}`
+      ? `Assigned work: ${items
+          .map((item) =>
+            [item.key, item.title, item.status, item.priority, item.dueDate ? `due ${item.dueDate.slice(0, 10)}` : ""]
+              .filter(Boolean)
+              .join(" "),
+          )
+          .join("; ")}`
+      : "Assigned work: none.",
+    docs.length
+      ? `Docs: ${docs.map((item) => item.title || item.name || item.category).filter(Boolean).join("; ")}`
       : "",
     repos.length
       ? `Repos: ${repos.map((item) => [item.owner, item.repositoryName].filter(Boolean).join("/") || item.repositoryName).join("; ")}`
       : "",
   ].filter(Boolean);
-  return lines.join("\n") || "No Fairlx workspace snapshot is available yet.";
+  if (!workspaces.length && !projects.length && !items.length) {
+    return "This Fairlx workspace is empty or new. Infer a sensible operating system for the suggested role and assume typical defaults until real work exists.";
+  }
+  return lines.join("\n") || "This Fairlx workspace is empty or new. Infer a sensible operating system for the suggested role and assume typical defaults until real work exists.";
 }
 
 export function formatInterviewAgenda(role: PersonalPersonaRole): string {
@@ -433,9 +463,18 @@ export function buildTrainingInterviewPrompt(input: {
   projectName?: string;
   retraining?: boolean;
   snapshot?: string;
+  covered?: PersonalTrainingAnswer[];
 }): string {
   const roleName = ROLE_LABEL[input.personaRole];
   const scope = [input.workspaceName, input.projectName].filter(Boolean).join(" / ");
+  const covered = (input.covered ?? []).filter((item) => isFilledAnswer(item.answer));
+  const coveredBlock = covered.length
+    ? [
+        "Already covered (do not re-ask; start at the next uncovered agenda topic):",
+        ...covered.map((item) => `Q: ${item.question}\nA: ${item.answer}`),
+        "",
+      ]
+    : [];
   return [
     `You are ${input.userName}'s Fairlx Personal Agent. This chat is a training interview, not a task.`,
     `Their first name is ${input.userName}. Address them as ${input.userName} in every message.`,
@@ -448,10 +487,13 @@ export function buildTrainingInterviewPrompt(input: {
       ? `${input.userName} already has a trained agent. This interview retrains it. Acknowledge that once, then continue.`
       : `${input.userName} has not trained you yet. This interview creates their standing prompt.`,
     "",
+    ...coveredBlock,
     "How to interview:",
-    `- First message only: greet ${input.userName} by name, then ask them to confirm or choose their role (Tech Lead, Frontend Engineer, QA Engineer, Product Manager). Offer the suggested role as a guess — do not assign it. Do not ask any agenda question yet.`,
-    "- End that first message with 3–5 invented choices for the role question, including an infer/skip path and a beginner path. Do not use a fixed list.",
-    "- Wait for their reply. If they correct the role, switch the agenda. If they skip or ask you to infer, pick the best-fit role from the snapshot below, say what you inferred, and continue.",
+    covered.length
+      ? `- Role is already set to ${roleName}. Skip the opening role question. Acknowledge the answers above in one sentence, then ask the next uncovered agenda question.`
+      : `- First message only: greet ${input.userName} by name, then ask them to confirm or choose their role (Tech Lead, Frontend Engineer, QA Engineer, Product Manager). Offer the suggested role as a guess — do not assign it. Do not ask any agenda question yet.`,
+    covered.length ? "" : "- End that first message with 3–5 invented choices for the role question, including an infer/skip path and a beginner path. Do not use a fixed list.",
+    covered.length ? "" : "- Wait for their reply. If they correct the role, switch the agenda. If they skip or ask you to infer, pick the best-fit role from the snapshot below, say what you inferred, and continue.",
     "- After the role is set, ask exactly one agenda question per turn. Wait for their reply before the next.",
     "- Invent 3–5 short choices for THAT question — role guesses, skip, infer from workspace/team, beginner, or a concrete snapshot-based answer. Never reuse a fixed hardcoded set.",
     "- Always include at least one skip/infer path so they never have to type if they do not want to.",
@@ -473,11 +515,189 @@ export function buildTrainingInterviewPrompt(input: {
     `- After the tool succeeds, tell ${input.userName} their Personal Agent is live and they can keep chatting in Personal mode.`,
     "",
     "Fairlx snapshot (use this when they skip, are a beginner, or ask you to learn from workspace/team):",
-    input.snapshot?.trim() || "No Fairlx workspace snapshot is available yet.",
+    input.snapshot?.trim() || "This Fairlx workspace is empty or new. Infer a sensible operating system for the suggested role and assume typical defaults until real work exists.",
     "",
     "Interview agenda (after role is set):",
     formatInterviewAgenda(input.personaRole),
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+export function trainingProgress(
+  answers: PersonalTrainingAnswer[] | undefined,
+  role: PersonalPersonaRole,
+): TrainingProgress {
+  const questions = questionsForRole(role);
+  const total = questions.length;
+  const byId = new Map((answers ?? []).map((item) => [item.questionId, item]));
+  let answered = 0;
+  let inferred = 0;
+  for (const question of questions) {
+    const item = byId.get(question.id);
+    if (!isFilledAnswer(item?.answer)) continue;
+    answered += 1;
+    if (item?.source === "inferred") inferred += 1;
+  }
+  return {
+    answered,
+    inferred,
+    total,
+    percent: total ? Math.round((answered / total) * 100) : 0,
+  };
+}
+
+const ROLE_REPLY =
+  /^(tech lead|frontend|frontend engineer|qa|qa engineer|product manager|pm|infer|skip|beginner)\b/i;
+
+function isRoleReply(text: string): boolean {
+  const value = text.trim();
+  if (ROLE_REPLY.test(value)) return true;
+  return Object.values(ROLE_LABEL).some((label) => value.toLowerCase() === label.toLowerCase());
+}
+
+export function answersFromTrainingTranscript(
+  messages: Array<{ role: string; content: string }>,
+  questions: PersonalTrainingQuestion[],
+): PersonalTrainingAnswer[] {
+  const replies = messages
+    .filter((message) => message.role === "user")
+    .map((message) => displayUserContent(message.content).trim())
+    .filter((text) => text && !isTrainingKickoffContent(text));
+  const start = replies[0] && isRoleReply(replies[0]) ? 1 : 0;
+  const rest = replies.slice(start);
+  const extracted: PersonalTrainingAnswer[] = [];
+  for (const [index, question] of questions.entries()) {
+    const answer = rest[index]?.trim() ?? "";
+    if (!answer) continue;
+    extracted.push({
+      questionId: question.id,
+      question: question.prompt,
+      answer,
+      source: "user",
+    });
+  }
+  return extracted;
+}
+
+export function overlayTrainingAnswers(
+  questions: PersonalTrainingQuestion[],
+  saved: PersonalTrainingAnswer[] | undefined,
+  transcript: PersonalTrainingAnswer[],
+): PersonalTrainingAnswer[] {
+  const savedMap = new Map((saved ?? []).map((item) => [item.questionId, item]));
+  const transcriptMap = new Map(transcript.map((item) => [item.questionId, item]));
+  return questions.map((question) => {
+    const fromSaved = savedMap.get(question.id);
+    const fromTranscript = transcriptMap.get(question.id);
+    const savedAnswer = fromSaved?.answer?.trim() ?? "";
+    const transcriptAnswer = fromTranscript?.answer?.trim() ?? "";
+    const answer = transcriptAnswer || savedAnswer;
+    return {
+      questionId: question.id,
+      question: question.prompt,
+      answer,
+      source: transcriptAnswer ? fromTranscript?.source ?? "user" : fromSaved?.source,
+    };
+  });
+}
+
+const ACTIVE_TRAINING_STATUSES = new Set(["running", "stopped", "awaiting_confirmation"]);
+
+export function findActiveTrainingRun(runs: AgentRun[]): AgentRun | undefined {
+  return runs.find((run) => run.kind === "training" && ACTIVE_TRAINING_STATUSES.has(run.status));
+}
+
+export function findLatestTrainingRun(runs: AgentRun[]): AgentRun | undefined {
+  return runs.find((run) => run.kind === "training");
+}
+
+type InferCtx = {
+  userName: string;
+  role: PersonalPersonaRole;
+  snapshot: string;
+  workspaceName?: string;
+  projectName?: string;
+  workspaceRole?: string;
+};
+
+function scopeLine(ctx: InferCtx): string {
+  return [ctx.workspaceName, ctx.projectName].filter(Boolean).join(" / ") || "this Fairlx workspace";
+}
+
+function snapshotLooksEmpty(snapshot: string): boolean {
+  return /empty or new/i.test(snapshot) || !snapshot.trim();
+}
+
+export function inferTemplateAnswer(questionId: string, ctx: InferCtx): string {
+  const role = ROLE_LABEL[ctx.role];
+  const scope = scopeLine(ctx);
+  const empty = snapshotLooksEmpty(ctx.snapshot);
+  const emptyNote = empty
+    ? " The workspace is new or empty, so I am assuming typical defaults until real work exists."
+    : "";
+  const templates: Record<string, string> = {
+    title_mandate: `I am a ${role} on ${scope}. I am accountable for ${personaFocus(ctx.role).replace(/\.$/, "")}.${emptyNote}`,
+    in_scope: `In scope: work on ${scope} that matches a ${role} mandate. Out of scope: other teams' queues, billing, and production deploys I do not own.${emptyNote}`,
+    communication: "Default to concise bullets, lead with the answer, and skip process talk. Be blunt on risk; stay diplomatic with stakeholders.",
+    success_day: "By mid-morning I need the top risks and my next three tasks. By end of day I want blockers cleared or escalated and a shippable slice moved forward.",
+    priority_rules: "P0 is production or customer-facing breakage. Then due-soon assigned work. Then flagged items. I postpone polish and unassigned nice-to-haves.",
+    decision_style: "Act without me on reversible research, drafting, and triage. Ask me before deletes, role changes, messages to leadership, or production merges.",
+    quality_bar: "Done means the change matches existing Fairlx patterns, is grounded in live data, and I would accept the PR. I reject mock data and inaccessible UI.",
+    never_do: "Never delete workspaces, purge data, merge to main or production, change billing, or assign people without an explicit yes from me.",
+    tools_context: `Primary: ${scope}.${ctx.workspaceRole ? ` Fairlx role ${ctx.workspaceRole}.` : ""} Ignore unrelated workspaces and noisy side projects.`,
+    people: `${ctx.userName} is the principal. Treat workspace admins as stakeholders. Do not loop in people who are not on ${scope}.`,
+    tl_team: `Lead the ${scope} team: watch capacity, pull unassigned work, and keep review load honest. Surface blockers before standup.${emptyNote}`,
+    tl_process: "Ready means a clear owner, acceptance criteria, and no open blocker. Done means merged with the quality bar. Do not pull work that is not ready.",
+    tl_briefing: "Lead with blockers, then unassigned work, then review load and sprint risk. Assigned work for me comes after the team picture.",
+    fe_stack: "Use existing Fairlx UI, React/Next, and fairlx tokens. Never invent mock data. Always include empty states and a11y.",
+    fe_bugs: "Reproduce first, then change the smallest layout or CSS surface. Ship when the original path works on desktop and a mobile width.",
+    fe_slice: "A shippable slice is one vertical path with live data, empty state, and a responsive check. I always include the unhappy path.",
+    qa_strategy: "Automate regressions. Always click through the changed flow in a live browser. Skip restating process when the proof is attached.",
+    qa_proof: "Pass means a short note plus screenshot or video of the path. Fail means steps to reproduce and what you expected. Attach proof to the work item.",
+    qa_regression: "I block a release on customer-facing regressions or flaky gates we cannot explain. I file everything else and retest after the fix.",
+    pm_cadence: `We plan in the current ${scope} sprint. Status is outcome-first for stakeholders. Never say 'on track' when a date will slip.`,
+    pm_scope: "Risk language is concrete: what slips, by how much, and what we cut. I escalate to the workspace admin first. I cut polish before the sprint goal.",
+    pm_discovery: "Ask for the user and the constraint, draft stories with acceptance criteria, and do not invent requirements that are not in the snapshot or the ask.",
+  };
+  return templates[questionId] || `Operate as a ${role} on ${scope} using Fairlx data only.${emptyNote}`;
+}
+
+export function inferAnswersFromSnapshot(input: {
+  role: PersonalPersonaRole;
+  questions?: PersonalTrainingQuestion[];
+  previous?: PersonalTrainingAnswer[];
+  snapshot: string;
+  userName: string;
+  workspaceName?: string;
+  projectName?: string;
+  workspaceRole?: string;
+}): PersonalTrainingAnswer[] {
+  const questions = input.questions ?? questionsForRole(input.role);
+  const ctx: InferCtx = {
+    userName: input.userName,
+    role: input.role,
+    snapshot: input.snapshot,
+    workspaceName: input.workspaceName,
+    projectName: input.projectName,
+    workspaceRole: input.workspaceRole,
+  };
+  const previous = new Map((input.previous ?? []).map((item) => [item.questionId, item]));
+  return questions.map((question) => {
+    const existing = previous.get(question.id);
+    if (isFilledAnswer(existing?.answer)) {
+      return {
+        questionId: question.id,
+        question: question.prompt,
+        answer: existing!.answer.trim(),
+        source: existing?.source ?? "user",
+      };
+    }
+    return {
+      questionId: question.id,
+      question: question.prompt,
+      answer: inferTemplateAnswer(question.id, ctx),
+      source: "inferred" as const,
+    };
+  });
 }

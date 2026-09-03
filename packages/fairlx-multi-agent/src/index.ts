@@ -28,7 +28,7 @@ export { EventBus, makeEvent, appendEvent, appendInbox, makeInbox } from "./prot
 export { MemoryRunStore, DocumentRunStore, serializeRun, deserializeRun, createRunRecord } from "./store";
 export type { RunStore, DocumentBackend, CreateRunInput, RunPatch } from "./store";
 
-export { generateDailyBriefing, briefingFromContext, assembleContextPayload, compactEntity } from "./context";
+export { generateDailyBriefing, briefingFromContext, assembleContextPayload, compactEntity, rankAssignedWork, isOpenWorkItem } from "./context";
 export type { BriefingInput } from "./context";
 
 export {

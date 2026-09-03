@@ -5,7 +5,7 @@ import { InferRequestType, InferResponseType } from "hono";
 import { client } from "@/lib/rpc";
 import { QUERY_CONFIG } from "@/lib/query-config";
 
-import { PERSONAL_AGENT_QUERY_KEY, AGENT_RUNS_QUERY_KEY, AGENT_HARNESS_QUERY_KEY } from "../constants";
+import { PERSONAL_AGENT_QUERY_KEY, AGENT_RUNS_QUERY_KEY, AGENT_HARNESS_QUERY_KEY, AGENT_BRIEFING_QUERY_KEY } from "../constants";
 
 type PersonalResponse = InferResponseType<(typeof client.api)["agent"]["personal"]["$get"], 200>;
 type QuestionsResponse = InferResponseType<(typeof client.api)["agent"]["personal"]["questions"]["$get"], 200>;
@@ -101,6 +101,93 @@ export function useStartPersonalTraining() {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to start the training chat.");
+    },
+  });
+}
+
+type SelfTrainProgress = { percent: number; stage?: string; answered?: number; total?: number; done?: boolean; error?: string };
+
+async function readSelfTrainStream(
+  onProgress?: (event: SelfTrainProgress) => void,
+): Promise<void> {
+  const response = await fetch("/api/agent/personal/self-train", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) await readError(response, "Failed to self-train the personal agent.");
+  if (!response.body) throw new Error("Failed to self-train the personal agent.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let lastError = "";
+  let completed = false;
+  const consume = (chunk: string) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as SelfTrainProgress;
+      onProgress?.(event);
+      if (event.error) lastError = event.error;
+      if (event.done) completed = true;
+    }
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    consume(decoder.decode(value, { stream: true }));
+  }
+  consume(decoder.decode());
+  if (buffer.trim()) consume("\n");
+  if (lastError) throw new Error(lastError);
+  if (!completed) throw new Error("Self-train stopped before the agent was saved.");
+}
+
+export function useSelfTrainPersonalAgent() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { onProgress?: (event: SelfTrainProgress) => void } | void>({
+    mutationFn: async (input) => {
+      await readSelfTrainStream(input && typeof input === "object" ? input.onProgress : undefined);
+    },
+    onSuccess: () => {
+      toast.success("Personal Agent trained from your workspace.");
+      queryClient.invalidateQueries({ queryKey: PERSONAL_AGENT_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: AGENT_BRIEFING_QUERY_KEY });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to self-train the personal agent.");
+    },
+  });
+}
+
+type ResetResponse = InferResponseType<(typeof client.api)["agent"]["personal"]["reset"]["$post"], 200>;
+
+export function useResetPersonalAgent() {
+  const queryClient = useQueryClient();
+  return useMutation<ResetResponse, Error, void>({
+    mutationFn: async () => {
+      const response = await client.api.agent.personal.reset.$post();
+      if (!response.ok) await readError(response, "Failed to reset the personal agent.");
+      return (await response.json()) as ResetResponse;
+    },
+    onSuccess: () => {
+      toast.success("Personal Agent reset. Train it again when you are ready.");
+      queryClient.setQueryData(PERSONAL_AGENT_QUERY_KEY, (current) => {
+        if (!current || typeof current !== "object") return current;
+        return {
+          ...current,
+          profile: null,
+          progress: { answered: 0, inferred: 0, total: 13, percent: 0 },
+          activeTrainingRunId: null,
+        };
+      });
+      queryClient.invalidateQueries({ queryKey: PERSONAL_AGENT_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: AGENT_BRIEFING_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: AGENT_RUNS_QUERY_KEY });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to reset the personal agent.");
     },
   });
 }

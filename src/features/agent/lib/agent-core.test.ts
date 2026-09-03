@@ -130,6 +130,7 @@ describe("graph and prompt", () => {
     expect(prompt).toContain("workspaceId: w1");
     expect(prompt).not.toMatch(/Use mcp_list/);
     expect(prompt).toMatch(/change a member's role/i);
+    expect(prompt).toMatch(/adds them to the organization and the workspace/i);
     expect(prompt).toContain("Task: New high-priority bug on login");
     expect(prompt).toMatch(/One fairlx_work_item_list per project/);
   });
@@ -155,6 +156,18 @@ describe("graph and prompt", () => {
     });
     expect(prompt).toMatch(/first sprint.*starts automatically/i);
     expect(prompt).toMatch(/do not call fairlx_sprint_start/i);
+  });
+
+  it("tells the agent to create project teams with tools instead of Settings", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Create a Developers team and add Surendra"),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+    });
+    expect(prompt).toMatch(/fairlx_project_team_create/);
+    expect(prompt).toMatch(/fairlx_project_team_member_add/);
+    expect(prompt).toMatch(/Do not send the user to Settings → Teams/);
   });
 
   it("keeps the Personal Agent as orchestrator instead of a specialist", () => {

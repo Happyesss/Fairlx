@@ -15,6 +15,9 @@ export type FairlxAgentContext = {
     type?: string;
     workspaceId?: string;
     projectId?: string;
+    dueDate?: string;
+    flagged?: boolean;
+    createdAt?: string;
   }>;
   githubRepos: Array<{
     id: string;
@@ -69,6 +72,10 @@ export function agentContextToInjected(
       status: item.status,
       priority: item.priority,
       type: item.type,
+      dueAt: item.dueDate,
+      flagged: item.flagged,
+      workspaceId: item.workspaceId,
+      createdAt: item.createdAt,
     })),
     sprints: [],
     blockers: workItems

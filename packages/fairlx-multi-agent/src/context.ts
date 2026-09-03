@@ -76,6 +76,7 @@ export type BriefingInput = {
   title?: string;
   prompt?: string;
   workItems?: BriefingWorkItem[];
+  assignedWork?: BriefingWorkItem[];
   sprints?: BriefingSprint[];
   blockers?: BriefingWorkItem[];
   unassigned?: BriefingWorkItem[];
@@ -86,9 +87,53 @@ function itemLabel(item: BriefingWorkItem): string {
   return [item.key, item.title].filter(Boolean).join(" — ") || item.id;
 }
 
-function isOpen(status?: string): boolean {
+export function isOpenWorkItem(status?: string): boolean {
   const value = String(status || "").toUpperCase();
   return value !== "DONE" && value !== "CLOSED" && value !== "COMPLETE";
+}
+
+function isOpen(status?: string): boolean {
+  return isOpenWorkItem(status);
+}
+
+const PRIORITY_RANK: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
+function statusRank(status?: string): number {
+  const value = String(status || "").toUpperCase();
+  if (value === "IN_PROGRESS" || value === "IN_REVIEW") return 0;
+  if (value === "ASSIGNED") return 1;
+  return 2;
+}
+
+function dueRank(dueAt: string | undefined, now: number): number {
+  if (!dueAt) return 2;
+  const due = new Date(dueAt).getTime();
+  if (Number.isNaN(due)) return 2;
+  if (due < now) return 0;
+  if (due - now <= 48 * 60 * 60 * 1000) return 1;
+  return 2;
+}
+
+export function rankAssignedWork<T extends BriefingWorkItem>(items: T[], n = 3, now = new Date()): T[] {
+  const stamp = now.getTime();
+  return [...items]
+    .filter((item) => isOpen(item.status))
+    .sort((a, b) => {
+      const pa = PRIORITY_RANK[String(a.priority || "").toUpperCase()] ?? 4;
+      const pb = PRIORITY_RANK[String(b.priority || "").toUpperCase()] ?? 4;
+      if (pa !== pb) return pa - pb;
+      if (Boolean(a.flagged) !== Boolean(b.flagged)) return a.flagged ? -1 : 1;
+      const da = dueRank(a.dueAt, stamp);
+      const db = dueRank(b.dueAt, stamp);
+      if (da !== db) return da - db;
+      const sa = statusRank(a.status);
+      const sb = statusRank(b.status);
+      if (sa !== sb) return sa - sb;
+      const ca = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const cb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return cb - ca;
+    })
+    .slice(0, n);
 }
 
 function dueSoon(item: BriefingWorkItem, now: Date): boolean {
@@ -146,6 +191,16 @@ export function generateDailyBriefing(input: BriefingInput): DailyBriefing {
 
   if (!priorities.length) priorities.push("No urgent deadlines. Review unassigned work or start the next epic.");
 
+  const topTasks = rankAssignedWork(input.assignedWork ?? workItems, 3, now).map((item) => ({
+    id: item.id,
+    key: item.key,
+    title: item.title,
+    status: item.status,
+    priority: item.priority,
+    workspaceId: item.workspaceId,
+    dueAt: item.dueAt,
+  }));
+
   return {
     personaRole,
     greeting: `${greeting}, ${name}.`,
@@ -154,6 +209,7 @@ export function generateDailyBriefing(input: BriefingInput): DailyBriefing {
     blockers: blockers.map(itemLabel),
     unassigned: unassigned.map(itemLabel),
     suggestedActions: suggested.slice(0, 3),
+    topTasks,
     generatedInMs: performance.now() - started,
   };
 }

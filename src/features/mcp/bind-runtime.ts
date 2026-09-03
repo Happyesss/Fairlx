@@ -11,6 +11,8 @@ import {
   ORGANIZATION_MEMBERS_ID,
   PROJECT_DOCS_ID,
   PROJECT_MEMBERS_ID,
+  PROJECT_PERMISSIONS_ID,
+  PROJECT_ROLES_ID,
   PROJECT_TEAM_MEMBERS_ID,
   PROJECT_WEBHOOKS_ID,
   PROJECTS_ID,
@@ -56,6 +58,8 @@ import {
 } from "@/lib/processed-events-registry";
 import { CK, CKPattern, invalidateCache, invalidateCachePattern } from "@/lib/redis";
 import { getRedisClient } from "@/lib/redis/client";
+import { resolveUserOrgAccess } from "@/lib/permissions/resolveUserOrgAccess";
+import { inviteOrganizationMember } from "@/features/organizations/services/invite-org-member";
 import { createAppwriteStore } from "./appwrite-store";
 import { verifyMcpJwt } from "./jwt";
 
@@ -74,6 +78,7 @@ const COLLECTIONS: McpCollections = {
   workflowTransitions: WORKFLOW_TRANSITIONS_ID,
   members: MEMBERS_ID,
   projectMembers: PROJECT_MEMBERS_ID,
+  projectRoles: PROJECT_ROLES_ID,
   projectTeamMembers: PROJECT_TEAM_MEMBERS_ID,
   projectWebhooks: PROJECT_WEBHOOKS_ID,
   githubRepos: GITHUB_REPOS_ID,
@@ -86,6 +91,7 @@ const COLLECTIONS: McpCollections = {
   notifications: NOTIFICATIONS_ID,
   savedViews: SAVED_VIEWS_ID,
   projectTeams: PROJECT_TEAMS_ID,
+  projectPermissions: PROJECT_PERMISSIONS_ID,
   spaces: SPACES_ID,
   spaceMembers: SPACE_MEMBERS_ID,
   programs: PROGRAMS_ID,
@@ -238,6 +244,33 @@ export async function createMcpRuntime(): Promise<McpRuntime> {
       );
       await invalidateCachePattern(CKPattern.workspacePerms(workspaceId));
       await invalidateCachePattern(CKPattern.allUserPerms(userId));
+    },
+    onProjectTeamChanged: async ({ projectId, userIds }) => {
+      await invalidateCachePattern(CKPattern.projectPerms(projectId));
+      await Promise.all(userIds.map((userId) => invalidateCache(CK.projectAccess(userId, projectId))));
+      await Promise.all(userIds.map((userId) => invalidateCachePattern(CKPattern.allUserPerms(userId))));
+    },
+    inviteOrganizationMember: async ({ actorUserId, organizationId, email, name }) => {
+      const access = await resolveUserOrgAccess(databases, actorUserId, organizationId);
+      if (!access.isOwner) {
+        throw new Error(
+          "Only the organization owner can invite someone who is not already in the organization.",
+        );
+      }
+      const invited = await inviteOrganizationMember({
+        actorUserId,
+        organizationId,
+        email,
+        fullName: name,
+        role: "MEMBER",
+      });
+      return {
+        userId: invited.userId,
+        email: invited.email,
+        name: invited.name,
+        isExistingUser: invited.isExistingUser,
+        emailSent: invited.emailSent,
+      };
     },
     logAudit: async (entry) => {
       try {

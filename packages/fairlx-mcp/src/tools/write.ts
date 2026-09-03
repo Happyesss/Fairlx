@@ -24,6 +24,7 @@ import {
   normalizeMemberRole,
   type NamedMember,
 } from "./member-match";
+import { projectTeamCreate, projectTeamMemberAdd, projectTeamUpdate } from "./write-team";
 
 export async function handleWriteTool(
   name: string,
@@ -83,6 +84,12 @@ export async function handleWriteTool(
       return workspaceMemberUpdate(args, runtime, auth);
     case "fairlx_workspace_member_add":
       return workspaceMemberAdd(args, runtime, auth);
+    case "fairlx_project_team_create":
+      return projectTeamCreate(args, runtime, auth);
+    case "fairlx_project_team_update":
+      return projectTeamUpdate(args, runtime, auth);
+    case "fairlx_project_team_member_add":
+      return projectTeamMemberAdd(args, runtime, auth);
     default:
       throw invalidParams(`Unknown write tool: ${name}`);
   }
@@ -1109,6 +1116,14 @@ function matchQueryResult(
   return { error: false as const, member: matched.member };
 }
 
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function displayNameFromInvite(args: Record<string, unknown>, email: string): string {
+  return optionalString(args, "name") || email.split("@")[0] || "Member";
+}
+
 async function workspaceMemberAdd(
   args: Record<string, unknown>,
   runtime: McpRuntime,
@@ -1131,6 +1146,8 @@ async function workspaceMemberAdd(
 
   const query = optionalString(args, "email") || optionalString(args, "name") || "";
   if (!query) throw invalidParams("Provide the person's name or email");
+  const inviteEmail =
+    optionalString(args, "email") || (looksLikeEmail(query) ? query.trim().toLowerCase() : "");
 
   const workspace = await runtime.store.get<Record<string, unknown>>(
     runtime.collections.workspaces,
@@ -1162,10 +1179,72 @@ async function workspaceMemberAdd(
     role: hydrated[index]?.role ?? String(doc.role ?? "MEMBER"),
     status: hydrated[index]?.status ?? String(doc.status ?? "ACTIVE"),
   }));
-  const matched = matchQueryResult(query, named, `No organization member matches "${query}".`);
-  if (matched.error) return toolResult(matched.payload, true);
+  const matched = matchWorkspaceMember(query, named);
+  let userId = "";
+  let memberName = "";
+  let memberEmail = "";
+  let invitedToOrganization = false;
 
-  const userId = matched.member.id;
+  if (matched.kind === "many") {
+    return toolResult(
+      {
+        error: "Several people match. Say which one.",
+        matches: matched.members.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+      true
+    );
+  }
+
+  if (matched.kind === "one") {
+    userId = matched.member.id;
+    memberName = matched.member.name;
+    memberEmail = matched.member.email;
+  } else if (inviteEmail && runtime.inviteOrganizationMember) {
+    try {
+      const invited = await runtime.inviteOrganizationMember({
+        actorUserId: auth.actorUserId,
+        organizationId,
+        email: inviteEmail,
+        name: displayNameFromInvite(args, inviteEmail),
+      });
+      userId = invited.userId;
+      memberName = invited.name;
+      memberEmail = invited.email;
+      invitedToOrganization = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to invite this person to the organization.";
+      return toolResult(
+        {
+          error: message,
+          members: named.map(({ name, email, role: memberRole }) => ({
+            name,
+            email,
+            role: memberRole,
+          })),
+        },
+        true
+      );
+    }
+  } else {
+    return toolResult(
+      {
+        error: inviteEmail
+          ? `No organization member matches "${query}". Only the organization owner can invite a new person by email.`
+          : `No organization member matches "${query}". Provide their email to invite them to the organization and this workspace.`,
+        members: named.map(({ name, email, role: memberRole }) => ({
+          name,
+          email,
+          role: memberRole,
+        })),
+      },
+      true
+    );
+  }
+
   const existing = await runtime.store.list<Record<string, unknown>>(runtime.collections.members, [
     { type: "equal", field: "workspaceId", value: workspaceId },
     { type: "equal", field: "userId", value: userId },
@@ -1174,10 +1253,10 @@ async function workspaceMemberAdd(
   if (existing.documents.length > 0) {
     return toolResult(
       {
-        error: `${matched.member.name} is already a workspace member.`,
+        error: `${memberName || memberEmail} is already a workspace member.`,
         member: {
-          name: matched.member.name,
-          email: matched.member.email,
+          name: memberName,
+          email: memberEmail,
           role: String(existing.documents[0]?.role ?? "MEMBER"),
         },
       },
@@ -1202,12 +1281,13 @@ async function workspaceMemberAdd(
     action: "mcp.workspace_member.add",
     resourceType: "member",
     resourceId: String(created.$id ?? created.id ?? ""),
-    resourceName: matched.member.name,
-    metadata: { role },
+    resourceName: memberName,
+    metadata: { role, invitedToOrganization },
   });
   return toolResult({
-    member: { name: matched.member.name, email: matched.member.email, role, status: "ACTIVE" },
+    member: { name: memberName, email: memberEmail, role, status: "ACTIVE" },
     added: true,
+    invitedToOrganization,
   });
 }
 

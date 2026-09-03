@@ -123,6 +123,9 @@ export type BriefingWorkItem = {
   dueAt?: string;
   assigneeId?: string;
   blockedBy?: string[];
+  flagged?: boolean;
+  workspaceId?: string;
+  createdAt?: string;
 };
 
 export type BriefingSprint = {
@@ -135,6 +138,16 @@ export type BriefingSprint = {
   goal?: string;
 };
 
+export type BriefingTopTask = {
+  id: string;
+  key?: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  workspaceId?: string;
+  dueAt?: string;
+};
+
 export type DailyBriefing = {
   personaRole: PersonaRole;
   greeting: string;
@@ -143,6 +156,7 @@ export type DailyBriefing = {
   blockers: string[];
   unassigned: string[];
   suggestedActions: string[];
+  topTasks: BriefingTopTask[];
   generatedInMs: number;
 };
 

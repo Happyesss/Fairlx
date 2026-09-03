@@ -19,6 +19,19 @@ describe("daily briefing", () => {
     expect(lead.personaRole).toBe("tech_lead");
     expect(lead.greeting).toMatch(/Ada/);
     expect(lead.priorities.some((line) => /unassigned|Unblock|Sprint 24/i.test(line))).toBe(true);
+    expect(lead.topTasks[0]?.key).toBe("WEB-1");
+
+    const ranked = generateDailyBriefing({
+      userName: "Ada",
+      personaRole: "frontend",
+      assignedWork: [
+        { id: "low", title: "Polish", status: "TODO", priority: "LOW" },
+        { id: "done", title: "Shipped", status: "DONE", priority: "URGENT" },
+        { id: "flag", title: "Flagged medium", status: "TODO", priority: "MEDIUM", flagged: true },
+        { id: "urg", key: "WEB-9", title: "Prod down", status: "IN_PROGRESS", priority: "URGENT" },
+      ],
+    });
+    expect(ranked.topTasks.map((item) => item.id)).toEqual(["urg", "flag", "low"]);
 
     const qa = generateDailyBriefing({
       userName: "Sam",

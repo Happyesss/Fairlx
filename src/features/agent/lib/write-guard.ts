@@ -48,6 +48,21 @@ export function confirmationSummary(call: AgentToolCall): string {
     const priority = nested.priority ? ` [${String(nested.priority)}]` : "";
     return `Create ${formattedType}: "${label}"${priority}?`;
   }
+  if (/project_team_member_add/i.test(mcpName)) {
+    const person = String(nested.name || nested.email || "").trim();
+    const team = String(nested.teamName || nested.team || "").trim();
+    if (person && team) return `Add ${person} to ${team}?`;
+    if (person) return `Add ${person} to the team?`;
+  }
+  if (/project_team_member_remove/i.test(mcpName)) {
+    const person = String(nested.name || nested.email || "").trim();
+    const team = String(nested.teamName || nested.team || "").trim();
+    if (person && team) return `Remove ${person} from ${team}?`;
+    if (person) return `Remove ${person} from the team?`;
+  }
+  if (/project_team_create/i.test(mcpName) && label) {
+    return `Create team "${label}"?`;
+  }
   if (/workspace_member_add/i.test(mcpName) && label) {
     return role ? `Add ${label} as ${role}?` : `Add ${label} to the workspace?`;
   }

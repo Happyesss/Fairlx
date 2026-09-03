@@ -42,20 +42,27 @@ import { searchAgentIndex } from "../lib/search";
 import { parseGitStaging, parseChatMeta } from "../lib/git-staging";
 import { briefingFromAgentContext, createMultiAgentEngine, agentContextToInjected } from "../lib/multi-agent";
 import { emitToUser } from "@/lib/socket";
+import { isPersonalSessionMode } from "../lib/session-context";
 import { compileTrainedPersonalPrompt } from "../lib/personal-compile";
+import { runPersonalSelfTrain } from "../lib/personal-self-train";
 import {
   getPersonalAgent,
+  resetPersonalAgent,
   upsertPersonalAgent,
 } from "../lib/personal-agent-store";
+import { syncTrainingDraftFromRun, syncTrainingDraftFromRuns } from "../lib/personal-training-sync";
 import {
+  findActiveTrainingRun,
   isPersonalPersonaRole,
   mergeAnswers,
   personaFocus,
   personaLabel,
+  profileIsTrained,
   questionsForRole,
   requiredAnswersMissing,
   suggestedPersonaRole,
   trainingKickoffPrompt,
+  trainingProgress,
 } from "../lib/personal-training";
 
 const mcpServerSchema = z
@@ -353,6 +360,12 @@ const app = new Hono()
     const { databases } = await createAdminClient();
     try {
       const harness = await getOrCreateHarness(databases, user.$id);
+      if (isPersonalSessionMode(harness.settings.sessionMode)) {
+        const profile = await getPersonalAgent(databases, user.$id);
+        if (!profileIsTrained(profile)) {
+          return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+        }
+      }
       const run = await createRun(databases, {
         userId: user.$id,
         prompt: json.prompt,
@@ -405,6 +418,15 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.kind !== "training") {
+        const harness = await getOrCreateHarness(databases, user.$id);
+        if (isPersonalSessionMode(harness.settings.sessionMode)) {
+          const profile = await getPersonalAgent(databases, user.$id);
+          if (!profileIsTrained(profile)) {
+            return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+          }
+        }
+      }
       if (existing.status === "running") {
         return c.json({ error: "Run is already in progress." }, 409);
       }
@@ -436,6 +458,15 @@ const app = new Hono()
     try {
       const existing = await getRun(databases, user.$id, runId);
       if (!existing) return c.json({ error: "Run not found." }, 404);
+      if (existing.kind !== "training") {
+        const harness = await getOrCreateHarness(databases, user.$id);
+        if (isPersonalSessionMode(harness.settings.sessionMode)) {
+          const profile = await getPersonalAgent(databases, user.$id);
+          if (!profileIsTrained(profile)) {
+            return c.json({ error: "Personal Agent is not trained yet.", code: "personal_untrained" }, 409);
+          }
+        }
+      }
       if (existing.status === "awaiting_confirmation") return c.json({ data: existing });
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
@@ -465,6 +496,17 @@ const app = new Hono()
         return c.json({ data: existing });
       }
       const data = await updateRun(databases, runId, { status: "stopped" });
+      if (data.kind === "training") {
+        try {
+          const context = await loadAgentContext(databases, user);
+          const harness = await getOrCreateHarness(databases, user.$id);
+          const profile = await getPersonalAgent(databases, user.$id);
+          const role = profile?.personaRole ?? suggestedPersonaRole(context, harness.settings.defaultWorkspaceId);
+          await syncTrainingDraftFromRun(databases, user.$id, profile, data, role);
+        } catch (error) {
+          console.error("[agent] failed to persist training draft on stop", error);
+        }
+      }
       return c.json({ data });
     } catch (error) {
       console.error("[agent] failed to stop run", error);
@@ -643,9 +685,11 @@ const app = new Hono()
     const { databases } = await createAdminClient();
     try {
       const context = await loadAgentContext(databases, user);
+      const profile = await getPersonalAgent(databases, user.$id);
       const workspaceId = c.req.query("workspaceId") || undefined;
       const projectId = c.req.query("projectId") || undefined;
-      const data = briefingFromAgentContext(context, { workspaceId, projectId });
+      const personaRole = profile && profileIsTrained(profile) ? profile.personaRole : undefined;
+      const data = briefingFromAgentContext(context, { workspaceId, projectId, personaRole });
       return c.json({ data });
     } catch (error) {
       console.error("[agent] failed to build briefing", error);
@@ -701,12 +745,29 @@ const app = new Hono()
     const { databases } = await createAdminClient();
     try {
       const context = await loadAgentContext(databases, user);
-      const profile = await getPersonalAgent(databases, user.$id);
       const harness = await getOrCreateHarness(databases, user.$id);
       const suggestedRole = suggestedPersonaRole(context, harness.settings.defaultWorkspaceId);
+      let profile = await getPersonalAgent(databases, user.$id);
+      const runs = await listRuns(databases, user.$id, 40);
+      try {
+        profile = await syncTrainingDraftFromRuns(
+          databases,
+          user.$id,
+          profile,
+          runs,
+          profile?.personaRole ?? suggestedRole,
+        );
+      } catch (error) {
+        console.error("[agent] failed to overlay training draft", error);
+      }
+      const role = profile?.personaRole ?? suggestedRole;
+      const progress = trainingProgress(profile?.answers, role);
+      const active = findActiveTrainingRun(runs);
       return c.json({
         data: {
           profile,
+          progress,
+          activeTrainingRunId: active?.id ?? null,
           suggestedRole,
           suggestedRoleLabel: personaLabel(suggestedRole),
           suggestedRoleFocus: personaFocus(suggestedRole),
@@ -866,6 +927,9 @@ const app = new Hono()
       const harness = await upsertHarness(databases, user.$id, {
         settings: { sessionMode: "personal", mode: "agent" },
       });
+      const runs = await listRuns(databases, user.$id, 40);
+      const active = findActiveTrainingRun(runs);
+      if (active) return c.json({ data: active });
       const run = await createRun(databases, {
         userId: user.$id,
         prompt: trainingKickoffPrompt(),
@@ -882,6 +946,65 @@ const app = new Hono()
       if (encrypted) return encrypted;
       console.error("[agent] failed to start personal training chat", error);
       return c.json({ error: "Failed to start the training chat." }, 500);
+    }
+  })
+  .post("/personal/self-train", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const emit = (event: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+        try {
+          await runPersonalSelfTrain({
+            databases,
+            user,
+            emit,
+          });
+        } catch (error) {
+          const encrypted = error instanceof AgentEncryptionRequiredError;
+          emit({
+            error: encrypted
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : "Failed to self-train the personal agent.",
+            percent: 0,
+          });
+          console.error("[agent] failed to self-train personal agent", error);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        Connection: "keep-alive",
+      },
+    });
+  })
+  .post("/personal/reset", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const runs = await listRuns(databases, user.$id, 200);
+      for (const run of runs) {
+        if (run.kind !== "training") continue;
+        cancelAgentTurn(run.id);
+        await deleteRun(databases, user.$id, run.id);
+      }
+      await resetPersonalAgent(databases, user.$id);
+      return c.json({ data: null });
+    } catch (error) {
+      const encrypted = encryptionErrorResponse(error, c);
+      if (encrypted) return encrypted;
+      console.error("[agent] failed to reset personal agent", error);
+      return c.json({ error: "Failed to reset the personal agent." }, 500);
     }
   });
 

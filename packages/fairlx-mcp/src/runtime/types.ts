@@ -57,6 +57,7 @@ export interface McpCollections {
   workflowTransitions: string;
   members: string;
   projectMembers: string;
+  projectRoles?: string;
   projectTeamMembers: string;
   projectWebhooks: string;
   githubRepos: string;
@@ -69,6 +70,7 @@ export interface McpCollections {
   notifications: string;
   savedViews: string;
   projectTeams: string;
+  projectPermissions?: string;
   spaces: string;
   spaceMembers: string;
   programs: string;
@@ -135,6 +137,24 @@ export interface McpRuntime {
   lookupUsers?: (userIds: string[]) => Promise<McpUserProfile[]>;
   /** Drop member/permission caches after a workspace role change. */
   onMembershipChanged?: (info: { userId: string; workspaceId: string }) => Promise<void>;
+  /** Drop project-access caches after a team or team-membership change. */
+  onProjectTeamChanged?: (info: { projectId: string; userIds: string[] }) => Promise<void>;
+  /**
+   * Invite a person into the organization by email, creating an Appwrite user if needed.
+   * Implementations must allow organization owners only.
+   */
+  inviteOrganizationMember?: (input: {
+    actorUserId: string;
+    organizationId: string;
+    email: string;
+    name: string;
+  }) => Promise<{
+    userId: string;
+    email: string;
+    name: string;
+    isExistingUser: boolean;
+    emailSent: boolean;
+  }>;
 }
 
 export const PERMISSIONS = {
@@ -143,6 +163,7 @@ export const PERMISSIONS = {
   VIEW_SPRINTS: "project.sprints.view",
   VIEW_DOCS: "project.docs.view",
   VIEW_MEMBERS: "project.members.view",
+  VIEW_TEAMS: "project.teams.view",
   VIEW_NOTIFICATIONS: "project.notifications.view",
   VIEW_VIEWS: "project.views.view",
   VIEW_SPACES: "project.spaces.view",
@@ -154,6 +175,7 @@ export const PERMISSIONS = {
   CREATE_DOCS: "project.docs.create",
   CREATE_COMMENTS: "project.comments.create",
   CREATE_VIEWS: "project.views.create",
+  CREATE_TEAMS: "project.teams.create",
   EDIT_TASKS: "project.tasks.edit",
   EDIT_SPRINTS: "project.sprints.edit",
   EDIT_DOCS: "project.docs.edit",
@@ -166,6 +188,7 @@ export const PERMISSIONS = {
   DELETE_VIEWS: "project.views.delete",
   START_SPRINT: "project.sprints.start",
   COMPLETE_SPRINT: "project.sprints.complete",
+  MANAGE_TEAMS: "project.teams.manage",
 } as const;
 
 /** @deprecated Empty token scopes inherit the actor role / ALL_SCOPES. Kept for compatibility. */

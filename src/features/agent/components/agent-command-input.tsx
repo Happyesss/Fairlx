@@ -12,15 +12,17 @@ import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
+import { useGetPersonalAgent } from "../api/use-personal-agent";
 import { useCreateAgentRun, useStopAgentRun } from "../api/use-agent-runs";
 import { chipKey, composeUserPrompt, isPersonalSessionMode } from "../lib/session-context";
+import { profileIsTrained } from "../lib/personal-agent-status";
 import { countWorkspaceProjects, getQuickActions } from "../lib/quick-actions";
 import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
 import { AgentModeSelector } from "./agent-mode-selector";
 import { ModelPicker } from "./model-picker";
-import { PersonalAgentBanner } from "./personal-agent-banner";
+import { PersonalAgentSetup } from "./personal-agent-setup";
 
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = "auto";
@@ -51,6 +53,7 @@ export function AgentCommandInput({
   const router = useRouter();
   const { data: harness } = useGetAgentHarness();
   const { data: context } = useGetAgentContext();
+  const { data: personal } = useGetPersonalAgent();
   const createRun = useCreateAgentRun();
   const stopRunMutation = useStopAgentRun();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -65,6 +68,10 @@ export function AgentCommandInput({
   const busy = submitting || createRun.isPending;
   const canSend = Boolean(prompt.trim()) && !busy && !disabled;
   const sessionMode = (harness?.settings.sessionMode as AgentSessionMode) || "agent";
+  const personalUntrained =
+    isPersonalSessionMode(sessionMode) &&
+    !profileIsTrained(personal?.profile) &&
+    run?.kind !== "training";
   const inputPlaceholder = run?.kind === "training"
     ? "Type your own answer, or tap a choice above"
     : isPersonalSessionMode(sessionMode)
@@ -175,7 +182,7 @@ export function AgentCommandInput({
 
   const submit = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || busy || disabled) return;
+    if (!trimmed || busy || disabled || personalUntrained) return;
     const content = composeUserPrompt(trimmed, chips, sessionMode);
     if (variant === "followup") {
       onFollowUp?.(content);
@@ -209,7 +216,6 @@ export function AgentCommandInput({
 
   return (
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
-      {variant === "create" && isPersonalSessionMode(sessionMode) ? <PersonalAgentBanner /> : null}
       <AgentScopeBar
         run={run}
         onScopeChange={(wsId) => setSelectedWorkspaceId(wsId)}
@@ -218,118 +224,133 @@ export function AgentCommandInput({
         className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
         onSubmit={(event) => {
           event.preventDefault();
-          submit(prompt);
+          if (!personalUntrained) submit(prompt);
         }}
       >
-        <ContextChips
-          chips={chips}
-          onRemove={(chip) => setChips((current) => current.filter((item) => chipKey(item) !== chipKey(chip)))}
-        />
-        <textarea
-          ref={textareaRef}
-          value={prompt}
-          onChange={(event) => {
-            setPrompt(event.target.value);
-            autosize(event.currentTarget);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit(prompt);
-            }
-          }}
-          placeholder={inputPlaceholder}
-          rows={1}
-          disabled={busy}
-          className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-relaxed px-4 pt-3.5 pb-2 resize-none focus:outline-none placeholder:text-muted-foreground/60 min-h-[58px] max-h-44 custom-scrollbar"
-        />
-        <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5 select-none">
-          <div className="flex items-center gap-2">
-            <AgentModeSelector />
-            <ModelPicker variant="subtle" />
+        {personalUntrained ? (
+          <div className="px-4 pt-4 pb-3">
+            <PersonalAgentSetup compact />
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <AgentPlusMenu
-              chips={chips}
-              onAdd={(chip) =>
-                setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])
-              }
-              triggerVariant="paperclip"
-              align="end"
-            />
-            <button
-              type="button"
-              onClick={toggleVoiceInput}
+        ) : (
+          <ContextChips
+            chips={chips}
+            onRemove={(chip) => setChips((current) => current.filter((item) => chipKey(item) !== chipKey(chip)))}
+          />
+        )}
+        {personalUntrained ? null : (
+          <>
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                autosize(event.currentTarget);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit(prompt);
+                }
+              }}
+              placeholder={inputPlaceholder}
+              rows={1}
               disabled={busy}
-              className={cn(
-                "size-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
-                isListening
-                  ? "bg-red-500 text-white animate-pulse"
-                  : "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 shadow-2xs"
-              )}
-              title={isListening ? "Listening... click to stop" : "Voice input"}
-            >
-              <Mic className="size-3.5" />
-            </button>
-            {isRunning || stopping ? (
-              <button
-                type="button"
-                onClick={handleStop}
-                disabled={stopping}
-                className={cn(
-                  "relative size-7 rounded-full flex items-center justify-center transition-all shadow-2xs group cursor-pointer",
-                  "bg-muted/70 hover:bg-muted text-foreground border border-border/60",
-                  stopping && "opacity-60 cursor-not-allowed"
-                )}
-                title={stopping ? "Stopping..." : "Stop generation"}
-              >
-                <svg
-                  className="absolute inset-0 size-full animate-spin text-muted-foreground group-hover:text-foreground transition-colors"
-                  viewBox="0 0 28 28"
-                  fill="none"
+              className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-relaxed px-4 pt-3.5 pb-2 resize-none focus:outline-none placeholder:text-muted-foreground/60 min-h-[58px] max-h-44 custom-scrollbar"
+            />
+            <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5 select-none">
+              <div className="flex items-center gap-2">
+                <AgentModeSelector />
+                <ModelPicker variant="subtle" />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <AgentPlusMenu
+                  chips={chips}
+                  onAdd={(chip) =>
+                    setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip])
+                  }
+                  triggerVariant="paperclip"
+                  align="end"
+                />
+                <button
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  disabled={busy}
+                  className={cn(
+                    "size-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
+                    isListening
+                      ? "bg-red-500 text-white animate-pulse"
+                      : "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 shadow-2xs"
+                  )}
+                  title={isListening ? "Listening... click to stop" : "Voice input"}
                 >
-                  <circle
-                    className="opacity-25"
-                    cx="14"
-                    cy="14"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    className="opacity-85"
-                    cx="14"
-                    cy="14"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeDasharray="62.83"
-                    strokeDashoffset="44"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <span className="relative z-10 size-2.5 rounded-[1.5px] bg-foreground transition-transform group-hover:scale-90" />
-              </button>
-            ) : canSend || busy ? (
-              <button
-                type="submit"
-                disabled={!canSend}
-                className={cn(
-                  "size-7 rounded-full flex items-center justify-center transition-colors shadow-2xs cursor-pointer",
-                  canSend
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "bg-muted text-muted-foreground cursor-default"
-                )}
-                title="Send"
-              >
-                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
-              </button>
-            ) : null}
+                  <Mic className="size-3.5" />
+                </button>
+                {isRunning || stopping ? (
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    disabled={stopping}
+                    className={cn(
+                      "relative size-7 rounded-full flex items-center justify-center transition-all shadow-2xs group cursor-pointer",
+                      "bg-muted/70 hover:bg-muted text-foreground border border-border/60",
+                      stopping && "opacity-60 cursor-not-allowed"
+                    )}
+                    title={stopping ? "Stopping..." : "Stop generation"}
+                  >
+                    <svg
+                      className="absolute inset-0 size-full animate-spin text-muted-foreground group-hover:text-foreground transition-colors"
+                      viewBox="0 0 28 28"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="14"
+                        cy="14"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                      <circle
+                        className="opacity-85"
+                        cx="14"
+                        cy="14"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeDasharray="62.83"
+                        strokeDashoffset="44"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span className="relative z-10 size-2.5 rounded-[1.5px] bg-foreground transition-transform group-hover:scale-90" />
+                  </button>
+                ) : canSend || busy ? (
+                  <button
+                    type="submit"
+                    disabled={!canSend}
+                    className={cn(
+                      "size-7 rounded-full flex items-center justify-center transition-colors shadow-2xs cursor-pointer",
+                      canSend
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                        : "bg-muted text-muted-foreground cursor-default"
+                    )}
+                    title="Send"
+                  >
+                    {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUp className="size-3.5" />}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </>
+        )}
+        {personalUntrained ? (
+          <div className="flex items-center px-3 pb-2.5">
+            <AgentModeSelector />
           </div>
-        </div>
+        ) : null}
       </form>
-      {showQuickActions ? (
+      {showQuickActions && !personalUntrained ? (
         <div className="flex flex-wrap gap-2 px-1">
           {quickActions.map((action) => {
             const Icon = action.icon;

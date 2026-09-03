@@ -35,6 +35,8 @@ type WorkItemDoc = Models.Document & {
   workspaceId?: string;
   projectId?: string;
   labels?: string[];
+  dueDate?: string;
+  flagged?: boolean;
 };
 
 function parseCustomLabels(raw: unknown): Array<{ name: string; color?: string }> | undefined {
@@ -179,6 +181,9 @@ export async function loadAgentContext(
       workspaceId: item.workspaceId,
       projectId: item.projectId,
       labels: Array.isArray(item.labels) ? item.labels : [],
+      dueDate: item.dueDate,
+      flagged: Boolean(item.flagged),
+      createdAt: item.$createdAt,
     })),
     notifications: notifications.map((item) => ({
       id: item.$id,

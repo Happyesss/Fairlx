@@ -8,19 +8,27 @@ import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 
 import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentRuns } from "../api/use-agent-runs";
+import { useGetAgentHarness } from "../api/use-agent-harness";
 import { firstName, greetingForNow, relativeTime } from "../lib/agent-ui";
+import { isPersonalSessionMode } from "../lib/session-context";
 import { AgentCommandInput } from "./agent-command-input";
 import { AgentPageFrame } from "./agent-app-shell";
 import { DailyCockpit } from "./daily-cockpit";
 import { useAgentUi } from "./agent-ui-context";
+import { useGetPersonalAgent } from "../api/use-personal-agent";
+import { profileIsTrained } from "../lib/personal-agent-status";
 
 export function AgentHome() {
   const { data: user } = useCurrent();
   const { data: context } = useGetAgentContext();
   const { data: runs, isLoading: runsLoading } = useGetAgentRuns();
+  const { data: harness } = useGetAgentHarness();
+  const { data: personal } = useGetPersonalAgent();
   const { openRecentWork } = useAgentUi();
   const projects = context?.projects ?? [];
   const workItems = context?.workItems ?? [];
+  const trained = profileIsTrained(personal?.profile);
+  const personalUntrained = isPersonalSessionMode(harness?.settings.sessionMode) && !trained;
 
   return (
     <AgentPageFrame>
@@ -37,7 +45,9 @@ export function AgentHome() {
 
           <div className="text-center py-4 my-auto">
             <p className="text-base sm:text-lg font-medium text-muted-foreground/75 tracking-tight">
-              What would you like to build, investigate, or ship today?
+              {personalUntrained
+                ? "I'm here to help you — train me first, then tell me what to ship."
+                : "What would you like to build, investigate, or ship today?"}
             </p>
           </div>
 
@@ -117,7 +127,8 @@ export function AgentHome() {
             )}
           </section>
 
-          <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          {trained ? null : (
+            <section className="bg-card border border-border rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-foreground text-sm uppercase tracking-wider">Assigned Work</h3>
               <button type="button" onClick={openRecentWork} className="text-xs text-primary hover:underline font-medium">
@@ -142,7 +153,8 @@ export function AgentHome() {
                 ))}
               </div>
             )}
-          </section>
+            </section>
+          )}
         </div>
       </div>
     </AgentPageFrame>

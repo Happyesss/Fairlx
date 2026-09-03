@@ -21,6 +21,8 @@ describe("isWriteToolCall", () => {
     expect(isWriteToolCall(call("fairlx_workspace_member_update", { name: "Ada", role: "ADMIN" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_workspace_member_add", { name: "Ada" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_workspace_member_remove", { name: "Ada" }))).toBe(true);
+    expect(isWriteToolCall(call("fairlx_project_team_create", { name: "Developers" }))).toBe(true);
+    expect(isWriteToolCall(call("fairlx_project_team_member_add", { name: "Surendra" }))).toBe(true);
     expect(
       isWriteToolCall(call("mcp_call", { server: "fairlx", tool: "fairlx_project_create", arguments: { name: "N" } })),
     ).toBe(true);
@@ -48,6 +50,14 @@ describe("isWriteToolCall", () => {
     ).toBe("Add Ada as MEMBER?");
     expect(confirmationSummary(call("fairlx_workspace_member_remove", { name: "Ada" }))).toBe(
       "Remove Ada from the workspace?",
+    );
+    expect(
+      confirmationSummary(
+        call("fairlx_project_team_member_add", { name: "Surendra", teamName: "Developers" }),
+      ),
+    ).toBe("Add Surendra to Developers?");
+    expect(confirmationSummary(call("fairlx_project_team_create", { name: "Developers" }))).toBe(
+      'Create team "Developers"?',
     );
   });
 });

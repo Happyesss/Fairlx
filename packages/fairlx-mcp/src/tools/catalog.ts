@@ -689,7 +689,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_workspace_member_add",
     description:
-      "Add a person to this workspace. For organization workspaces this is Add from Org — find them by name or email among organization members. Role defaults to MEMBER. Wait for the user to Accept. Do not send them to Settings.",
+      "Add a person to this workspace by name or email. If they are already in the organization, add them from org. If they are not, the organization owner can invite them by email — that adds them to the organization and this workspace. Role defaults to MEMBER. Use ADMIN for a lead developer. Wait for the user to Accept. Do not send them to Settings.",
     inputSchema: {
       type: "object",
       properties: {
@@ -919,7 +919,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   // ── Project Teams ──
   {
     name: "fairlx_project_team_list",
-    description: "List teams in a project",
+    description:
+      "List teams in a project. To create a team, call fairlx_project_team_create instead of sending the user to Settings.",
     inputSchema: {
       type: "object",
       properties: { projectId: id, limit: { type: "number" } },
@@ -942,6 +943,93 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     rateClass: "read",
     scopes: ["members:read"],
     permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+  {
+    name: "fairlx_project_team_create",
+    description:
+      "Create a team in this project (for example Developers). Wait for the user to Accept. Do not send them to Settings → Teams.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: id,
+        name: { type: "string", description: "Team name, e.g. Developers" },
+        description: { type: "string" },
+        color: { type: "string", description: "Hex color like #4F46E5" },
+      },
+      required: ["projectId", "name"],
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
+  },
+  {
+    name: "fairlx_project_team_update",
+    description: "Rename a project team or change its description or color. Wait for the user to Accept.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        teamId: id,
+        name: { type: "string" },
+        description: { type: "string" },
+        color: { type: "string", description: "Hex color like #4F46E5" },
+      },
+      required: ["teamId"],
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
+  },
+  {
+    name: "fairlx_project_team_delete",
+    description: "Delete a project team and its memberships. Destructive; requires confirm: true and challengeToken.",
+    inputSchema: {
+      type: "object",
+      properties: { teamId: id, confirm, challengeToken },
+      required: ["teamId"],
+    },
+    riskTier: 4,
+    rateClass: "destructive",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
+  },
+  {
+    name: "fairlx_project_team_member_add",
+    description:
+      "Add a workspace member to a project team by name or email. Use teamId from a create/list result, or projectId plus teamName. They must already be in the workspace. Wait for the user to Accept. Do not send them to Settings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        teamId: id,
+        projectId: id,
+        teamName: { type: "string", description: "Team name if teamId is not known" },
+        name: { type: "string", description: "Person's display name" },
+        email: { type: "string", description: "Email if the name is ambiguous" },
+        teamRole: { type: "string", description: "Optional label such as Lead" },
+      },
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
+  },
+  {
+    name: "fairlx_project_team_member_remove",
+    description: "Remove a person from a project team by name or email. Wait for the user to Accept.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        teamId: id,
+        name: { type: "string" },
+        email: { type: "string" },
+      },
+      required: ["teamId"],
+    },
+    riskTier: 3,
+    rateClass: "destructive",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
   },
 
   // ── Spaces ──
