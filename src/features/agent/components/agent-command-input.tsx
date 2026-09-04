@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowUp,
@@ -24,9 +24,9 @@ import { AgentModeSelector } from "./agent-mode-selector";
 import { ModelPicker } from "./model-picker";
 import { PersonalAgentSetup } from "./personal-agent-setup";
 
-function autosize(el: HTMLTextAreaElement) {
+function autosize(el: HTMLTextAreaElement, min = 56) {
   el.style.height = "auto";
-  el.style.height = `${Math.min(Math.max(el.scrollHeight, 56), 180)}px`;
+  el.style.height = `${Math.min(Math.max(el.scrollHeight, min), 180)}px`;
 }
 
 export function AgentCommandInput({
@@ -39,6 +39,10 @@ export function AgentCommandInput({
   onFollowUp,
   onStop,
   isStopping = false,
+  workspaceId,
+  projectId,
+  compact = false,
+  onCreated,
 }: {
   run?: AgentRun;
   showQuickActions?: boolean;
@@ -49,6 +53,10 @@ export function AgentCommandInput({
   onFollowUp?: (content: string) => void;
   onStop?: () => void;
   isStopping?: boolean;
+  workspaceId?: string;
+  projectId?: string;
+  compact?: boolean;
+  onCreated?: (run: AgentRun) => void;
 }) {
   const router = useRouter();
   const { data: harness } = useGetAgentHarness();
@@ -60,8 +68,19 @@ export function AgentCommandInput({
   const [prompt, setPrompt] = useState("");
   const [chips, setChips] = useState<AgentContextChip[]>([]);
   const [isListening, setIsListening] = useState(false);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(workspaceId ?? null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectId ?? null);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const minHeight = compact ? 40 : 56;
+  const resetHeight = compact ? "40px" : "56px";
+
+  useEffect(() => {
+    setSelectedWorkspaceId(workspaceId ?? null);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    setSelectedProjectId(projectId ?? null);
+  }, [projectId]);
 
   const isRunning = run?.status === "running";
   const stopping = isStopping || stopRunMutation.isPending;
@@ -82,6 +101,7 @@ export function AgentCommandInput({
   const activeWorkspaceId =
     selectedWorkspaceId ||
     run?.workspaceId ||
+    workspaceId ||
     harness?.settings.defaultWorkspaceId ||
     workspaces[0]?.id;
 
@@ -168,7 +188,7 @@ export function AgentCommandInput({
         if (transcript) {
           setPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
           if (textareaRef.current) {
-            autosize(textareaRef.current);
+            autosize(textareaRef.current, minHeight);
           }
         }
       };
@@ -188,12 +208,14 @@ export function AgentCommandInput({
       onFollowUp?.(content);
       setPrompt("");
       setChips([]);
-      if (textareaRef.current) textareaRef.current.style.height = "56px";
+      if (textareaRef.current) textareaRef.current.style.height = resetHeight;
       return;
     }
     const targetWorkspaceId =
-      activeWorkspaceId || harness?.settings.defaultWorkspaceId || context?.workspaces[0]?.id;
-    const targetProjectId = hasProjects ? harness?.settings.defaultProjectId : undefined;
+      activeWorkspaceId || workspaceId || harness?.settings.defaultWorkspaceId || context?.workspaces[0]?.id;
+    const targetProjectId = hasProjects
+      ? selectedProjectId || run?.projectId || projectId || harness?.settings.defaultProjectId
+      : undefined;
 
     createRun.mutate(
       {
@@ -207,7 +229,11 @@ export function AgentCommandInput({
         onSuccess: (result) => {
           setPrompt("");
           setChips([]);
-          if (textareaRef.current) textareaRef.current.style.height = "56px";
+          if (textareaRef.current) textareaRef.current.style.height = resetHeight;
+          if (onCreated) {
+            onCreated(result.data);
+            return;
+          }
           router.push(`/agent/workflow?runId=${result.data.id}`);
         },
       },
@@ -218,10 +244,18 @@ export function AgentCommandInput({
     <div className={cn(showQuickActions && variant === "create" ? "space-y-3" : "w-full")}>
       <AgentScopeBar
         run={run}
-        onScopeChange={(wsId) => setSelectedWorkspaceId(wsId)}
+        defaultWorkspaceId={workspaceId}
+        defaultProjectId={projectId}
+        onScopeChange={(wsId, projId) => {
+          setSelectedWorkspaceId(wsId);
+          setSelectedProjectId(projId ?? null);
+        }}
       />
       <form
-        className="rounded-2xl border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30"
+        className={cn(
+          "border border-border/80 bg-card/70 dark:bg-zinc-900/70 backdrop-blur-sm shadow-xs flex flex-col transition-all focus-within:ring-1 focus-within:ring-border focus-within:border-foreground/30",
+          compact ? "rounded-xl" : "rounded-2xl",
+        )}
         onSubmit={(event) => {
           event.preventDefault();
           if (!personalUntrained) submit(prompt);
@@ -244,7 +278,7 @@ export function AgentCommandInput({
               value={prompt}
               onChange={(event) => {
                 setPrompt(event.target.value);
-                autosize(event.currentTarget);
+                autosize(event.currentTarget, minHeight);
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -255,9 +289,14 @@ export function AgentCommandInput({
               placeholder={inputPlaceholder}
               rows={1}
               disabled={busy}
-              className="w-full bg-transparent text-[14px] sm:text-[15px] text-foreground leading-relaxed px-4 pt-3.5 pb-2 resize-none focus:outline-none placeholder:text-muted-foreground/60 min-h-[58px] max-h-44 custom-scrollbar"
+              className={cn(
+                "w-full bg-transparent text-foreground leading-relaxed resize-none focus:outline-none placeholder:text-muted-foreground/60 max-h-44 custom-scrollbar",
+                compact
+                  ? "text-[13px] px-3 pt-2.5 pb-1.5 min-h-[40px]"
+                  : "text-[14px] sm:text-[15px] px-4 pt-3.5 pb-2 min-h-[58px]",
+              )}
             />
-            <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5 select-none">
+            <div className={cn("flex items-center justify-between pt-0.5 select-none", compact ? "px-2 pb-2" : "px-3 pb-2.5")}>
               <div className="flex items-center gap-2">
                 <AgentModeSelector />
                 <ModelPicker variant="subtle" />
@@ -360,9 +399,12 @@ export function AgentCommandInput({
                 type="button"
                 disabled={busy}
                 onClick={() => submit(action.prompt)}
-                className="inline-flex items-center gap-2 rounded-full border border-border bg-card hover:bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm font-medium"
+                className={cn(
+                  "inline-flex items-center rounded-full border border-border bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors shadow-sm font-medium",
+                  compact ? "gap-1.5 px-2 py-1 text-[11px]" : "gap-2 px-3 py-1.5 text-xs",
+                )}
               >
-                <Icon className="size-3.5 text-primary" />
+                <Icon className={cn("text-primary", compact ? "size-3" : "size-3.5")} />
                 <span>{action.label}</span>
               </button>
             );
