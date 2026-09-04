@@ -18,7 +18,7 @@
 </div>
 
 <!-- docs:latest:start -->
-**Last updated:** 2026-09-04T20:25:39.737Z
+**Last updated:** 2026-09-04T20:26:46.169Z
 
 This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
 
@@ -31,7 +31,6 @@ This block and [changelog.md](changelog.md) refresh on every `git commit` and `g
 - `5c24ef5` chore: bump version to 0.2.92 [skip ci] (2026-09-03)
 - `16f1b6d` feat: implement personalized agent training workflows, task prioritization, and project team management tools. (2026-09-04)
 - `ab595ff` chore: bump version to 0.2.91 [skip ci] (2026-09-03)
-- `b8eb6dd` refactor: standardize priority UI logic and introduce modular project-based quick actions for agent commands (2026-09-03)
 <!-- docs:latest:end -->
 
 ---
