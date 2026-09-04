@@ -19,9 +19,13 @@ import { useAgentUi } from "./agent-ui-context";
 export function AgentScopeBar({
   run,
   onScopeChange,
+  defaultWorkspaceId,
+  defaultProjectId,
 }: {
   run?: AgentRun;
   onScopeChange?: (workspaceId: string, projectId?: string) => void;
+  defaultWorkspaceId?: string;
+  defaultProjectId?: string;
 } = {}) {
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
@@ -38,7 +42,7 @@ export function AgentScopeBar({
   const workspaces = useMemo(() => context?.workspaces ?? [], [context?.workspaces]);
   const launch = useMemo(() => extractBoardProject(run?.messages ?? []), [run?.messages]);
   const workspaceId =
-    run?.workspaceId || launch?.workspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
+    run?.workspaceId || launch?.workspaceId || defaultWorkspaceId || harness?.settings.defaultWorkspaceId || workspaces[0]?.id;
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const projects = useMemo(() => {
     const list = (context?.projects ?? []).filter((item) => !workspaceId || item.workspaceId === workspaceId);
@@ -51,7 +55,7 @@ export function AgentScopeBar({
     }
     return list;
   }, [context?.projects, workspaceId, launch]);
-  const projectId = run?.projectId || launch?.projectId || harness?.settings.defaultProjectId;
+  const projectId = run?.projectId || launch?.projectId || defaultProjectId || harness?.settings.defaultProjectId;
   const project = projects.find((item) => item.id === projectId) ?? context?.projects.find((item) => item.id === projectId);
   const projectLabel = project?.name || launch?.name || "Project";
   const repo = (context?.githubRepos ?? []).find(
