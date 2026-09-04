@@ -940,8 +940,8 @@ export function AgentChatThread({
 }) {
   const { data: context } = useGetAgentContext();
   const { data: harness } = useGetAgentHarness();
-  const messages = run.messages ?? [];
-  const events = run.events ?? [];
+  const messages = useMemo(() => run.messages ?? [], [run.messages]);
+  const events = useMemo(() => run.events ?? [], [run.events]);
   const running = run.status === "running";
   const awaiting = run.status === "awaiting_confirmation";
   const blocks = useMemo(() => groupTranscript(messages, events), [messages, events]);
