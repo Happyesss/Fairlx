@@ -26,6 +26,10 @@ describe("isWriteToolCall", () => {
     expect(
       isWriteToolCall(call("mcp_call", { server: "fairlx", tool: "fairlx_project_create", arguments: { name: "N" } })),
     ).toBe(true);
+    expect(isWriteToolCall(call("mail_send", { to: "ada@x.com", subject: "Hi", body: "x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_write_file", { path: "a.ts", content: "x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_open_pr", { title: "Fix", head: "fairlx/x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_read_file", { path: "a.ts" }))).toBe(false);
   });
 
   it("allows reads without confirmation", () => {
@@ -59,6 +63,7 @@ describe("isWriteToolCall", () => {
     expect(confirmationSummary(call("fairlx_project_team_create", { name: "Developers" }))).toBe(
       'Create team "Developers"?',
     );
+    expect(confirmationSummary(call("mail_send", { to: "ada@x.com", subject: "Issue" }))).toBe("Send mail to ada@x.com?");
   });
 });
 

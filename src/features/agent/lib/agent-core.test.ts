@@ -103,6 +103,11 @@ describe("graph and prompt", () => {
     expect(resolveSpecialist("stage the login change and plan a commit")).toBe("git");
   });
 
+  it("routes mail and security prompts to isolated specialists", () => {
+    expect(resolveSpecialist("Send a mail about WEB-12 to the client")).toBe("ops");
+    expect(resolveSpecialist("security review this repo for xss")).toBe("security");
+  });
+
   it("routes plan-a-feature prompts to the planner", () => {
     expect(resolveSpecialist("Plan a new feature for the current Fairlx workspace.")).toBe("planner");
   });

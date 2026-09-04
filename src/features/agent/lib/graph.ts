@@ -36,18 +36,36 @@ export const AGENT_SPECIALISTS: Array<{
   {
     id: "git",
     name: "Git",
-    role: "Inspect linked repos and the staging buffer. Never execute git on the host.",
+    role: "Inspect linked repos and open real GitHub PRs. Never run git on the Fairlx host.",
   },
   {
     id: "reviewer",
     name: "Reviewer",
-    role: "Check plans against work patterns, automations, and safety rules.",
+    role: "Check plans against work patterns, automations, and safety rules. Never grade your own output.",
+  },
+  {
+    id: "ops",
+    name: "Ops",
+    role: "Company actions: mail, invites, members, and work-item comments.",
+  },
+  {
+    id: "security",
+    name: "Security",
+    role: "Review linked source for vulnerabilities. Cite file paths. Never exploit production.",
+  },
+  {
+    id: "workflow",
+    name: "Workflow",
+    role: "Inspect and propose Fairlx workflow statuses and transitions.",
   },
 ];
 
 const SPECIALIST_HINTS: Array<{ id: AgentSpecialistId; pattern: RegExp }> = [
+  { id: "security", pattern: /\b(security|vulnerab|xss|ssrf|pentest|shannon|cve)\b/i },
+  { id: "ops", pattern: /\b(mail|email|outlook|gmail|invite|add .*member)\b/i },
+  { id: "workflow", pattern: /\b(workflow statuses|custom workflow|transition)\b/i },
   { id: "git", pattern: /\b(git|commit|stage|unstag|branch|pr\b|pull request|repo|repository|diff)\b/i },
-  { id: "builder", pattern: /\b(create project|new project|scaffold|implement|ship|build)\b/i },
+  { id: "builder", pattern: /\b(create project|new project|scaffold|implement|ship|build|edit the code)\b/i },
   { id: "researcher", pattern: /\b(search|find|look up|what is|who is|docs?|investigate)\b/i },
   { id: "planner", pattern: /\b(plan|roadmap|breakdown|steps|how should we)\b/i },
   { id: "reviewer", pattern: /\b(review|audit|risk|check this|is this safe)\b/i },

@@ -110,7 +110,8 @@ export type AgentRunStatus =
   | "completed"
   | "failed"
   | "stopped"
-  | "awaiting_confirmation";
+  | "awaiting_confirmation"
+  | "awaiting_plugin";
 export type AgentRunMode = "agent" | "manual";
 export type AgentSessionMode = "agent" | "personal" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
@@ -137,7 +138,72 @@ export type AgentSpecialistId =
   | "researcher"
   | "builder"
   | "git"
-  | "reviewer";
+  | "reviewer"
+  | "ops"
+  | "security"
+  | "workflow";
+
+export type AgentCapability =
+  | "email.send"
+  | "code.read"
+  | "code.write"
+  | "security.review"
+  | "members.invite"
+  | "chat.notify";
+
+export type AgentPluginAuthKind = "platform" | "oauth" | "token" | "mcp";
+
+export type AgentPluginSecrets = {
+  accessTokenEncrypted?: string;
+  refreshTokenEncrypted?: string;
+  apiKeyEncrypted?: string;
+  from?: string;
+  mcpUrl?: string;
+  mcpTool?: string;
+  mcpHeadersEncrypted?: string;
+  extra?: Record<string, string>;
+};
+
+export type AgentPluginConnection = {
+  id: string;
+  catalogId: string;
+  displayName: string;
+  capabilities: AgentCapability[];
+  status: "connected" | "disconnected";
+  authKind: AgentPluginAuthKind;
+  secrets?: AgentPluginSecrets;
+  createdAt: string;
+};
+
+export type AgentPluginPublic = {
+  id: string;
+  catalogId: string;
+  displayName: string;
+  capabilities: AgentCapability[];
+  status: "connected" | "disconnected";
+  authKind: AgentPluginAuthKind;
+  hasSecret: boolean;
+  from?: string;
+  mcpUrl?: string;
+  createdAt: string;
+};
+
+export type AgentJobKind = "security_review" | "github_pr";
+export type AgentJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type AgentJob = {
+  id: string;
+  userId: string;
+  runId?: string;
+  kind: AgentJobKind;
+  status: AgentJobStatus;
+  progress: { step: string; percent: number };
+  payload: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AgentGitStageStatus = "unstaged" | "staged" | "committed";
 
@@ -228,6 +294,18 @@ export type AgentToolEventType =
   | "run_automation"
   | "personal_read"
   | "save_personal_agent"
+  | "mail_send"
+  | "github_read_file"
+  | "github_list_files"
+  | "github_write_file"
+  | "github_open_pr"
+  | "security_review"
+  | "request_capability"
+  | "persist_memory"
+  | "agent_job_status"
+  | "plugin_required"
+  | "plugin_connected"
+  | "job_progress"
   | "thought"
   | "confirmation"
   | "confirmation_resolved"
@@ -333,6 +411,7 @@ export type AgentHarness = {
   settings: AgentHarnessSettings;
   gitStaging: AgentGitStaging;
   chatMeta: AgentChatMeta;
+  plugins: AgentPluginConnection[];
   updatedAt: string;
 };
 

@@ -43,8 +43,8 @@ export const TokenGuide = () => {
             <AlertDescription className="text-sm text-green-800 dark:text-green-200">
               <strong className="font-semibold">Your Security Matters</strong>
               <p className="mt-1">
-                We only request <strong>read-only access</strong> to your repositories. 
-                No write permissions needed. Your code remains safe and secure.
+                Tokens stay encrypted in Fairlx. The Agent never runs git on Fairlx servers.
+                File edits and pull requests go through the GitHub API and wait for Accept in chat.
               </p>
             </AlertDescription>
           </Alert>
@@ -120,10 +120,10 @@ export const TokenGuide = () => {
               <div className="flex items-start gap-3">
                 <Badge className="mt-0.5 shrink-0">Step 4</Badge>
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">Select Repository Scope (Read-Only)</p>
+                  <p className="text-sm font-medium">Select Repository Scope</p>
                   <div className="bg-muted/50 rounded-lg p-3 space-y-2">
                     <p className="text-xs text-muted-foreground font-semibold">
-                      ✓ Check only these permissions:
+                      ✓ Check this permission:
                     </p>
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
@@ -132,15 +132,16 @@ export const TokenGuide = () => {
                           repo
                         </code>
                         <span className="text-muted-foreground">
-                          (Full control of private repositories - for read access)
+                          (Read and write on private repositories)
                         </span>
                       </div>
                     </div>
                     <Alert className="mt-2">
                       <AlertCircle className="h-3 w-3" />
                       <AlertDescription className="text-xs">
-                        Despite the name, selecting &quot;repo&quot; only grants us <strong>read access</strong> to your code. 
-                        We cannot modify, delete, or write to your repositories.
+                        The classic <strong>repo</strong> scope is required for the Agent to commit on a branch
+                        and open a pull request. Writes still wait for Accept/Deny in the Agent. Fine-grained
+                        tokens need Contents read/write plus Pull requests write.
                       </AlertDescription>
                     </Alert>
                   </div>
@@ -189,7 +190,7 @@ export const TokenGuide = () => {
           <div className="bg-muted/50 rounded-lg p-4 space-y-3">
             <h4 className="font-semibold text-sm flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary" />
-              What We Access (Read-Only)
+              What Fairlx uses
             </h4>
             <ul className="text-xs text-muted-foreground space-y-1.5 ml-4">
               <li className="flex items-start gap-2">
@@ -202,7 +203,7 @@ export const TokenGuide = () => {
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="h-3 w-3 text-green-500 mt-0.5 shrink-0" />
-                <span>Code documentation generation</span>
+                <span>Branch commits and pull requests after you Accept in the Agent</span>
               </li>
             </ul>
           </div>
@@ -211,20 +212,16 @@ export const TokenGuide = () => {
           <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-4 space-y-3 border border-red-200">
             <h4 className="font-semibold text-sm flex items-center gap-2 text-red-700 dark:text-red-300">
               <Lock className="h-4 w-4" />
-              What We DON&apos;T Access
+              What Fairlx does not do
             </h4>
             <ul className="text-xs text-red-600 dark:text-red-400 space-y-1.5 ml-4">
               <li className="flex items-start gap-2">
                 <span className="text-base">✗</span>
-                <span>No write or modify permissions</span>
+                <span>No git or shell on Fairlx servers</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-base">✗</span>
-                <span>Cannot create, update, or delete files</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-base">✗</span>
-                <span>Cannot push commits or create branches</span>
+                <span>No writes without Accept in the Agent</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-base">✗</span>

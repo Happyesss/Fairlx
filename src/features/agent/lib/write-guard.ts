@@ -1,6 +1,6 @@
 import type { AgentPendingConfirmation, AgentToolCall, AgentToolEvent } from "../types";
 
-const HARNESS_WRITES = new Set(["create_project"]);
+const HARNESS_WRITES = new Set(["create_project", "mail_send", "github_write_file", "github_open_pr"]);
 const WRITE_NAME_RE = /_(create|update|delete|add|set|start|complete|split|sync|remove|mark_read)$/i;
 
 export function mcpToolNameFromCall(call: AgentToolCall): string | undefined {
@@ -79,6 +79,17 @@ export function confirmationSummary(call: AgentToolCall): string {
   }
   if (/update|set|complete|start|sync/i.test(mcpName)) {
     return label ? `Update ${label}?` : `Apply ${action}?`;
+  }
+  if (call.name === "mail_send" || /mail_send/i.test(mcpName)) {
+    const to = String(nested.to || "").trim();
+    return to ? `Send mail to ${to}?` : "Send this mail?";
+  }
+  if (call.name === "github_write_file") {
+    const path = String(nested.path || label).trim();
+    return path ? `Write ${path} on GitHub?` : "Write a GitHub file?";
+  }
+  if (call.name === "github_open_pr") {
+    return label ? `Open PR: ${label}?` : "Open a GitHub pull request?";
   }
   if (/create|add/i.test(mcpName) || call.name === "create_project") {
     return label ? `Create ${label}?` : `Create via ${action}?`;

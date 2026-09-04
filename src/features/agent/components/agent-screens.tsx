@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { useGetAgentContext } from "../api/use-agent-context";
+import { useGetAgentPlugins } from "../api/use-agent-plugins";
 import { useGetAgentHarness, useResetAgentHarness, useUpdateAgentHarness } from "../api/use-agent-harness";
 import { AGENT_FIELD_CLASS, AGENT_TOOL_CATALOG } from "../constants";
 import { relativeTime } from "../lib/agent-ui";
@@ -875,16 +876,36 @@ export function AgentAutomationsScreen() {
 
 export function AgentIntegrationsScreen() {
   const { data, isLoading } = useGetAgentContext();
+  const { data: pluginsData } = useGetAgentPlugins();
   const integrations = data?.integrations ?? [];
   const repos = data?.githubRepos ?? [];
+  const catalog = pluginsData?.catalog ?? [];
+  const connected = pluginsData?.connected ?? [];
 
   return (
     <AgentPageFrame>
       <div className="max-w-[1400px] mx-auto space-y-8">
         <ScreenHeader
           title="Integrations"
-          description="Connected Fairlx integrations and GitHub repositories from your workspaces."
+          description="Connected Fairlx integrations, GitHub repositories, and agent plugins (Outlook, Gmail, GitHub write)."
         />
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Agent plugins</h2>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {catalog.map((item) => {
+              const live = connected.find((plugin) => plugin.catalogId === item.id && plugin.status === "connected");
+              return (
+                <div key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-foreground truncate">{item.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                  <p className="mt-2 text-[11px] font-medium text-muted-foreground">
+                    {live ? "Connected" : item.auth === "platform" ? "Available" : "Not connected"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
         <section className="space-y-3">
           <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Connected services</h2>
           {isLoading ? (

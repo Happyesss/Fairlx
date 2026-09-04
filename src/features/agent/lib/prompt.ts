@@ -1,5 +1,6 @@
 import type { AgentContext, AgentHarness, AgentRun, AgentSpecialistId, McpConfig, PersonalTrainingAnswer } from "../types";
 import { compilePersonaPrompt, inferPersonaRole } from "@fairlx/multi-agent";
+import { AGENT_DEFINITIONS } from "./brain";
 import { AGENT_SPECIALISTS, resolveSpecialist, specialistById } from "./graph";
 import { matchingAutomations, rankKnowledge } from "./search";
 import { isPersonalSessionMode, SESSION_MODE_INSTRUCTIONS } from "./session-context";
@@ -84,6 +85,12 @@ export function buildSystemPrompt(params: {
     );
   }
   if (query) lines.push(`Task: ${query.slice(0, 400)}`);
+  const connected = (harness.plugins ?? []).filter((plugin) => plugin.status === "connected");
+  if (connected.length) {
+    lines.push(`Plugins: ${connected.map((plugin) => plugin.displayName).join(", ")}.`);
+  } else {
+    lines.push("Plugins: Fairlx platform only. Mail, GitHub write, and extra MCP need connecting.");
+  }
   lines.push(
     "",
     "Rules:",
@@ -110,7 +117,10 @@ export function buildSystemPrompt(params: {
     "- When asked to remove someone, call fairlx_workspace_member_remove with their name or email. Wait for Accept.",
     "- When asked for an invite, join, or share link, call fairlx_workspace_invite_get. If invite links are disabled, add the person with fairlx_workspace_member_add instead of sending the user to Settings.",
     "- Create, update, and delete wait for the user to Accept or Deny in the UI. Do not ask them to type confirm.",
-    "- Stay inside this user's workspace role. If a tool is not allowed, say they do not have permission.",
+    "- When asked to send mail about a work item, load the item, draft the mail, then call mail_send with workItemKey. After Accept, a comment is added on the item. If mail is not configured, call request_capability with email.send instead of guessing.",
+    "- Edit code through github_read_file, github_write_file, and github_open_pr on linked repos. Pass files[] on github_open_pr for multi-file PRs. Never claim you ran git on the Fairlx host.",
+    "- Security review uses security_review. Cite file paths. Never exploit production or staging unless the user confirmed a staging URL. Findings become Fairlx bugs and a channel digest.",
+    "- Delegate long or specialized work to ops, security, builder, git, workflow, or reviewer. Reviewer never grades its own output.",
     "- Be concise. Answer the question; skip process talk.",
   );
 
@@ -128,7 +138,12 @@ export function buildSystemPrompt(params: {
   }
   if (specialist !== "orchestrator" && !personal) {
     const specialistDef = AGENT_SPECIALISTS.find((item) => item.id === specialist);
-    lines.push("", `Stay in the ${specialistDef?.name ?? specialist} role: ${specialistDef?.role ?? ""}`.trim());
+    const definition = AGENT_DEFINITIONS[specialist];
+    lines.push(
+      "",
+      `Stay in the ${specialistDef?.name ?? specialist} role: ${definition?.identity ?? specialistDef?.role ?? ""}`.trim(),
+    );
+    if (definition?.done) lines.push(`Done when: ${definition.done}`);
   }
   return lines.join("\n");
 }

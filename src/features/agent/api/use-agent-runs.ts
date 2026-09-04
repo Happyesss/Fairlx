@@ -40,12 +40,12 @@ async function readError(response: Response, fallback: string): Promise<never> {
 export const agentRunQueryKey = (runId: string) => ["agent-run", runId] as const;
 
 export function shouldPollAgentRun(status?: string): boolean {
-  return status === "running" || status === "awaiting_confirmation";
+  return status === "running" || status === "awaiting_confirmation" || status === "awaiting_plugin";
 }
 
 export function agentRunPollMs(status?: string): number | false {
   if (status === "running") return 2000;
-  if (status === "awaiting_confirmation") return 2500;
+  if (status === "awaiting_confirmation" || status === "awaiting_plugin") return 2500;
   return false;
 }
 

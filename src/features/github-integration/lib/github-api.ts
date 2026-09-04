@@ -884,6 +884,102 @@ export class GitHubAPI {
       throw new Error(`Failed to create comment on issue #${issueNumber}: ${response.statusText}`);
     }
   }
+
+  async getBranchSha(owner: string, repo: string, branch: string): Promise<string> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
+    const response = await this.fetchWithRetry(url, { headers: this.getHeaders() });
+    if (!response.ok) {
+      throw new Error(`Failed to read branch ${branch}: ${response.statusText}`);
+    }
+    const json = (await response.json()) as { object?: { sha?: string } };
+    const sha = json.object?.sha;
+    if (!sha) throw new Error(`Branch ${branch} has no sha`);
+    return sha;
+  }
+
+  async ensureBranch(owner: string, repo: string, branch: string, fromBranch: string): Promise<void> {
+    try {
+      await this.getBranchSha(owner, repo, branch);
+      return;
+    } catch {
+      // create from base
+    }
+    const sha = await this.getBranchSha(owner, repo, fromBranch);
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/refs`;
+    const response = await this.fetchWithRetry(url, {
+      method: "POST",
+      headers: { ...this.getHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+    });
+    if (!response.ok && response.status !== 422) {
+      throw new Error(`Failed to create branch ${branch}: ${response.statusText}`);
+    }
+  }
+
+  async putFile(params: {
+    owner: string;
+    repo: string;
+    path: string;
+    content: string;
+    message: string;
+    branch: string;
+    baseBranch?: string;
+  }): Promise<{ sha: string; html_url?: string }> {
+    if (params.baseBranch) {
+      await this.ensureBranch(params.owner, params.repo, params.branch, params.baseBranch);
+    }
+    let sha: string | undefined;
+    try {
+      const existing = await this.getContents(params.owner, params.repo, params.path, params.branch);
+      sha = existing[0]?.sha;
+    } catch {
+      sha = undefined;
+    }
+    const url = `${GITHUB_API_BASE}/repos/${params.owner}/${params.repo}/contents/${params.path}`;
+    const response = await this.fetchWithRetry(url, {
+      method: "PUT",
+      headers: { ...this.getHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: params.message,
+        content: Buffer.from(params.content, "utf-8").toString("base64"),
+        branch: params.branch,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text.slice(0, 400) || `Failed to write ${params.path}: ${response.statusText}`);
+    }
+    const json = (await response.json()) as { content?: { sha?: string; html_url?: string } };
+    return { sha: json.content?.sha || "", html_url: json.content?.html_url };
+  }
+
+  async createPullRequest(params: {
+    owner: string;
+    repo: string;
+    title: string;
+    body: string;
+    head: string;
+    base: string;
+  }): Promise<{ number: number; html_url: string; title: string }> {
+    const url = `${GITHUB_API_BASE}/repos/${params.owner}/${params.repo}/pulls`;
+    const response = await this.fetchWithRetry(url, {
+      method: "POST",
+      headers: { ...this.getHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: params.title,
+        body: params.body,
+        head: params.head,
+        base: params.base,
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text.slice(0, 400) || `Failed to open pull request: ${response.statusText}`);
+    }
+    const json = (await response.json()) as { number: number; html_url: string; title: string };
+    return { number: json.number, html_url: json.html_url, title: json.title };
+  }
 }
 
 export const githubAPI = new GitHubAPI();
