@@ -4,48 +4,11 @@ This file is generated on every `git commit` and `git push`. Do not edit it by h
 
 Older session notes live in [docs/changelog-history.md](docs/changelog-history.md).
 
-## Unreleased
-
-Files in this commit:
-
-- `.env.example`
-- `packages/fairlx-mcp/src/runtime/output.test.ts`
-- `packages/fairlx-mcp/src/runtime/output.ts`
-- `packages/fairlx-mcp/src/tools/catalog.ts`
-- `packages/fairlx-mcp/src/tools/write-work-item.test.ts`
-- `packages/fairlx-mcp/src/tools/write.ts`
-- `scripts/database-initialization/collections/agent-jobs.ts`
-- `scripts/database-initialization/collections/agent-runs.ts`
-- `scripts/database-initialization/db-helpers.test.ts`
-- `scripts/database-initialization/lib/db-helpers.ts`
-- `src/app/api/[[...route]]/route.ts`
-- `src/features/agent/components/agent-plus-menu.tsx`
-- `src/features/agent/lib/agent-core.test.ts`
-- `src/features/agent/lib/attach-files.ts`
-- `src/features/agent/lib/attachments.test.ts`
-- `src/features/agent/lib/attachments.ts`
-- `src/features/agent/lib/brain/brain.test.ts`
-- `src/features/agent/lib/brain/compress.ts`
-- `src/features/agent/lib/brain/definitions.ts`
-- `src/features/agent/lib/brain/select.ts`
-- `src/features/agent/lib/intent-compiler.test.ts`
-- `src/features/agent/lib/intent-compiler.ts`
-- `src/features/agent/lib/limits.test.ts`
-- `src/features/agent/lib/limits.ts`
-- `src/features/agent/lib/prompt.ts`
-- `src/features/agent/lib/runs.ts`
-- `src/features/agent/lib/runtime.ts`
-- `src/features/agent/lib/session-context.ts`
-- `src/features/agent/lib/tools.ts`
-- `src/features/agent/lib/turn-errors.test.ts`
-- `src/features/agent/lib/turn-errors.ts`
-- `src/features/agent/server/route.ts`
-- `src/features/agent/types.ts`
-
 ## Recent commits
 
 | Date | Commit | Message | Author |
 |------|--------|---------|--------|
+| 2026-09-05 | `7a39a96` | Raise agent model timeouts and pass attached specs to subject sub-agents. | ANCIENTINSANE |
 | 2026-09-04 | `13c0f8e` | feat: add Fairlx Agent harness with plugins, GitHub PRs, and isolated jobs | ANCIENTINSANE |
 | 2026-09-03 | `3426bbe` | chore: bump version to 0.2.93 [skip ci] | github-actions[bot] |
 | 2026-09-04 | `5c99783` | Merge pull request #298 from Happyesss/main | Shashank Kumar Rathour |
@@ -145,6 +108,5 @@ Files in this commit:
 | 2026-06-22 | `262cb75` | Merge pull request #275 from ANCIENTINSANE/main | Surendra Codes |
 | 2026-06-22 | `7540e3a` | Fix typescript error in image-sync.test.ts | ANCIENTINSANE |
 | 2026-06-22 | `e9daecf` | lyf-cycle fix | ANCIENTINSANE |
-| 2026-06-22 | `bddb158` | Merge pull request #51 from ANCIENTINSANE/dev | Surendra Codes |
 
-Last generated: 2026-09-04T20:24:01.211Z
+Last generated: 2026-09-04T20:25:39.712Z

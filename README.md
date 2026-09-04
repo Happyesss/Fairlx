@@ -18,36 +18,13 @@
 </div>
 
 <!-- docs:latest:start -->
-**Last updated:** 2026-09-04T20:24:01.242Z
+**Last updated:** 2026-09-04T20:25:39.737Z
 
 This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
 
-**This commit**
-
-- `.env.example`
-- `packages/fairlx-mcp/src/runtime/output.test.ts`
-- `packages/fairlx-mcp/src/runtime/output.ts`
-- `packages/fairlx-mcp/src/tools/catalog.ts`
-- `packages/fairlx-mcp/src/tools/write-work-item.test.ts`
-- `packages/fairlx-mcp/src/tools/write.ts`
-- `scripts/database-initialization/collections/agent-jobs.ts`
-- `scripts/database-initialization/collections/agent-runs.ts`
-- `scripts/database-initialization/db-helpers.test.ts`
-- `scripts/database-initialization/lib/db-helpers.ts`
-- `src/app/api/[[...route]]/route.ts`
-- `src/features/agent/components/agent-plus-menu.tsx`
-- `src/features/agent/lib/agent-core.test.ts`
-- `src/features/agent/lib/attach-files.ts`
-- `src/features/agent/lib/attachments.test.ts`
-- `src/features/agent/lib/attachments.ts`
-- `src/features/agent/lib/brain/brain.test.ts`
-- `src/features/agent/lib/brain/compress.ts`
-- `src/features/agent/lib/brain/definitions.ts`
-- `src/features/agent/lib/brain/select.ts`
-- …and 13 more files
-
 **Latest commits**
 
+- `7a39a96` Raise agent model timeouts and pass attached specs to subject sub-agents. (2026-09-05)
 - `13c0f8e` feat: add Fairlx Agent harness with plugins, GitHub PRs, and isolated jobs (2026-09-04)
 - `3426bbe` chore: bump version to 0.2.93 [skip ci] (2026-09-03)
 - `5c99783` Merge pull request #298 from Happyesss/main (2026-09-04)
@@ -55,7 +32,6 @@ This block and [changelog.md](changelog.md) refresh on every `git commit` and `g
 - `16f1b6d` feat: implement personalized agent training workflows, task prioritization, and project team management tools. (2026-09-04)
 - `ab595ff` chore: bump version to 0.2.91 [skip ci] (2026-09-03)
 - `b8eb6dd` refactor: standardize priority UI logic and introduce modular project-based quick actions for agent commands (2026-09-03)
-- `7cf95d2` chore: bump version to 0.2.90 [skip ci] (2026-09-02)
 <!-- docs:latest:end -->
 
 ---
