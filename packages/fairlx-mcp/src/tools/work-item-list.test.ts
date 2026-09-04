@@ -19,16 +19,18 @@ function listRuntime(options: {
       list: async (collection: string, queries: McpQuery[]) => {
         seen.push(queries);
         if (collection === "members") {
-          const equal = queries.find((query) => query.type === "equal" && query.field === "$id");
-          const wanted = equal && "value" in equal
-            ? Array.isArray(equal.value)
+          const equal = queries.find((query) => query.type === "equal");
+          if (equal && "field" in equal && "value" in equal) {
+            const wanted = Array.isArray(equal.value)
               ? equal.value.map(String)
-              : [String(equal.value)]
-            : [];
-          const documents = wanted.length
-            ? members.filter((member) => wanted.includes(String(member.$id)))
-            : members;
-          return { documents, total: documents.length };
+              : [String(equal.value)];
+            const field = equal.field === "$id" ? "$id" : String(equal.field);
+            const documents = members.filter((member) =>
+              wanted.includes(String(member[field] ?? "")),
+            );
+            return { documents, total: documents.length };
+          }
+          return { documents: members, total: members.length };
         }
         const cursor = queries.find((query) => query.type === "cursorAfter");
         const limitQuery = queries.find((query) => query.type === "limit");
@@ -74,6 +76,18 @@ function payloadOf(result: { content: Array<{ text?: string }> }) {
     total: number;
     matched?: number;
     unassignedCount?: number;
+    location?: {
+      backlogCount: number;
+      backlogKeys: string[];
+      sprintCount: number;
+      sprintKeys: string[];
+    };
+    assignment?: {
+      total: number;
+      unassignedCount: number;
+      unassignedKeys: string[];
+      byAssignee: Record<string, string[]>;
+    };
     error?: string;
     workItems: Array<{
       key?: string;
@@ -81,6 +95,7 @@ function payloadOf(result: { content: Array<{ text?: string }> }) {
       type?: string;
       assignees?: Array<string | { name?: string; imageUrl?: string | null }>;
       unassigned?: boolean;
+      location?: string;
     }>;
   };
 }
@@ -147,6 +162,12 @@ describe("fairlx_work_item_list", () => {
     expect(payload.workItems.map((item) => item.key)).toEqual(["PROJ-1", "PROJ-2"]);
     expect(payload.workItems.every((item) => item.unassigned)).toBe(true);
     expect(payload.unassignedCount).toBe(2);
+    expect(payload.assignment).toEqual({
+      total: 3,
+      unassignedCount: 2,
+      unassignedKeys: ["PROJ-1", "PROJ-2"],
+      byAssignee: { "Ada Lovelace": ["PROJ-3"] },
+    });
     expect(payload.matched).toBe(2);
     expect(payload.workItems.some((item) => item.type === "BUG")).toBe(true);
     expect(payload.workItems.find((item) => item.key === "PROJ-3")).toBeUndefined();
@@ -217,6 +238,68 @@ describe("fairlx_work_item_list", () => {
     ]);
   });
 
+  it("hydrates assignees stored as Appwrite user ids the same as membership ids", async () => {
+    const { runtime } = listRuntime({
+      documents: [
+        {
+          $id: "d4",
+          key: "SCHO-16",
+          title: "Create gradebook data model",
+          status: "TODO",
+          type: "TASK",
+          assigneeIds: ["u1"],
+        },
+      ],
+      members: [{ $id: "m1", userId: "u1", name: "Ada" }],
+      profiles: [{ id: "u1", name: "Ada Lovelace", email: "ada@fairlx.dev" }],
+    });
+    const result = await callTool(
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      runtime,
+      jwtToAuthContext("u1", { workspaceId: "ws_1", projectId: "p1", scopes: ["tasks:read"] }),
+    );
+    const payload = payloadOf(result);
+    expect(payload.workItems[0]).toMatchObject({
+      key: "SCHO-16",
+      unassigned: false,
+      assignees: [{ name: "Ada Lovelace" }],
+    });
+  });
+
+  it("filters assigneeId by name or email after hydration", async () => {
+    const { runtime } = listRuntime({
+      documents: [
+        {
+          $id: "d5",
+          key: "SCHO-1",
+          title: "Assigned",
+          status: "TODO",
+          type: "TASK",
+          assigneeIds: ["m1"],
+        },
+        {
+          $id: "d6",
+          key: "SCHO-2",
+          title: "Other",
+          status: "TODO",
+          type: "TASK",
+          assigneeIds: [],
+        },
+      ],
+      members: [{ $id: "m1", userId: "u1", name: "fogef", email: "fogefe9321@94an.com" }],
+      profiles: [{ id: "u1", name: "fogef", email: "fogefe9321@94an.com" }],
+    });
+    const result = await callTool(
+      "fairlx_work_item_list",
+      { projectId: "p1", assigneeId: "fogefe9321@94an.com" },
+      runtime,
+      jwtToAuthContext("u1", { workspaceId: "ws_1", projectId: "p1", scopes: ["tasks:read"] }),
+    );
+    const payload = payloadOf(result);
+    expect(payload.workItems.map((item) => item.key)).toEqual(["SCHO-1"]);
+  });
+
   it("auto-pages past the default page size so one unassigned call is complete", async () => {
     const docs = Array.from({ length: 150 }, (_, index) => ({
       $id: `doc_${index}`,
@@ -242,5 +325,51 @@ describe("fairlx_work_item_list", () => {
     expect(payload.workItems).toHaveLength(3);
     expect(payload.hasMore).toBe(false);
     expect(payload.unassignedCount).toBe(3);
+  });
+
+  it("filters the project Backlog separately from the current sprint", async () => {
+    const { runtime } = listRuntime({
+      documents: [
+        {
+          $id: "d1",
+          key: "SCHO-1",
+          title: "In sprint",
+          sprintId: "sprint_1",
+          status: "TODO",
+          type: "TASK",
+        },
+        {
+          $id: "d2",
+          key: "SCHO-13",
+          title: "In backlog",
+          sprintId: null,
+          status: "TODO",
+          type: "TASK",
+        },
+        {
+          $id: "d3",
+          key: "SCHO-14",
+          title: "Also backlog",
+          sprintId: "",
+          status: "TODO",
+          type: "TASK",
+        },
+      ],
+    });
+    const result = await callTool(
+      "fairlx_work_item_list",
+      { projectId: "p1", backlog: true },
+      runtime,
+      jwtToAuthContext("u1", { workspaceId: "ws_1", projectId: "p1", scopes: ["tasks:read"] }),
+    );
+    const payload = payloadOf(result);
+    expect(payload.workItems.map((item) => item.key)).toEqual(["SCHO-13", "SCHO-14"]);
+    expect(payload.workItems.every((item) => item.location === "backlog")).toBe(true);
+    expect(payload.location).toMatchObject({
+      backlogCount: 2,
+      backlogKeys: ["SCHO-13", "SCHO-14"],
+      sprintCount: 1,
+      sprintKeys: ["SCHO-1"],
+    });
   });
 });

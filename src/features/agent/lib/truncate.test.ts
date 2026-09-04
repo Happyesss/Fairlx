@@ -160,6 +160,10 @@ describe("compactJsonString work item lists", () => {
     expect(parsed.nextCursor).toBe("doc_last");
     expect(parsed.truncated).toBe(true);
     expect((parsed.omitted ?? 0) + parsed.workItems.length).toBe(40);
+    expect(
+      (parsed as { assignment?: { unassignedCount: number; unassignedKeys: string[] } }).assignment
+        ?.unassignedCount,
+    ).toBe(40);
     expect(json).not.toContain('"preview"');
   });
 

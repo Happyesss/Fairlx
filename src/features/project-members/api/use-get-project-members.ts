@@ -8,6 +8,18 @@ interface UseGetProjectMembersProps {
     workspaceId?: string | null;
 }
 
+function asProjectMemberList(data: unknown): { documents: PopulatedProjectMember[]; total: number } {
+    if (Array.isArray(data)) {
+        return { documents: data as PopulatedProjectMember[], total: data.length };
+    }
+    if (data && typeof data === "object" && Array.isArray((data as { documents?: unknown }).documents)) {
+        const documents = (data as { documents: PopulatedProjectMember[] }).documents;
+        const total = Number((data as { total?: number }).total);
+        return { documents, total: Number.isFinite(total) ? total : documents.length };
+    }
+    return { documents: [], total: 0 };
+}
+
 /**
  * Hook to fetch all members in a project (optionally filtered by team)
  */
@@ -39,7 +51,7 @@ export const useGetProjectMembers = ({
             }
 
             const json = await response.json();
-            return json.data as { documents: PopulatedProjectMember[]; total: number };
+            return asProjectMemberList(json.data);
         },
         enabled: !!projectId && (workspaceId !== undefined ? !!workspaceId : true),
         retry: (failureCount, error) => {

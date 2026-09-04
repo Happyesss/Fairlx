@@ -1,7 +1,9 @@
-import type { AgentPendingConfirmation, AgentToolCall, AgentToolEvent } from "../types";
+import type { AgentPendingConfirmation, AgentPermissionType, AgentToolCall, AgentToolEvent, AgentWriteRisk } from "../types";
 
 const HARNESS_WRITES = new Set(["create_project", "mail_send", "github_write_file", "github_open_pr"]);
 const WRITE_NAME_RE = /_(create|update|delete|add|set|start|complete|split|sync|remove|mark_read)$/i;
+const PRIVILEGED_NAME_RE =
+  /(mail_send|github_write_file|github_open_pr|create_project|project_create|_delete|_remove|member_add|member_invite|workspace_member|organization_update|security_review|notify)/i;
 
 export function mcpToolNameFromCall(call: AgentToolCall): string | undefined {
   if (call.name !== "mcp_call" && call.name !== "create_project") {
@@ -22,6 +24,28 @@ export function isWriteToolCall(call: AgentToolCall): boolean {
   const mcpName = mcpToolNameFromCall(call) ?? (call.name.startsWith("fairlx_") ? call.name : "");
   if (!mcpName) return false;
   return WRITE_NAME_RE.test(mcpName);
+}
+
+export function writeRiskLevel(call: AgentToolCall): AgentWriteRisk {
+  if (!isWriteToolCall(call)) return "read";
+  const mcpName = mcpToolNameFromCall(call) ?? call.name;
+  if (HARNESS_WRITES.has(call.name) || PRIVILEGED_NAME_RE.test(mcpName)) return "privileged";
+  return "standard";
+}
+
+export function needsConfirmation(
+  call: AgentToolCall,
+  permissionType: AgentPermissionType | undefined,
+): boolean {
+  if (permissionType === "all_access") return false;
+  return writeRiskLevel(call) === "privileged";
+}
+
+export function callsNeedingConfirmation(
+  calls: AgentToolCall[],
+  permissionType: AgentPermissionType | undefined,
+): AgentToolCall[] {
+  return calls.filter((call) => needsConfirmation(call, permissionType));
 }
 
 export function confirmationSummary(call: AgentToolCall): string {
@@ -53,6 +77,12 @@ export function confirmationSummary(call: AgentToolCall): string {
     const team = String(nested.teamName || nested.team || "").trim();
     if (person && team) return `Add ${person} to ${team}?`;
     if (person) return `Add ${person} to the team?`;
+  }
+  if (/project_member_add/i.test(mcpName)) {
+    const person = String(nested.name || nested.email || "").trim();
+    const team = String(nested.teamName || nested.team || "").trim();
+    if (person && team) return `Add ${person} to the project and ${team}?`;
+    if (person) return `Add ${person} to the project?`;
   }
   if (/project_team_member_remove/i.test(mcpName)) {
     const person = String(nested.name || nested.email || "").trim();

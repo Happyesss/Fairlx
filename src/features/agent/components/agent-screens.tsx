@@ -54,6 +54,8 @@ import type {
 import { AgentPageFrame } from "./agent-app-shell";
 import { AgentNewProjectForm, AutomationRunButton } from "./agent-ops-screens";
 import { McpServersCard } from "./mcp-servers-card";
+import { PluginCredentialGuide, hasPluginCredentialGuide } from "./plugin-credential-guide";
+import { AgentPermissionPicker } from "./agent-permission-picker";
 import { WorkspaceAvatar } from "@/features/workspaces/components/workspace-avatar";
 import { ProjectAvatar } from "@/features/projects/components/project-avatar";
 import { useAgentUi } from "./agent-ui-context";
@@ -606,7 +608,7 @@ export function AgentSettingsScreen() {
       <div className="max-w-4xl mx-auto space-y-10">
         <ScreenHeader
           title="Settings"
-          description="Harness defaults, work patterns, and a full reset of Agent data for this account."
+          description="Harness defaults, permission type, work patterns, and a full reset of Agent data for this account."
         />
 
         <section className="space-y-4">
@@ -655,6 +657,17 @@ export function AgentSettingsScreen() {
               </Button>
             </form>
           )}
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Permission type</h2>
+          <div className="rounded-xl border border-border bg-card p-5 space-y-3 shadow-sm">
+            <p className="text-xs text-muted-foreground">
+              Staged asks before mail, GitHub writes, deletes, and invites. All access runs those actions without Accept.
+              Fairlx workspace and project roles still apply either way.
+            </p>
+            <AgentPermissionPicker />
+          </div>
         </section>
 
         <section id="work-patterns" className="scroll-mt-6 space-y-4">
@@ -887,7 +900,7 @@ export function AgentIntegrationsScreen() {
       <div className="max-w-[1400px] mx-auto space-y-8">
         <ScreenHeader
           title="Integrations"
-          description="Connected Fairlx integrations, GitHub repositories, and agent plugins (Outlook, Gmail, GitHub write)."
+          description="Connect Outlook, Gmail, Resend, GitHub, and Fairlx MCP. Mail uses a one-time OAuth sign-in (refresh token), not a paste-expiring access token. Permission type in Settings controls whether high-risk actions ask for Accept."
         />
         <section className="space-y-3">
           <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider">Agent plugins</h2>
@@ -896,11 +909,22 @@ export function AgentIntegrationsScreen() {
               const live = connected.find((plugin) => plugin.catalogId === item.id && plugin.status === "connected");
               return (
                 <div key={item.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                  <p className="text-sm font-semibold text-foreground truncate">{item.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground truncate">{item.name}</p>
+                    {hasPluginCredentialGuide(item.id) ? <PluginCredentialGuide catalogId={item.id} /> : null}
+                  </div>
                   <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
                   <p className="mt-2 text-[11px] font-medium text-muted-foreground">
                     {live ? "Connected" : item.auth === "platform" ? "Available" : "Not connected"}
                   </p>
+                  {!live && (item.id === "outlook" || item.id === "gmail") && pluginsData?.oauth?.[item.id] ? (
+                    <a
+                      href={`/api/agent/plugins/oauth/start?catalogId=${item.id}`}
+                      className="mt-3 inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-medium hover:bg-muted"
+                    >
+                      Connect
+                    </a>
+                  ) : null}
                 </div>
               );
             })}

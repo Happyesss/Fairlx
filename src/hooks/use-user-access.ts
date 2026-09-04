@@ -2,7 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAccountLifecycle } from "@/components/account-lifecycle-provider";
-import { AppRouteKey, getOrgRouteKeys, getWorkspaceIndependentRouteKeys } from "@/lib/permissions/appRouteKeys";
+import { AppRouteKey } from "@/lib/permissions/appRouteKeys";
+import { resolveClientNavRouteKeys } from "@/lib/permissions/visible-nav-routes";
 
 /**
  * Hook to get user access (allowed route keys) for client-side navigation
@@ -29,10 +30,11 @@ export function useUserAccess() {
     const { activeOrgId, activeWorkspaceId, hasOrg, orgRole } = lifecycleState;
 
     const query = useQuery<UserAccessResponse>({
-        queryKey: ["user-access", activeOrgId, activeWorkspaceId],
+        queryKey: ["user-access", "membership-v2", activeOrgId, activeWorkspaceId],
         queryFn: async () => {
-            // For PERSONAL accounts (no org), return full workspace access
-            if (!hasOrg || !activeOrgId) {
+            // Resolve org access whenever we have an org id. Prefs/hasOrg can lag
+            // behind membership and must not skip the Organization allowlist.
+            if (!activeOrgId) {
                 return {
                     allowedRouteKeys: [
                         AppRouteKey.PROFILE,
@@ -73,27 +75,15 @@ export function useUserAccess() {
         enabled: true, // Always run, but behavior changes based on account type
     });
 
-    // During loading, provide sensible defaults based on role
-    // OWNER always has full access, so this is safe to pre-populate
-    // For non-owners, we provide workspace routes as fallback so navigation isn't empty during load
-    const loadingDefaults: AppRouteKey[] = orgRole === "OWNER"
-        ? [...getOrgRouteKeys(), ...getWorkspaceIndependentRouteKeys()]
-        : [
-            // Core pages only — Settings is admin-only and must not flash for members
-            AppRouteKey.WORKSPACE_HOME,
-            AppRouteKey.WORKSPACE_TASKS,
-            AppRouteKey.WORKSPACE_TEAMS,
-            AppRouteKey.WORKSPACE_PROGRAMS,
-            AppRouteKey.WORKSPACE_TIMELINE,
-            AppRouteKey.WORKSPACE_SPACES,
-            AppRouteKey.WORKSPACE_PROJECTS,
-        ];
-
     // Loading: optimistic defaults so nav isn't empty.
-    // Loaded (including empty []): use server truth — empty means no org route access.
-    const resolvedRouteKeys = query.isLoading
-        ? loadingDefaults
-        : (query.data?.allowedRouteKeys ?? []);
+    // OWNER always keeps org admin routes even if the access API still
+    // thinks the account is personal (prefs lag behind membership).
+    const resolvedRouteKeys = resolveClientNavRouteKeys({
+        isLoading: query.isLoading,
+        serverKeys: query.data?.allowedRouteKeys,
+        hasOrg,
+        orgRole,
+    });
 
     return {
         allowedRouteKeys: resolvedRouteKeys,

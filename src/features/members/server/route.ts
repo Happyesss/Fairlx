@@ -15,6 +15,10 @@ import { logComputeUsage } from "@/lib/usage-metering";
 import { getMember } from "../utils";
 import { Member, MemberRole, WorkspaceMemberRole, MemberStatus } from "../types";
 import {
+  addMemberToOrganizationAndWorkspace,
+  AddToOrgAndWorkspaceError,
+} from "../services/add-to-org-and-workspace";
+import {
   dispatchWorkitemEvent,
 } from "@/lib/notifications";
 import {
@@ -471,6 +475,81 @@ const app = new Hono()
 
       return c.json({ data: newMember });
     }
+  )
+  /**
+   * POST /members/org-and-workspace
+   * Invite someone into the organization and this workspace in one step.
+   *
+   * Organization and workspace stay separate records. A workspace admin
+   * (or org members-manage) can create both memberships without waiting
+   * for the organization owner.
+   */
+  .post(
+    "/org-and-workspace",
+    sessionMiddleware,
+    zValidator(
+      "json",
+      z.object({
+        workspaceId: z.string().min(1),
+        email: z.string().email(),
+        name: z.string().trim().min(1).max(128).optional(),
+        role: z.nativeEnum(MemberRole).optional(),
+      }),
+    ),
+    async (c) => {
+      const databases = c.get("databases");
+      const user = c.get("user");
+      const { workspaceId, email, name, role } = c.req.valid("json");
+
+      try {
+        const result = await addMemberToOrganizationAndWorkspace({
+          databases,
+          actorUserId: user.$id,
+          workspaceId,
+          email,
+          name,
+          role,
+        });
+
+        logComputeUsage({
+          databases,
+          workspaceId,
+          units: 1,
+          jobType: "member_invite",
+        });
+
+        try {
+          const workspace = await databases.getDocument(DATABASE_ID, WORKSPACES_ID, workspaceId);
+          const callerName = user.name || user.email || "Someone";
+          const event = createMemberAddedEvent(
+            workspaceId,
+            String(workspace.name ?? result.workspaceName),
+            user.$id,
+            callerName,
+            result.userId,
+            result.name,
+            result.role,
+          );
+          dispatchWorkitemEvent(event).catch(() => {});
+        } catch {
+          // Notifications are non-critical.
+        }
+
+        return c.json({ data: result });
+      } catch (error) {
+        if (error instanceof AddToOrgAndWorkspaceError) {
+          if (error.code === "UNAUTHORIZED") {
+            return c.json({ error: error.message, code: error.code }, 401);
+          }
+          if (error.code === "WORKSPACE_NOT_FOUND") {
+            return c.json({ error: error.message, code: error.code }, 404);
+          }
+          return c.json({ error: error.message, code: error.code }, 400);
+        }
+        const message = error instanceof Error ? error.message : "Failed to add member";
+        return c.json({ error: message }, 500);
+      }
+    },
   );
 
 export default app;

@@ -46,23 +46,25 @@ export const PLUGIN_CATALOG: PluginCatalogItem[] = [
   {
     id: "outlook",
     name: "Outlook / Microsoft 365",
-    description: "Send mail with Microsoft Graph using a delegated access token.",
+    description: "Send mail with Microsoft Graph. Connect once; Fairlx refreshes the token.",
     capabilities: ["email.send"],
-    auth: "token",
+    auth: "oauth",
     fields: [
-      { key: "accessToken", label: "Graph access token", secret: true },
-      { key: "from", label: "From address", placeholder: "you@company.com" },
+      { key: "from", label: "From address (optional)", placeholder: "you@company.com" },
+      { key: "clientId", label: "Microsoft app client ID (if Fairlx OAuth is not configured)" },
+      { key: "clientSecret", label: "Microsoft app client secret", secret: true },
     ],
   },
   {
     id: "gmail",
     name: "Gmail",
-    description: "Send mail with the Gmail API.",
+    description: "Send mail with the Gmail API. Connect once; Fairlx refreshes the token.",
     capabilities: ["email.send"],
-    auth: "token",
+    auth: "oauth",
     fields: [
-      { key: "accessToken", label: "Gmail OAuth access token", secret: true },
-      { key: "from", label: "From address", placeholder: "you@gmail.com" },
+      { key: "from", label: "From address (optional)", placeholder: "you@gmail.com" },
+      { key: "clientId", label: "Google OAuth client ID (if Fairlx OAuth is not configured)" },
+      { key: "clientSecret", label: "Google OAuth client secret", secret: true },
     ],
   },
   {
@@ -111,10 +113,29 @@ export function catalogById(id: string): PluginCatalogItem | undefined {
   return PLUGIN_CATALOG.find((item) => item.id === id);
 }
 
+const EMAIL_LIKE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+
+export function isSendMailIntent(query: string): boolean {
+  if (/\b(send|draft|compose)\b[\s\S]{0,80}\b(e-?mails?|mails?)\b/i.test(query)) return true;
+  if (/\b(e-?mails?|mails?)\s+(the client|them|him|her|about)\b/i.test(query)) return true;
+  if (/\b(connect|plugin)\b[\s\S]{0,40}\b(outlook|gmail|resend)\b/i.test(query)) return true;
+  if (/\b(outlook|gmail|resend|smtp|inbox)\b/i.test(query) && !isOrgInviteIntent(query)) return true;
+  return false;
+}
+
+export function isOrgInviteIntent(query: string): boolean {
+  if (/\b(invite|join link|share link|add\b.{0,60}member)\b/i.test(query)) return true;
+  if (/\b(add|invite|join)\b[\s\S]{0,160}\b(project|workspace|team|org|organization)\b/i.test(query)) return true;
+  const identity =
+    EMAIL_LIKE.test(query) || /\b(mail\s*id|e-?mail\s*(id|address)|e-?mail\s+is)\b/i.test(query);
+  if (identity && /\b(add|invite|role|team|assign|project|member|workspace)\b/i.test(query)) return true;
+  return false;
+}
+
 export function inferCapabilities(query: string): AgentCapability[] {
   const caps = new Set<AgentCapability>();
-  if (/\b(mail|email|outlook|gmail|inbox|smtp)\b/i.test(query)) caps.add("email.send");
-  if (/\b(invite|add .*member|join link|share link)\b/i.test(query)) caps.add("members.invite");
+  if (isSendMailIntent(query)) caps.add("email.send");
+  if (isOrgInviteIntent(query)) caps.add("members.invite");
   if (/\b(slack|discord|notify channel)\b/i.test(query)) caps.add("chat.notify");
   if (/\b(security|vulnerab|xss|ssrf|pentest|shannon|cve)\b/i.test(query)) caps.add("security.review");
   if (/\b(pr\b|pull request|commit|edit the code|open a pr|patch the repo)\b/i.test(query)) {
@@ -174,6 +195,7 @@ export function toPublicPlugin(plugin: AgentPluginConnection): AgentPluginPublic
     authKind: plugin.authKind,
     hasSecret: Boolean(
       plugin.secrets?.accessTokenEncrypted ||
+        plugin.secrets?.refreshTokenEncrypted ||
         plugin.secrets?.apiKeyEncrypted ||
         plugin.secrets?.mcpHeadersEncrypted,
     ),

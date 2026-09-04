@@ -1,0 +1,7 @@
+#!/bin/sh
+# Refresh README.md and changelog.md from git + staged files before every commit.
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] || [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
+  exit 0
+fi
+node scripts/update-docs-from-git.mjs --commit || exit 1
+git add README.md changelog.md

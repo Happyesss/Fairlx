@@ -11,6 +11,8 @@
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
+    "docs:release": "node scripts/update-docs-from-git.mjs --push",
+    "prepare": "node scripts/install-git-hooks.mjs",
     "mcp": "tsx packages/fairlx-mcp/src/cli/stdio.ts",
     "multi-agent": "tsx packages/fairlx-multi-agent/src/cli.ts",
     "db:setup": "tsx scripts/database-initialization/setup-database.ts",

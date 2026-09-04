@@ -69,6 +69,7 @@ import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/
 import { findPendingConfirmation } from "../lib/write-guard";
 import { findPendingPlugin } from "../plugins/catalog";
 import { PluginConnectCard } from "./plugin-connect-card";
+import { AgentRunHud } from "./agent-run-hud";
 import type { AgentChatMessage, AgentRun, AgentToolEvent } from "../types";
 import { AgentCommandInput } from "./agent-command-input";
 import { AgentWorkItemTable } from "./agent-work-item-table";
@@ -1142,7 +1143,7 @@ function WorkflowSidebar({
               />
               <div>
                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Agent</div>
-                <ModelPicker variant="sidebar" />
+                <ModelPicker variant="sidebar" runModelId={run.modelId} />
               </div>
               <button
                 type="button"
@@ -1774,6 +1775,7 @@ function WorkflowViewInner() {
           </div>
 
           <FloatingComposer>
+            <AgentRunHud run={run} />
             <AgentCommandInput
               run={run}
               variant="followup"

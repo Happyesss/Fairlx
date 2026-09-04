@@ -67,9 +67,10 @@ export type ProjectTeamMember = Models.Document & {
     projectId: string;              // Parent project
     teamId: string;                 // Team within project
     userId: string;                 // User's Appwrite ID
-    teamRole?: string;              // Optional label (e.g., "Lead", "Reviewer")
-    joinedAt?: string;              // When user joined
-    addedBy?: string;               // Who added this member
+    role?: "lead" | "member";       // Collection enum
+    addedAt?: string;
+    /** Display alias of `role` when the document has no teamRole attribute */
+    teamRole?: string;
 };
 
 /**

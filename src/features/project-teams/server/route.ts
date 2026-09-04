@@ -34,6 +34,7 @@ import {
 } from "@/lib/permissions/resolveUserProjectAccess";
 import { ProjectPermissionKey } from "@/lib/permissions/types";
 import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
+import { projectTeamMemberRoleFromLabel } from "../lib/team-member-role";
 
 /** Bust project access cache so team add-on permissions apply immediately */
 async function invalidateProjectTeamAccessCache(
@@ -157,6 +158,7 @@ const app = new Hono()
                 const userInfo = userMap.get(tm.userId);
                 return {
                     ...tm,
+                    teamRole: tm.teamRole ?? tm.role,
                     user: {
                         $id: tm.userId,
                         name: userInfo?.name || "Unknown",
@@ -413,6 +415,7 @@ const app = new Hono()
                     const userInfo = userMap.get(tm.userId);
                     return {
                         ...tm,
+                        teamRole: tm.teamRole ?? tm.role,
                         user: {
                             $id: tm.userId,
                             name: userInfo?.name || "Unknown",
@@ -517,9 +520,8 @@ const app = new Hono()
                         projectId: team.projectId,
                         teamId,
                         userId: data.userId,
-                        teamRole: data.teamRole || null,
-                        joinedAt: new Date().toISOString(),
-                        addedBy: user.$id,
+                        role: projectTeamMemberRoleFromLabel(data.teamRole),
+                        addedAt: new Date().toISOString(),
                     }
                 );
 

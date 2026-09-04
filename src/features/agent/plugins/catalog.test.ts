@@ -24,6 +24,18 @@ describe("capability inference", () => {
     expect(missingCapabilities("Send a mail about WEB-12", [], context())).toContain("email.send");
   });
 
+  it("does not require a mail plugin to invite someone by email to a project", () => {
+    const query =
+      "add 'fogef' to the project and this mail id is 'fogefe9321@94an.com' and make him give him role 'full stack developer' and team is developer and assign the task to him";
+    expect(inferCapabilities(query)).toContain("members.invite");
+    expect(inferCapabilities(query)).not.toContain("email.send");
+    expect(missingCapabilities(query, [], context())).toEqual([]);
+  });
+
+  it("still requires email.send when the user asked to send email, even if an address is present", () => {
+    expect(inferCapabilities("Send a mail to ada@x.com about WEB-12")).toContain("email.send");
+  });
+
   it("treats linked GitHub repos as code.read", () => {
     const ctx = context();
     ctx.githubRepos = [{ id: "r1", owner: "acme", repositoryName: "app", branch: "main" }];

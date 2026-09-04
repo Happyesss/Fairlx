@@ -51,6 +51,7 @@ export function defaultHarnessSettings(): AgentHarnessSettings {
     mode: "agent",
     enabledTools: [...DEFAULT_ENABLED_TOOLS],
     sessionMode: "agent",
+    permissionType: "staged",
   };
 }
 
@@ -99,6 +100,9 @@ export function parseHarness(doc: HarnessDocument): AgentHarness {
     settings.mode = "manual";
   } else if (settings.mode !== "manual") {
     settings.mode = "agent";
+  }
+  if (settings.permissionType !== "all_access") {
+    settings.permissionType = "staged";
   }
 
   const settingsExtras = parseJson<{ gitStaging?: unknown; chatMeta?: unknown; plugins?: unknown }>(

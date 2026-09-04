@@ -92,7 +92,6 @@ export const emailDebugApp = new Hono()
     ];
 
     const unusedInCode = [
-      "NEXT_PUBLIC_APPWRITE_SMTP_PROVIDER_ID",
       "NEXT_PUBLIC_APPWRITE_EMAIL_TOPIC_ID",
     ];
 

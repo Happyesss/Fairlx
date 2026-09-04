@@ -21,13 +21,20 @@ export function buildPluginConnection(input: PluginConnectInput): AgentPluginCon
   if (fields.endpoint) secrets.extra = { ...secrets.extra, endpoint: fields.endpoint };
   if (fields.owner) secrets.extra = { ...secrets.extra, owner: fields.owner };
   if (fields.repo) secrets.extra = { ...secrets.extra, repo: fields.repo };
+  if (fields.clientId) secrets.extra = { ...secrets.extra, clientId: fields.clientId };
   if (fields.accessToken) secrets.accessTokenEncrypted = encryptSecret(fields.accessToken);
   if (fields.token) secrets.accessTokenEncrypted = encryptSecret(fields.token);
   if (fields.apiKey) secrets.apiKeyEncrypted = encryptSecret(fields.apiKey);
   if (fields.headerAuthorization) secrets.mcpHeadersEncrypted = encryptSecret(fields.headerAuthorization);
+  if (fields.clientSecret) secrets.clientSecretEncrypted = encryptSecret(fields.clientSecret);
+  if (fields.refreshToken) secrets.refreshTokenEncrypted = encryptSecret(fields.refreshToken);
 
   const hasCreds = Boolean(
-    secrets.accessTokenEncrypted || secrets.apiKeyEncrypted || secrets.mcpUrl || catalog.auth === "platform",
+    secrets.refreshTokenEncrypted ||
+      secrets.accessTokenEncrypted ||
+      secrets.apiKeyEncrypted ||
+      secrets.mcpUrl ||
+      catalog.auth === "platform",
   );
 
   return {

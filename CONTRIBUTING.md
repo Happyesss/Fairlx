@@ -276,7 +276,9 @@ npx playwright test
 
 ## Documentation
 
-Update documentation when you:
+[README.md](README.md) Latest block and [changelog.md](changelog.md) regenerate on every `git commit` and `git push` (local hooks plus GitHub Actions). Run `npm install` once so `prepare` installs the hooks. Do not edit the generated changelog by hand; older session notes are in [docs/changelog-history.md](docs/changelog-history.md).
+
+Also update documentation when you:
 - Add new features
 - Change existing behavior
 - Modify API endpoints

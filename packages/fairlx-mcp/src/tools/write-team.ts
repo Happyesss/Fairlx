@@ -32,6 +32,24 @@ async function requireTeamManage(
   return requireProjectAccess(runtime, auth, projectId, PERMISSIONS.MANAGE_TEAMS, ["admin:manage"]);
 }
 
+async function requireMemberInvite(
+  runtime: McpRuntime,
+  auth: AuthContext,
+  projectId: string
+) {
+  if (!hasScope(auth.scopes, ["admin:manage"])) {
+    throw forbiddenError("Insufficient MCP scope");
+  }
+  try {
+    return await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.INVITE_MEMBERS, [
+      "admin:manage",
+    ]);
+  } catch (error) {
+    if (!String((error as { message?: string }).message ?? "").includes("permission")) throw error;
+    return requireProjectAccess(runtime, auth, projectId, PERMISSIONS.MANAGE_TEAMS, ["admin:manage"]);
+  }
+}
+
 async function loadTeam(
   runtime: McpRuntime,
   teamId: string
@@ -122,6 +140,21 @@ function teamMemberRole(teamRole?: string): "lead" | "member" {
   return "member";
 }
 
+const DEFAULT_MEMBER_PERMISSIONS = [
+  "project.view",
+  "project.tasks.view",
+  "project.sprints.view",
+  "project.docs.view",
+  "project.members.view",
+  "project.teams.view",
+  "project.tasks.create",
+  "project.tasks.edit",
+];
+
+function roleError(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
 async function findProjectRole(
   runtime: McpRuntime,
   projectId: string,
@@ -144,6 +177,45 @@ async function findProjectRole(
   return { id: String(fallback.$id ?? fallback.id ?? ""), name: String(fallback.name ?? "MEMBER") };
 }
 
+async function ensureDefaultMemberRole(
+  runtime: McpRuntime,
+  auth: AuthContext,
+  projectId: string,
+  workspaceId: string
+): Promise<{ id: string; name: string }> {
+  const collection = runtime.collections.projectRoles;
+  if (!collection) {
+    throw invalidParams("This project has no role catalog, so the person cannot be added as a project member.");
+  }
+  try {
+    const created = await runtime.store.create<Record<string, unknown>>(collection, {
+      workspaceId,
+      projectId,
+      name: "MEMBER",
+      description: "Can create and edit tasks, but has limited administrative access.",
+      permissions: DEFAULT_MEMBER_PERMISSIONS,
+      color: "#3b82f6",
+      isDefault: true,
+      createdBy: auth.actorUserId,
+    });
+    return { id: String(created.$id ?? created.id ?? ""), name: "MEMBER" };
+  } catch (error) {
+    throw invalidParams(`Could not create a project role: ${roleError(error)}`);
+  }
+}
+
+async function requireProjectRole(
+  runtime: McpRuntime,
+  auth: AuthContext,
+  projectId: string,
+  workspaceId: string,
+  workspaceRole: string
+): Promise<{ id: string; name: string }> {
+  const existing = await findProjectRole(runtime, projectId, workspaceRole);
+  if (existing) return existing;
+  return ensureDefaultMemberRole(runtime, auth, projectId, workspaceId);
+}
+
 async function ensureProjectMember(
   runtime: McpRuntime,
   auth: AuthContext,
@@ -152,6 +224,9 @@ async function ensureProjectMember(
   userId: string,
   workspaceRole: string
 ): Promise<boolean> {
+  if (!runtime.collections.projectMembers) {
+    throw invalidParams("This project has no member list, so the person cannot be added.");
+  }
   const existing = await runtime.store.list<Record<string, unknown>>(runtime.collections.projectMembers, [
     { type: "equal", field: "projectId", value: projectId },
     { type: "equal", field: "userId", value: userId },
@@ -160,20 +235,23 @@ async function ensureProjectMember(
   const doc = existing.documents[0];
   const role = isWorkspaceAdminRole(workspaceRole) ? "PROJECT_ADMIN" : "MEMBER";
   if (!doc) {
-    const projectRole = await findProjectRole(runtime, projectId, workspaceRole);
-    if (!projectRole) return false;
-    await runtime.store.create(runtime.collections.projectMembers, {
-      workspaceId,
-      projectId,
-      userId,
-      teamId: "",
-      role,
-      roleId: projectRole.id,
-      roleName: projectRole.name,
-      status: "ACTIVE",
-      addedBy: auth.actorUserId,
-      joinedAt: runtime.now(),
-    });
+    const projectRole = await requireProjectRole(runtime, auth, projectId, workspaceId, workspaceRole);
+    try {
+      await runtime.store.create(runtime.collections.projectMembers, {
+        workspaceId,
+        projectId,
+        userId,
+        teamId: "",
+        role,
+        roleId: projectRole.id,
+        roleName: projectRole.name,
+        status: "ACTIVE",
+        addedBy: auth.actorUserId,
+        joinedAt: runtime.now(),
+      });
+    } catch (error) {
+      throw invalidParams(`Could not add this person to the project: ${roleError(error)}`);
+    }
     return true;
   }
   const status = String(doc.status ?? "ACTIVE");
@@ -285,6 +363,86 @@ export async function projectTeamUpdate(
   return toolResult({ team: withId(updated) });
 }
 
+export async function projectMemberAdd(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext
+): Promise<McpToolResult> {
+  const projectId = requireString(args, "projectId");
+  await requireMemberInvite(runtime, auth, projectId);
+  const project = await loadProject(runtime, auth, projectId);
+  const workspaceId = String(project.workspaceId ?? "");
+
+  const query = optionalString(args, "email") || optionalString(args, "name") || "";
+  if (!query) throw invalidParams("Provide the person's name or email");
+
+  const { docs, named } = await namedWorkspacePeople(runtime, workspaceId);
+  const matched = matchPerson(query, named);
+  if (matched.error) return toolResult(matched.payload, true);
+
+  const userId = matched.member.id;
+  const workspaceDoc = docs.find((doc) => String(doc.userId ?? "") === userId);
+  const createdProjectMembership = await ensureProjectMember(
+    runtime,
+    auth,
+    projectId,
+    workspaceId,
+    userId,
+    String(workspaceDoc?.role ?? matched.member.role)
+  );
+
+  const teamName = optionalString(args, "teamName") || optionalString(args, "team");
+  const teamId = optionalString(args, "teamId");
+  let team: { name: string } | undefined;
+  if (teamId || teamName) {
+    const teamDoc = await resolveTeam({ ...args, projectId }, runtime);
+    const resolvedTeamId = String(teamDoc.$id ?? teamDoc.id ?? "");
+    const existing = await runtime.store.list<Record<string, unknown>>(
+      runtime.collections.projectTeamMembers,
+      [
+        { type: "equal", field: "teamId", value: resolvedTeamId },
+        { type: "equal", field: "userId", value: userId },
+        { type: "limit", value: 1 },
+      ]
+    );
+    if (existing.documents.length === 0) {
+      await runtime.store.create<Record<string, unknown>>(runtime.collections.projectTeamMembers, {
+        projectId,
+        teamId: resolvedTeamId,
+        userId,
+        role: teamMemberRole(optionalString(args, "teamRole")),
+        addedAt: runtime.now(),
+      });
+    }
+    team = { name: String(teamDoc.name ?? "") };
+  }
+
+  await notifyTeamChange(runtime, projectId, [userId]);
+  await audit(runtime, {
+    workspaceId,
+    projectId,
+    userId: auth.actorUserId,
+    action: "mcp.project_member.add",
+    resourceType: "project_member",
+    resourceId: userId,
+    resourceName: matched.member.name,
+    metadata: team ? { teamName: team.name } : undefined,
+  });
+  return toolResult({
+    member: {
+      name: matched.member.name,
+      email: matched.member.email,
+      team: team?.name,
+      role: isWorkspaceAdminRole(String(workspaceDoc?.role ?? matched.member.role))
+        ? "PROJECT_ADMIN"
+        : "MEMBER",
+    },
+    added: true,
+    addedToProject: true,
+    alreadyOnProject: !createdProjectMembership,
+  });
+}
+
 export async function projectTeamDelete(
   args: Record<string, unknown>,
   runtime: McpRuntime,
@@ -378,15 +536,13 @@ export async function projectTeamMemberAdd(
   }
 
   const teamRole = optionalString(args, "teamRole");
+  const role = teamMemberRole(teamRole);
   const created = await runtime.store.create<Record<string, unknown>>(runtime.collections.projectTeamMembers, {
     projectId,
     teamId,
     userId,
-    role: teamMemberRole(teamRole),
-    teamRole: teamRole ?? null,
-    joinedAt: runtime.now(),
+    role,
     addedAt: runtime.now(),
-    addedBy: auth.actorUserId,
   });
   await notifyTeamChange(runtime, projectId, [userId]);
   await audit(runtime, {
@@ -404,10 +560,11 @@ export async function projectTeamMemberAdd(
       name: matched.member.name,
       email: matched.member.email,
       team: String(team.name ?? ""),
-      teamRole: teamRole ?? null,
+      role,
     },
     added: true,
-    addedToProject,
+    addedToProject: true,
+    alreadyOnProject: !addedToProject,
   });
 }
 
@@ -432,7 +589,7 @@ export async function projectTeamMemberRemove(
     id: String(doc.userId ?? ""),
     name: hydrated[index]?.name ?? "",
     email: hydrated[index]?.email ?? "",
-    role: String(doc.teamRole ?? ""),
+    role: String(doc.role ?? ""),
     status: "ACTIVE",
   }));
   const matched = matchWorkspaceMember(query, named);

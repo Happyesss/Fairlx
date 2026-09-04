@@ -31,6 +31,9 @@ describe("resolveToolName", () => {
     expect(resolveToolName("addTeamMember", ["fairlx_project_team_member_add"])).toBe(
       "fairlx_project_team_member_add",
     );
+    expect(resolveToolName("addToProject", ["fairlx_project_member_add"])).toBe(
+      "fairlx_project_member_add",
+    );
     expect(resolveToolName("mcp_list", MCP)).toBe("mcp_list");
   });
 });
@@ -63,5 +66,18 @@ describe("extractToolCallsFromText", () => {
     expect(stripped).not.toMatch(/mcp_list/);
     expect(stripped).not.toMatch(/<\/fairlx/);
     expect(stripped).toContain("Let me check.");
+  });
+
+  it("parses leaked DeepSeek DSML invoke markup", () => {
+    const content =
+      '<｜DSML｜tool_calls> <｜DSML｜invoke name="fairlx_work_item_list"> <｜DSML｜parameter name="projectId">6a998e860028edf4f46c</｜DSML｜parameter> <｜DSML｜parameter name="limit" string="false">50</｜DSML｜parameter> </｜DSML｜invoke> </｜DSML｜tool_calls>';
+    const calls = extractToolCallsFromText(content, MCP);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.name).toBe("fairlx_work_item_list");
+    expect(JSON.parse(calls[0]?.arguments ?? "{}")).toEqual({
+      projectId: "6a998e860028edf4f46c",
+      limit: 50,
+    });
+    expect(stripToolCallMarkup(content)).not.toMatch(/invoke|DSML|fairlx_work_item_list/);
   });
 });

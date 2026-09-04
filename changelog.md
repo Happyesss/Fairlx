@@ -4,6 +4,96 @@ This file is generated on every `git commit` and `git push`. Do not edit it by h
 
 Older session notes live in [docs/changelog-history.md](docs/changelog-history.md).
 
+## Unreleased
+
+Files in this commit:
+
+- `.githooks/pre-commit`
+- `.githooks/pre-push`
+- `CONTRIBUTING.md`
+- `package.json`
+- `packages/fairlx-mcp/src/catalog.test.ts`
+- `packages/fairlx-mcp/src/runtime/assign-share.test.ts`
+- `packages/fairlx-mcp/src/runtime/assign-share.ts`
+- `packages/fairlx-mcp/src/runtime/tenant.ts`
+- `packages/fairlx-mcp/src/runtime/types.ts`
+- `packages/fairlx-mcp/src/tools/destructive.ts`
+- `packages/fairlx-mcp/src/tools/organization.test.ts`
+- `packages/fairlx-mcp/src/tools/organization.ts`
+- `packages/fairlx-mcp/src/tools/read.ts`
+- `packages/fairlx-mcp/src/tools/work-item-list.test.ts`
+- `packages/fairlx-mcp/src/tools/write-member.test.ts`
+- `packages/fairlx-mcp/src/tools/write-team.test.ts`
+- `packages/fairlx-mcp/src/tools/write-team.ts`
+- `scripts/install-git-hooks.mjs`
+- `scripts/update-docs-from-git.mjs`
+- `scripts/update-docs-from-git.test.ts`
+- `src/app/(dashboard)/organization/page.tsx`
+- `src/app/(dashboard)/organization/settings/billing/page.tsx`
+- `src/app/(dashboard)/organization/usage/page.tsx`
+- `src/app/(dashboard)/workspaces/[workspaceId]/organization/client.tsx`
+- `src/components/navigation.tsx`
+- `src/features/agent/components/agent-command-input.tsx`
+- `src/features/agent/components/agent-permission-picker.tsx`
+- `src/features/agent/components/agent-run-hud.tsx`
+- `src/features/agent/components/agent-screens.tsx`
+- `src/features/agent/components/model-picker.tsx`
+- `src/features/agent/components/plugin-connect-card.tsx`
+- `src/features/agent/components/plugin-credential-guide.tsx`
+- `src/features/agent/components/workflow-view.tsx`
+- `src/features/agent/lib/agent-auth.ts`
+- `src/features/agent/lib/client-defaults.ts`
+- `src/features/agent/lib/context-meter.test.ts`
+- `src/features/agent/lib/context-meter.ts`
+- `src/features/agent/lib/context.ts`
+- `src/features/agent/lib/defaults.ts`
+- `src/features/agent/lib/graph.ts`
+- `src/features/agent/lib/harness.ts`
+- `src/features/agent/lib/parse-tool-calls.test.ts`
+- `src/features/agent/lib/parse-tool-calls.ts`
+- `src/features/agent/lib/personal-training.ts`
+- `src/features/agent/lib/tool-loop.test.ts`
+- `src/features/agent/lib/tool-loop.ts`
+- `src/features/agent/lib/truncate.test.ts`
+- `src/features/agent/lib/truncate.ts`
+- `src/features/agent/lib/write-guard.test.ts`
+- `src/features/agent/lib/write-guard.ts`
+- `src/features/agent/plugins/catalog.test.ts`
+- `src/features/agent/plugins/catalog.ts`
+- `src/features/agent/plugins/connect.ts`
+- `src/features/agent/plugins/index.ts`
+- `src/features/agent/plugins/mail.ts`
+- `src/features/agent/plugins/oauth.test.ts`
+- `src/features/agent/plugins/oauth.ts`
+- `src/features/auth/server/email-debug-route.ts`
+- `src/features/mcp/bind-runtime.ts`
+- `src/features/members/api/use-add-to-org-and-workspace.ts`
+- `src/features/members/lib/org-and-workspace-access.test.ts`
+- `src/features/members/lib/org-and-workspace-access.ts`
+- `src/features/members/server/route.ts`
+- `src/features/members/services/add-to-org-and-workspace.ts`
+- `src/features/organizations/hooks/use-account-type.ts`
+- `src/features/organizations/lib/require-org-account.ts`
+- `src/features/organizations/services/email-service.ts`
+- `src/features/organizations/services/ensure-email-target.test.ts`
+- `src/features/organizations/services/ensure-email-target.ts`
+- `src/features/project-members/api/use-get-project-members.ts`
+- `src/features/project-teams/lib/team-member-role.test.ts`
+- `src/features/project-teams/lib/team-member-role.ts`
+- `src/features/project-teams/server/route.ts`
+- `src/features/project-teams/types.ts`
+- `src/features/sprints/server/route.ts`
+- `src/features/sprints/server/work-items-route.ts`
+- `src/features/tasks/server/route.ts`
+- `src/features/user-access/server/route.ts`
+- `src/features/workspaces/components/members-list.tsx`
+- `src/hooks/use-user-access.ts`
+- `src/lib/permissions/resolveUserProjectAccess.ts`
+- `src/lib/permissions/visible-nav-routes.test.ts`
+- `src/lib/permissions/visible-nav-routes.ts`
+- `src/lib/work-item-assignees.test.ts`
+- `src/lib/work-item-assignees.ts`
+
 ## Recent commits
 
 | Date | Commit | Message | Author |
@@ -106,6 +196,5 @@ Older session notes live in [docs/changelog-history.md](docs/changelog-history.m
 | 2026-06-23 | `ab54b8e` | lyf-cycle fix | ANCIENTINSANE |
 | 2026-06-22 | `7469e81` | chore: bump version to 0.2.61 [skip ci] | github-actions[bot] |
 | 2026-06-22 | `262cb75` | Merge pull request #275 from ANCIENTINSANE/main | Surendra Codes |
-| 2026-06-22 | `7540e3a` | Fix typescript error in image-sync.test.ts | ANCIENTINSANE |
 
-Last generated: 2026-09-04T20:26:46.145Z
+Last generated: 2026-09-04T20:29:30.817Z

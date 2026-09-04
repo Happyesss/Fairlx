@@ -8,6 +8,7 @@ import { validateStatusTransition } from "@/features/workflows/lib/validate-stat
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
+import { listMembersForAssigneeIds, pickAssignees } from "@/lib/work-item-assignees";
 import {
   dispatchWorkitemEvent,
 } from "@/lib/notifications";
@@ -255,17 +256,19 @@ const app = new Hono()
         }
       });
 
+      const memberDocs = await listMembersForAssigneeIds(
+        databases,
+        allAssigneeIds,
+        workspaceId
+      );
+
       const projects = await databases.listDocuments<Project>(
         DATABASE_ID,
         PROJECTS_ID,
         projectIds.length > 0 ? [Query.equal("$id", projectIds)] : []
       );
 
-      const members = await databases.listDocuments(
-        DATABASE_ID,
-        MEMBERS_ID,
-        allAssigneeIds.size > 0 ? [Query.equal("$id", Array.from(allAssigneeIds))] : []
-      );
+      const members = { documents: memberDocs };
 
       // Get comment counts for all tasks
       const taskIds = tasks.documents.map((task) => task.$id);
@@ -318,15 +321,8 @@ const app = new Hono()
         );
 
         // Get first assignee for backward compatibility
-        const firstAssigneeId = task.assigneeIds?.[0];
-        const assignee = firstAssigneeId
-          ? assignees.find((a) => a.$id === firstAssigneeId)
-          : undefined;
-
-        // Handle multiple assignees
-        const taskAssignees = task.assigneeIds
-          ? assignees.filter((a) => task.assigneeIds!.includes(a.$id))
-          : [];
+        const taskAssignees = pickAssignees(task.assigneeIds, assignees);
+        const assignee = taskAssignees[0];
 
         return {
           ...task,
@@ -964,19 +960,12 @@ const app = new Hono()
         task.assigneeIds.forEach(id => allAssigneeIds.add(id));
       }
 
-      // Get all assignee members
-      let members: Models.DocumentList<Models.Document> = { documents: [], total: 0 };
-      if (allAssigneeIds.size > 0) {
-        try {
-          members = await databases.listDocuments(
-            DATABASE_ID,
-            MEMBERS_ID,
-            [Query.equal("$id", Array.from(allAssigneeIds))]
-          ) as unknown as Models.DocumentList<Models.Document>;
-        } catch {
-          // Silent failure for non-critical member fetch
-        }
-      }
+      const memberDocs = await listMembersForAssigneeIds(
+        databases,
+        allAssigneeIds,
+        task.workspaceId
+      );
+      const members = { documents: memberDocs, total: memberDocs.length };
 
       const assignees = await Promise.all(
         members.documents.map(async (member: Models.Document) => {
@@ -996,19 +985,9 @@ const app = new Hono()
         })
       );
 
-      // Filter out nulls
       const validAssignees = assignees.filter((a): a is NonNullable<typeof a> => a !== null);
-
-      // Get first assignee for backward compatibility
-      const firstAssigneeId = task.assigneeIds?.[0];
-      const assignee = firstAssigneeId
-        ? validAssignees.find((a) => a.$id === firstAssigneeId)
-        : undefined;
-
-      // Handle multiple assignees
-      const taskAssignees = task.assigneeIds
-        ? validAssignees.filter((a) => task.assigneeIds!.includes(a.$id))
-        : [];
+      const taskAssignees = pickAssignees(task.assigneeIds, validAssignees);
+      const assignee = taskAssignees[0];
 
       // Fetch reporter info (task creator)
       let reporter: { $id: string; name: string; email?: string; profileImageUrl?: string | null } | undefined;

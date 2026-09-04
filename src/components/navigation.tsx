@@ -125,7 +125,7 @@ const NavigationInner = ({
 }: NavigationProps) => {
   const urlWorkspaceId = useWorkspaceId();
   const { lifecycleState: state } = useAccountLifecycle();
-  const { activeWorkspaceId, hasOrg: contextHasOrg } = state;
+  const { activeWorkspaceId, hasOrg: contextHasOrg, orgRole } = state;
   const { data: user } = useCurrent();
   const { data: workspacesData } = useGetWorkspaces();
 
@@ -134,7 +134,7 @@ const NavigationInner = ({
   const defaultWorkspaceId = userPrefs?.defaultWorkspaceId;
 
   // Use props if provided, otherwise fall back to context
-  const effectiveHasOrg = hasOrg || contextHasOrg;
+  const effectiveHasOrg = hasOrg || contextHasOrg || orgRole === "OWNER";
 
   // Determine the workspace ID to use for navigation:
   // Priority: 1) URL workspace ID, 2) User's default workspace, 3) First workspace, 4) Active workspace from context

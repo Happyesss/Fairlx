@@ -47,6 +47,7 @@ export async function buildAgentMcpAuth(params: {
   return jwtToAuthContext(userId, {
     workspaceId: workspace?.id || run.workspaceId,
     projectId,
+    organizationId: workspace?.organizationId,
     scopes: merged.scopes,
     projectPermissions: merged.projectPermissions,
   });

@@ -18,9 +18,33 @@
 </div>
 
 <!-- docs:latest:start -->
-**Last updated:** 2026-09-04T20:26:46.169Z
+**Last updated:** 2026-09-04T20:29:30.843Z
 
 This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
+
+**This commit**
+
+- `.githooks/pre-commit`
+- `.githooks/pre-push`
+- `CONTRIBUTING.md`
+- `package.json`
+- `packages/fairlx-mcp/src/catalog.test.ts`
+- `packages/fairlx-mcp/src/runtime/assign-share.test.ts`
+- `packages/fairlx-mcp/src/runtime/assign-share.ts`
+- `packages/fairlx-mcp/src/runtime/tenant.ts`
+- `packages/fairlx-mcp/src/runtime/types.ts`
+- `packages/fairlx-mcp/src/tools/destructive.ts`
+- `packages/fairlx-mcp/src/tools/organization.test.ts`
+- `packages/fairlx-mcp/src/tools/organization.ts`
+- `packages/fairlx-mcp/src/tools/read.ts`
+- `packages/fairlx-mcp/src/tools/work-item-list.test.ts`
+- `packages/fairlx-mcp/src/tools/write-member.test.ts`
+- `packages/fairlx-mcp/src/tools/write-team.test.ts`
+- `packages/fairlx-mcp/src/tools/write-team.ts`
+- `scripts/install-git-hooks.mjs`
+- `scripts/update-docs-from-git.mjs`
+- `scripts/update-docs-from-git.test.ts`
+- …and 65 more files
 
 **Latest commits**
 
@@ -30,7 +54,6 @@ This block and [changelog.md](changelog.md) refresh on every `git commit` and `g
 - `5c99783` Merge pull request #298 from Happyesss/main (2026-09-04)
 - `5c24ef5` chore: bump version to 0.2.92 [skip ci] (2026-09-03)
 - `16f1b6d` feat: implement personalized agent training workflows, task prioritization, and project team management tools. (2026-09-04)
-- `ab595ff` chore: bump version to 0.2.91 [skip ci] (2026-09-03)
 <!-- docs:latest:end -->
 
 ---

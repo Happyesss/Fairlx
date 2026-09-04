@@ -3,10 +3,12 @@ import type { McpToolResult } from "../protocol/types";
 import type { AuthContext } from "../auth/context";
 import { PERMISSIONS, type McpQuery, type McpRuntime } from "../runtime/types";
 import {
+  assigneeQueryMatches,
   compactWorkItem,
   hydrateMembers,
   hydrateWorkItemAssignees,
   isWorkItemKeyCursor,
+  locationSummary,
   paginationMeta,
   toolResult,
   WORK_ITEM_LIST_PAGE_SIZE,
@@ -14,10 +16,19 @@ import {
   withId,
   wrapUntrusted,
 } from "../runtime/output";
+import { assignmentSummary } from "../runtime/assign-share";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem, paginationQueries } from "../runtime/tenant";
 import { listQuery, optionalBoolean, optionalString, requireString, redactGithubRepo, workspaceInviteUrl, listAllDocuments } from "./helpers";
 import { isWorkspaceAdminRole } from "./member-match";
+import {
+  organizationGet,
+  organizationList,
+  organizationName,
+  organizationWorkspacesList,
+  resolveOrganizationId,
+  actorCanReadOrganization,
+} from "./organization";
 import { handlePersonalTool } from "../personal/load";
 import { generateDailyBriefing, type PersonaRole } from "@fairlx/multi-agent";
 
@@ -73,6 +84,12 @@ export async function handleReadTool(
       return workspaceInviteGet(args, runtime, auth);
     case "fairlx_organization_members_list":
       return organizationMembersList(args, runtime, auth);
+    case "fairlx_organization_get":
+      return organizationGet(args, runtime, auth);
+    case "fairlx_organization_list":
+      return organizationList(args, runtime, auth);
+    case "fairlx_organization_workspaces_list":
+      return organizationWorkspacesList(args, runtime, auth);
     case "fairlx_subtask_list":
       return subtaskList(args, runtime, auth);
     case "fairlx_notification_list":
@@ -137,7 +154,12 @@ async function workspaceList(
   for (const id of workspaceIds.slice(0, typeof args.limit === "number" ? args.limit : 50)) {
     try {
       const ws = await runtime.store.get<Record<string, unknown>>(runtime.collections.workspaces, id);
-      workspaces.push(withId(ws));
+      const organizationId = String(ws.organizationId ?? "").trim();
+      const organization = organizationId ? await organizationName(runtime, organizationId) : null;
+      workspaces.push({
+        name: String(ws.name ?? ""),
+        organization: organization ? { name: organization } : null,
+      });
     } catch {
       // skip missing
     }
@@ -267,29 +289,34 @@ async function workItemList(
   const status = optionalString(args, "status");
   const type = optionalString(args, "type");
   const unassigned = optionalBoolean(args, "unassigned") === true;
+  const backlog = optionalBoolean(args, "backlog") === true;
   const assigneeId = optionalString(args, "assigneeId");
-  if (sprintId) extra.push({ type: "equal", field: "sprintId", value: sprintId });
+  if (sprintId && !backlog) extra.push({ type: "equal", field: "sprintId", value: sprintId });
   if (status) extra.push({ type: "equal", field: "status", value: status });
   if (type) extra.push({ type: "equal", field: "type", value: type });
-  if (assigneeId) extra.push({ type: "equal", field: "assigneeIds", value: assigneeId });
   const { limit, cursorAfter } = paginationQueries(args);
   const cursorError = isWorkItemKeyCursor(cursorAfter)
     ? "cursorAfter must be nextCursor from the previous list result"
     : undefined;
   const startCursor = cursorError ? undefined : cursorAfter;
-  const needsFilter = unassigned || Boolean(assigneeId);
+  const needsFilter = unassigned || backlog || Boolean(assigneeId);
   const scanAll = needsFilter || !startCursor;
   const fetched = await fetchWorkItemPages(runtime, extra, startCursor, scanAll, limit);
   const namesByRow = await hydrateWorkItemAssignees(runtime, fetched.documents);
   const rows = fetched.documents.map((doc, index) => {
     const names = runtime.collections.members ? namesByRow[index] ?? [] : undefined;
-    return compactWorkItem(doc, names);
+    return { compact: compactWorkItem(doc, names), names: names ?? [] };
   });
-  const filtered = unassigned ? rows.filter((row) => row.unassigned === true) : rows;
+  let filtered = unassigned ? rows.filter((row) => row.compact.unassigned === true) : rows;
+  if (backlog) {
+    filtered = filtered.filter((row) => row.compact.location === "backlog");
+  }
+  if (assigneeId) {
+    filtered = filtered.filter((row) => assigneeQueryMatches(row.names, assigneeId));
+  }
   const explicitLimit = typeof args.limit === "number";
   const maxReturn = scanAll && !explicitLimit ? WORK_ITEM_LIST_SCAN_CAP : limit;
-  const workItems = filtered.slice(0, maxReturn);
-  const unassignedCount = rows.filter((row) => row.unassigned === true).length;
+  const workItems = filtered.slice(0, maxReturn).map((row) => row.compact);
   const lastFetched = fetched.documents[fetched.documents.length - 1];
   const page = scanAll
     ? {
@@ -301,6 +328,7 @@ async function workItemList(
         total: fetched.total,
       }
     : paginationMeta(fetched.documents, fetched.total, limit);
+  const location = locationSummary(rows.map((row) => row.compact));
   return toolResult(
     {
       hasMore: page.hasMore,
@@ -308,7 +336,15 @@ async function workItemList(
       returned: workItems.length,
       total: fetched.total,
       matched: filtered.length,
-      unassignedCount,
+      unassignedCount: rows.filter((row) => row.compact.unassigned === true).length,
+      location,
+      assignment: assignmentSummary(
+        rows.map((row) => ({
+          key: row.compact.key,
+          unassigned: row.compact.unassigned,
+          assignees: row.names,
+        })),
+      ),
       ...(cursorError ? { error: cursorError } : {}),
       workItems,
     },
@@ -702,7 +738,12 @@ async function workspaceGet(
   ]);
   if (membership.documents.length === 0) throw notFoundError("Not found");
   const ws = await runtime.store.get<Record<string, unknown>>(runtime.collections.workspaces, workspaceId);
-  return toolResult({ workspace: withId(ws) });
+  const organizationId = String(ws.organizationId ?? "").trim();
+  const organization = organizationId ? await organizationName(runtime, organizationId) : null;
+  return toolResult({
+    workspace: { name: String(ws.name ?? "") },
+    organization: organization ? { name: organization } : null,
+  });
 }
 
 async function workspaceInviteGet(
@@ -761,52 +802,54 @@ async function organizationMembersList(
   runtime: McpRuntime,
   auth: AuthContext
 ): Promise<McpToolResult> {
-  const workspaceId = requireString(args, "workspaceId");
-  assertWorkspaceBound(auth, workspaceId);
-  const membership = await runtime.store.list<Record<string, unknown>>(runtime.collections.members, [
-    { type: "equal", field: "userId", value: auth.actorUserId },
-    { type: "equal", field: "workspaceId", value: workspaceId },
-    { type: "limit", value: 1 },
-  ]);
-  if (membership.documents.length === 0) throw notFoundError("Not found");
-
-  const workspace = await runtime.store.get<Record<string, unknown>>(
-    runtime.collections.workspaces,
-    workspaceId
-  );
-  const organizationId = String(workspace.organizationId ?? "").trim();
-  if (!organizationId) {
-    return toolResult({
-      organization: false,
-      members: [],
-      message: "This workspace is not in an organization. Share the invite link instead.",
-    });
+  const organizationId = await resolveOrganizationId(args, runtime, auth);
+  if (!(await actorCanReadOrganization(runtime, auth, organizationId))) {
+    throw notFoundError("Not found");
   }
+
   const collection = runtime.collections.organizationMembers;
   if (!collection) {
     return toolResult({ organization: true, members: [], error: "Organization members are unavailable." }, true);
   }
 
+  const workspaceId = optionalString(args, "workspaceId") || auth.workspaceId || "";
   const orgDocs = await listAllDocuments(runtime, collection, [
     { type: "equal", field: "organizationId", value: organizationId },
   ]);
-  const workspaceDocs = await listAllDocuments(runtime, runtime.collections.members, [
-    { type: "equal", field: "workspaceId", value: workspaceId },
-  ]);
+  const workspaceDocs = workspaceId
+    ? await listAllDocuments(runtime, runtime.collections.members, [
+        { type: "equal", field: "workspaceId", value: workspaceId },
+      ])
+    : [];
   const inWorkspace = new Set(
     workspaceDocs.map((doc) => String(doc.userId ?? "")).filter(Boolean)
   );
   const hydrated = await hydrateMembers(runtime, orgDocs);
+  const orgName = await organizationName(runtime, organizationId);
+  let workspaceName = "";
+  if (workspaceId) {
+    try {
+      const workspace = await runtime.store.get<Record<string, unknown>>(
+        runtime.collections.workspaces,
+        workspaceId,
+      );
+      workspaceName = String(workspace.name ?? "");
+    } catch {
+      workspaceName = "";
+    }
+  }
   return toolResult({
     organization: true,
-    workspace: String(workspace.name ?? ""),
+    organizationName: orgName,
+    workspace: workspaceName,
+    note: "These are organization members, not workspace members. To invite a new email, call fairlx_workspace_member_add.",
     members: hydrated.map((person, index) => {
       const userId = String(orgDocs[index]?.userId ?? "");
       return {
         name: person.name,
         email: person.email,
         orgRole: person.role,
-        inWorkspace: inWorkspace.has(userId),
+        inWorkspace: workspaceId ? inWorkspace.has(userId) : undefined,
       };
     }),
   });

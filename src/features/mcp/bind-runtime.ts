@@ -9,6 +9,7 @@ import {
   MEMBERS_ID,
   ORGANIZATION_AUDIT_LOGS_ID,
   ORGANIZATION_MEMBERS_ID,
+  ORGANIZATIONS_ID,
   PROJECT_DOCS_ID,
   PROJECT_MEMBERS_ID,
   PROJECT_PERMISSIONS_ID,
@@ -58,8 +59,10 @@ import {
 } from "@/lib/processed-events-registry";
 import { CK, CKPattern, invalidateCache, invalidateCachePattern } from "@/lib/redis";
 import { getRedisClient } from "@/lib/redis/client";
-import { resolveUserOrgAccess } from "@/lib/permissions/resolveUserOrgAccess";
+import { resolveUserOrgAccess, hasOrgPermissionFromAccess } from "@/lib/permissions/resolveUserOrgAccess";
+import { OrgPermissionKey } from "@/features/org-permissions/types";
 import { inviteOrganizationMember } from "@/features/organizations/services/invite-org-member";
+import { actorMayAddToOrganizationAndWorkspace } from "@/features/members/services/add-to-org-and-workspace";
 import { createAppwriteStore } from "./appwrite-store";
 import { verifyMcpJwt } from "./jwt";
 
@@ -84,6 +87,7 @@ const COLLECTIONS: McpCollections = {
   githubRepos: GITHUB_REPOS_ID,
   organizationAuditLogs: ORGANIZATION_AUDIT_LOGS_ID,
   organizationMembers: ORGANIZATION_MEMBERS_ID,
+  organizations: ORGANIZATIONS_ID,
   customFields: CUSTOM_FIELDS_ID,
   mcpApiTokens: MCP_API_TOKENS_ID,
   // New collections for full MCP coverage
@@ -250,12 +254,26 @@ export async function createMcpRuntime(): Promise<McpRuntime> {
       await Promise.all(userIds.map((userId) => invalidateCache(CK.projectAccess(userId, projectId))));
       await Promise.all(userIds.map((userId) => invalidateCachePattern(CKPattern.allUserPerms(userId))));
     },
-    inviteOrganizationMember: async ({ actorUserId, organizationId, email, name }) => {
-      const access = await resolveUserOrgAccess(databases, actorUserId, organizationId);
-      if (!access.isOwner) {
-        throw new Error(
-          "Only the organization owner can invite someone who is not already in the organization.",
-        );
+    inviteOrganizationMember: async ({ actorUserId, organizationId, email, name, workspaceId }) => {
+      if (workspaceId) {
+        const { allowed } = await actorMayAddToOrganizationAndWorkspace({
+          databases,
+          actorUserId,
+          organizationId,
+          workspaceId,
+        });
+        if (!allowed) {
+          throw new Error(
+            "A workspace admin can add this person to the organization and this workspace. Organization owner approval is not required.",
+          );
+        }
+      } else {
+        const access = await resolveUserOrgAccess(databases, actorUserId, organizationId);
+        if (!access.isOwner && !hasOrgPermissionFromAccess(access, OrgPermissionKey.MEMBERS_MANAGE)) {
+          throw new Error(
+            "A workspace admin can add this person to the organization and this workspace. Organization owner approval is not required.",
+          );
+        }
       }
       const invited = await inviteOrganizationMember({
         actorUserId,
@@ -270,6 +288,16 @@ export async function createMcpRuntime(): Promise<McpRuntime> {
         name: invited.name,
         isExistingUser: invited.isExistingUser,
         emailSent: invited.emailSent,
+        emailError: invited.emailError,
+      };
+    },
+    resolveUserOrgAccess: async (userId, organizationId) => {
+      const access = await resolveUserOrgAccess(databases, userId, organizationId);
+      return {
+        isOwner: access.isOwner,
+        role: access.role,
+        permissions: access.permissions,
+        hasDepartmentAccess: access.hasDepartmentAccess,
       };
     },
     logAudit: async (entry) => {

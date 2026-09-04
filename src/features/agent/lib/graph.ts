@@ -62,7 +62,7 @@ export const AGENT_SPECIALISTS: Array<{
 
 const SPECIALIST_HINTS: Array<{ id: AgentSpecialistId; pattern: RegExp }> = [
   { id: "security", pattern: /\b(security|vulnerab|xss|ssrf|pentest|shannon|cve)\b/i },
-  { id: "ops", pattern: /\b(mail|email|outlook|gmail|invite|add .*member)\b/i },
+  { id: "ops", pattern: /\b(invite|add .{0,80}(project|workspace|team|org)|workspace member|project team|organiz(ation|e)|org name|company name|send .{0,30}(mail|email)|connect .{0,20}(outlook|gmail))\b/i },
   { id: "workflow", pattern: /\b(workflow statuses|custom workflow|transition)\b/i },
   { id: "git", pattern: /\b(git|commit|stage|unstag|branch|pr\b|pull request|repo|repository|diff)\b/i },
   { id: "builder", pattern: /\b(create project|new project|scaffold|implement|ship|build|edit the code)\b/i },
@@ -106,11 +106,20 @@ export function buildContextGraph(params: {
       meta: specialist.role,
     });
   }
+  for (const item of (context.organizations ?? []).slice(0, 8)) {
+    nodes.push({
+      id: `organization:${item.id}`,
+      kind: "organization",
+      label: item.name,
+      meta: item.role,
+    });
+  }
   for (const item of context.workspaces.slice(0, 12)) {
     nodes.push({
       id: `workspace:${item.id}`,
       kind: "workspace",
       label: item.name,
+      parentId: item.organizationId ? `organization:${item.organizationId}` : undefined,
       meta: item.id,
     });
   }

@@ -20,7 +20,7 @@ import {
 } from "./platform-credentials";
 import { last4FromEncrypted, maskEncryptedSecret } from "./secrets";
 
-export { defaultMcpConfig, enabledModels, selectedModelLabel } from "./client-defaults";
+export { defaultMcpConfig, enabledModels, selectedModelLabel, resolvedModelDisplayName } from "./client-defaults";
 export { platformDeepseekHasKey, platformGrokHasKey, platformXaiHasKey } from "./platform-credentials";
 export { getPlatformDefaultModelId, getPlatformModels, getPlatformProviders, isPlatformGrokEnabled } from "../constants";
 
@@ -114,11 +114,27 @@ export function toPublicProvider(provider: AgentProviderStored): AgentProviderPu
   };
 }
 
+export function pickResolvedModel(config: AgentAiConfigStored): { id: string; name: string } {
+  const merged = mergePlatformAiConfig(config);
+  const defaultModelId = getPlatformDefaultModelId();
+  const selectedId =
+    merged.mode === "auto" || !merged.selectedModelId ? defaultModelId : merged.selectedModelId;
+  const model =
+    merged.models.find((item) => item.id === selectedId && item.isEnabled) ??
+    merged.models.find((item) => item.id === defaultModelId && item.isEnabled) ??
+    merged.models.find((item) => item.isEnabled) ??
+    merged.models[0];
+  return { id: model?.id ?? "", name: model?.displayName ?? "Auto" };
+}
+
 export function toPublicAiConfig(config: AgentAiConfigStored): AgentAiConfigPublic {
   const merged = mergePlatformAiConfig(config);
+  const resolved = pickResolvedModel(merged);
   return {
     mode: merged.mode,
     selectedModelId: merged.selectedModelId,
+    resolvedModelId: resolved.id,
+    resolvedModelName: resolved.name,
     providers: merged.providers.map(toPublicProvider),
     models: merged.models.map((model) => ({ ...model })),
   };

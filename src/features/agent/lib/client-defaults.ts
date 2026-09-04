@@ -19,9 +19,17 @@ export function defaultMcpConfig(): McpConfig {
 }
 
 export function selectedModelLabel(config: AgentAiConfigPublic | undefined): string {
-  if (!config || config.mode === "auto") return "Auto";
+  if (!config) return "Select model";
+  if (config.mode === "auto") return "Auto";
   const selected = config.models.find((model) => model.id === config.selectedModelId && model.isEnabled);
   return selected?.displayName || "Select model";
+}
+
+export function resolvedModelDisplayName(config: AgentAiConfigPublic | undefined): string | undefined {
+  if (!config) return undefined;
+  if (config.resolvedModelName) return config.resolvedModelName;
+  const id = config.mode === "auto" ? config.resolvedModelId : config.selectedModelId;
+  return config.models.find((model) => model.id === id && model.isEnabled)?.displayName;
 }
 
 export function enabledModels(config: AgentAiConfigPublic | undefined): AgentModel[] {
