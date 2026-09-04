@@ -1,4 +1,4 @@
-import type { AgentPendingConfirmation, AgentToolCall, AgentToolEvent } from "../types";
+import type { AgentChatMessage, AgentPendingConfirmation, AgentToolCall, AgentToolEvent } from "../types";
 
 const HARNESS_WRITES = new Set(["create_project"]);
 const WRITE_NAME_RE = /_(create|update|delete|add|set|start|complete|split|sync|remove|mark_read)$/i;
@@ -177,11 +177,52 @@ export function pendingFromEvent(event: AgentToolEvent | undefined): AgentPendin
   return data;
 }
 
-export function findPendingConfirmation(events: AgentToolEvent[]): AgentPendingConfirmation | undefined {
+export function unmatchedToolCalls(messages: AgentChatMessage[] = []): AgentToolCall[] {
+  const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant" && message.toolCalls?.length);
+  if (!lastAssistant?.toolCalls?.length) return [];
+  const answered = new Set(
+    messages.filter((message) => message.role === "tool" && message.toolCallId).map((message) => message.toolCallId),
+  );
+  return lastAssistant.toolCalls.filter((call) => !answered.has(call.id));
+}
+
+export function findPendingConfirmation(
+  events: AgentToolEvent[] = [],
+  messages?: AgentChatMessage[],
+): AgentPendingConfirmation | undefined {
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]!;
-    if (event.type === "confirmation") return pendingFromEvent(event);
+    if (event.type === "confirmation") {
+      const fromEvent = pendingFromEvent(event);
+      if (fromEvent) return fromEvent;
+
+      if (messages?.length) {
+        const writes = unmatchedToolCalls(messages).filter(isWriteToolCall);
+        if (writes.length) {
+          return {
+            calls: writes,
+            summary: event.title || writes.map(confirmationSummary).join(" · "),
+          };
+        }
+      }
+
+      return {
+        calls: [],
+        summary: event.title || "Pending actions require your approval.",
+      };
+    }
     if (event.type === "confirmation_resolved") return undefined;
   }
+
+  if (messages?.length) {
+    const writes = unmatchedToolCalls(messages).filter(isWriteToolCall);
+    if (writes.length) {
+      return {
+        calls: writes,
+        summary: writes.map(confirmationSummary).join(" · "),
+      };
+    }
+  }
+
   return undefined;
 }

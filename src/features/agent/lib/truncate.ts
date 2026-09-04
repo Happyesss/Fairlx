@@ -174,6 +174,10 @@ function compactUnknown(value: unknown, budget: number): unknown {
     const next: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(record)) {
       if (key === "payload") {
+        if (record.type === "confirmation") {
+          next[key] = nested;
+          continue;
+        }
         try {
           if (JSON.stringify(nested).length > EVENT_PAYLOAD_MAX) continue;
         } catch {
@@ -182,6 +186,10 @@ function compactUnknown(value: unknown, budget: number): unknown {
       }
       next[key] = compactUnknown(nested, budget);
       if (JSON.stringify(next).length > budget) {
+        if (record.type === "confirmation" && key === "payload") {
+          // Keep confirmation payload intact
+          continue;
+        }
         if (typeof next[key] === "string") {
           next[key] = truncateString(next[key] as string, 120);
         } else {
@@ -206,7 +214,7 @@ function compactArrayItems(items: unknown[]): unknown[] {
     if (typeof next.detail === "string" && next.detail.length > DETAIL_MAX) {
       next.detail = truncateString(next.detail, DETAIL_MAX);
     }
-    if (next.payload !== undefined) {
+    if (next.type !== "confirmation" && next.payload !== undefined) {
       try {
         if (JSON.stringify(next.payload).length > EVENT_PAYLOAD_MAX) next.payload = undefined;
       } catch {
