@@ -50,7 +50,7 @@ import {
 } from "../lib/transcript";
 import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/visible-content";
 import { splitMarkdownWorkItemTable, type AgentWorkItem } from "../lib/work-item-table";
-import { findPendingConfirmation } from "../lib/write-guard";
+import { findPendingConfirmation, isWriteToolCall } from "../lib/write-guard";
 import type { AgentChatMessage, AgentRun } from "../types";
 import { AgentMemberTable } from "./agent-member-table";
 import { AgentWorkItemTable } from "./agent-work-item-table";
@@ -618,9 +618,10 @@ function StepRow({
     }
   };
 
+  const isWrite = isWriteToolCall(step.call);
   const isCompleted = Boolean(step.result && summary.ok);
   const isFailed = Boolean(step.result && !summary.ok);
-  const isAwaiting = awaiting && !step.result;
+  const isAwaiting = awaiting && !step.result && isWrite;
   const isRunning = active && !step.result;
 
   return (
@@ -641,6 +642,8 @@ function StepRow({
             <Check className="size-4 text-green-500" />
           ) : isFailed ? (
             <XCircle className="size-4 text-destructive" />
+          ) : !active && !awaiting ? (
+            <Check className="size-4 text-green-500" />
           ) : (
             <span className="font-mono text-muted-foreground text-xs">{index + 1}</span>
           )}
@@ -716,6 +719,8 @@ function StepRow({
             <span className="text-green-500 font-medium">Completed</span>
           ) : isFailed ? (
             <span className="text-destructive font-medium">Failed</span>
+          ) : !active && !awaiting ? (
+            <span className="text-green-500 font-medium">Completed</span>
           ) : (
             <span className="text-muted-foreground font-medium">Queued</span>
           )}
@@ -959,7 +964,18 @@ export function AgentChatThread({
   const lastAssistantId = [...blocks].reverse().find((block) => block.kind === "assistant")?.message.id;
   const showThinking = running && !awaiting && lastBlock?.kind !== "steps";
   const thinkingLabel = !lastBlock || lastBlock.kind === "user" ? "Thinking…" : "Answering…";
-  const pending = findPendingConfirmation(events);
+  const lastStepsBlockIndex = blocks.reduceRight(
+    (acc, b, i) => (acc === -1 && b.kind === "steps" ? i : acc),
+    -1,
+  );
+  const pending =
+    findPendingConfirmation(events, messages) ??
+    (awaiting
+      ? {
+          calls: [],
+          summary: "The agent is waiting for your approval to proceed with the planned actions.",
+        }
+      : undefined);
   const effectiveProjectId = run.projectId || harness?.settings.defaultProjectId;
   const project = context?.projects.find((item) => item.id === effectiveProjectId);
   const linkedRepo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
@@ -1023,13 +1039,14 @@ export function AgentChatThread({
             </div>
           );
         }
+        const isCurrentSteps = index === lastStepsBlockIndex;
         return (
           <div key={block.lead?.id ?? `steps-${index}`} className="flex flex-col gap-3">
             <StepsCard
               lead={block.lead}
               steps={block.steps}
-              running={running}
-              awaiting={awaiting}
+              running={running && isCurrentSteps}
+              awaiting={awaiting && isCurrentSteps}
               workItems={workItems}
               members={members}
               workspaceId={run.workspaceId}
