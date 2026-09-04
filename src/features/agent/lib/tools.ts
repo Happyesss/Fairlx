@@ -25,6 +25,7 @@ import { toPublicMcpConfig } from "./public-mcp";
 import { matchingAutomations, searchAgentIndex } from "./search";
 import { HARNESS_TO_MCP } from "./parse-tool-calls";
 import { compactJsonString, unwrapMcpToolContent } from "./truncate";
+import { attachedSearchPayload, extractAttachedFiles } from "./attachments";
 import { catalogForCapability, missingCapabilities } from "../plugins/catalog";
 import { sendMailViaPlugin } from "../plugins/mail";
 import { githubCapabilityGap, parsePrFiles } from "../plugins/github-helpers";
@@ -63,13 +64,14 @@ export type ToolExecutionContext = {
   mcpAuth?: AuthContext;
   allowPersonalSave?: boolean;
   plugins?: AgentPluginConnection[];
+  sourcePrompt?: string;
 };
 
 export type ToolExecutionResult = {
   content: string;
   event: AgentToolEvent;
   harnessPatch?: Partial<Pick<AgentHarness, "gitStaging" | "chatMeta" | "knowledge" | "plugins">>;
-  delegate?: { agent: AgentSpecialistId; task: string };
+  delegate?: { agent: AgentSpecialistId; task: string; subject?: string };
   missingCapability?: AgentCapability;
 };
 
@@ -177,13 +179,18 @@ const TOOL_PARAMETERS: Record<string, { description: string; parameters: Record<
     },
   },
   delegate_agent: {
-    description: "Delegate a focused task to a specialist: planner, researcher, builder, git, ops, security, workflow, or reviewer.",
+    description:
+      "Delegate one subject to a specialist. Call multiple times in one step. Set subject to a spec heading (one module). Planner = timeline; builder = create that subject's work; ops = assign a percent.",
     parameters: {
       type: "object",
       properties: {
         agent: {
           type: "string",
           enum: ["planner", "researcher", "builder", "git", "reviewer", "ops", "security", "workflow"],
+        },
+        subject: {
+          type: "string",
+          description: "One spec heading or module name. Required when splitting a product spec.",
         },
         task: { type: "string" },
       },
@@ -656,13 +663,14 @@ export async function executeTool(
       };
     }
     case "file_search": {
+      const attached = attachedSearchPayload(query, extractAttachedFiles(ctx.sourcePrompt || ""));
       const docs = context.docs.filter((doc) =>
         matchesQuery(`${doc.title ?? ""} ${doc.name ?? ""} ${doc.description ?? ""} ${doc.category ?? ""}`, query),
       );
       const workItems = context.workItems.filter((item) =>
         matchesQuery(`${item.key ?? ""} ${item.title}`, query),
       );
-      const payload = { query, docs: docs.slice(0, 20), workItems: workItems.slice(0, 20) };
+      const payload = { query, docs: docs.slice(0, 20), workItems: workItems.slice(0, 20), ...(attached ?? {}) };
       return {
         content: JSON.stringify(payload),
         event: event(
@@ -747,8 +755,13 @@ export async function executeTool(
       };
     }
     case "list_workspaces": {
+      const orgs = new Map((context.organizations ?? []).map((item) => [item.id, item.name]));
       const payload = {
-        workspaces: context.workspaces.map(({ inviteCode: _inviteCode, ...rest }) => rest),
+        workspaces: context.workspaces.map(({ inviteCode: _inviteCode, ...rest }) => ({
+          ...rest,
+          organizationName: rest.organizationId ? orgs.get(rest.organizationId) : undefined,
+        })),
+        organizations: (context.organizations ?? []).map(({ id: _id, ...rest }) => rest),
       };
       return {
         content: JSON.stringify(payload),
@@ -854,14 +867,36 @@ export async function executeTool(
     case "delegate_agent": {
       const agent = specialistById(asString(parsed.agent) || "planner");
       const task = asString(parsed.task || parsed.prompt || query);
-      const payload = { agent, task };
+      const subject = asString(parsed.subject) || undefined;
+      const payload = { agent, task, subject };
       return {
         content: JSON.stringify(payload),
-        event: event(runId, "delegate_agent", `Delegated to ${agent}`, task || undefined, payload),
-        delegate: { agent: agent === "orchestrator" ? "planner" : agent, task: task || "Continue the current request." },
+        event: event(runId, "delegate_agent", `Delegated to ${agent}${subject ? ` · ${subject}` : ""}`, task || undefined, payload),
+        delegate: {
+          agent: agent === "orchestrator" ? "planner" : agent,
+          task: task || "Continue the current request.",
+          subject,
+        },
       };
     }
     case "search_harness": {
+      const files = extractAttachedFiles(ctx.sourcePrompt || "");
+      if (files.length) {
+        const attached = attachedSearchPayload(query || files[0]!.name, files) ?? {
+          source: "attached_files",
+          files: files.map((file) => ({ name: file.name, content: file.body })),
+        };
+        return {
+          content: JSON.stringify(attached),
+          event: event(
+            runId,
+            "search_harness",
+            query ? `Attached spec: ${query}` : "Attached spec",
+            `${files.length} attached files`,
+            attached as Record<string, unknown>,
+          ),
+        };
+      }
       const hits = searchAgentIndex({
         query,
         runs: ctx.runs,
@@ -1146,17 +1181,23 @@ export async function executeTool(
           subject: asString(parsed.subject),
         });
       }
+      const updatedPlugin = result.updatedPlugin as AgentPluginConnection | undefined;
       const payload = comment ? { ...result, comment } : result;
+      const publicPayload = { ...payload };
+      delete publicPayload.updatedPlugin;
       return {
-        content: JSON.stringify(payload),
+        content: JSON.stringify(publicPayload),
         event: event(
           runId,
           failed ? "error" : "mail_send",
           failed ? "Mail failed" : `Mailed ${asString(parsed.to)}`,
           asString(parsed.subject),
-          payload,
+          publicPayload,
         ),
         missingCapability: failed && result.capability === "email.send" ? "email.send" : undefined,
+        harnessPatch: updatedPlugin
+          ? { plugins: harness.plugins.map((item) => (item.id === updatedPlugin.id ? updatedPlugin : item)) }
+          : undefined,
       };
     }
     case "github_list_files": {
@@ -1211,8 +1252,8 @@ export async function executeTool(
             runId,
             failed ? "error" : "github_write_file",
             failed ? "GitHub write failed" : `Wrote ${asString(parsed.path)}`,
-            undefined,
-            result,
+            asString(parsed.path) || undefined,
+            { ...result, path: asString(parsed.path) },
           ),
           missingCapability: githubCapabilityGap(result),
         };

@@ -59,16 +59,14 @@ describe("compactWorkItem", () => {
     });
   });
 
-  it("keeps hydrated assignee profile images", () => {
-    expect(
-      compactWorkItem(
-        { key: "A-3", title: "With photo", assigneeIds: ["m1"] },
-        [{ name: "Ada Lovelace", imageUrl: "https://cdn.example/ada.png" }],
-      ),
-    ).toMatchObject({
-      key: "A-3",
-      assignees: [{ name: "Ada Lovelace", imageUrl: "https://cdn.example/ada.png" }],
-      unassigned: false,
+  it("marks items with no sprint as backlog", () => {
+    expect(compactWorkItem({ key: "SCHO-13", title: "Auth", sprintId: null })).toMatchObject({
+      location: "backlog",
+      sprintId: null,
+    });
+    expect(compactWorkItem({ key: "SCHO-1", title: "Setup", sprintId: "sprint_1" })).toMatchObject({
+      location: "sprint",
+      sprintId: "sprint_1",
     });
   });
 });

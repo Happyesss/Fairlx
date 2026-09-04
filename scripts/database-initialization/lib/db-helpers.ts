@@ -14,6 +14,46 @@ function isAppwriteError(err: unknown, code: number): boolean {
     return false;
 }
 
+export function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+/** Appwrite attributes stay in processing for a few seconds after create. */
+export function isAttributeNotReady(err: unknown): boolean {
+    const message = errorMessage(err);
+    return (
+        /not yet available/i.test(message) ||
+        /still processing/i.test(message) ||
+        /attribute .+ is not available/i.test(message)
+    );
+}
+
+export async function waitForAttributesAvailable(
+    databases: Databases,
+    databaseId: string,
+    collectionId: string,
+    keys: string[],
+    timeoutMs = 45_000,
+): Promise<void> {
+    if (!keys.length) return;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        const statuses = await Promise.all(
+            keys.map(async (key) => {
+                try {
+                    const attr = await databases.getAttribute(databaseId, collectionId, key);
+                    return String((attr as { status?: string }).status || "available");
+                } catch {
+                    return "missing";
+                }
+            }),
+        );
+        if (statuses.every((status) => status === "available")) return;
+        await sleep(1500);
+    }
+    logger.info(`Timed out waiting for attributes in ${collectionId}: ${keys.join(", ")}`);
+}
+
 // ─── Database ────────────────────────────────────────────────
 
 export async function ensureDatabase(
@@ -462,12 +502,19 @@ export async function ensureIndex(
     attributes: string[],
     orders?: string[]
 ): Promise<void> {
-    try {
-        await databases.getIndex(databaseId, collectionId, key);
-        logger.skipped('index', key);
-    } catch (err) {
-        if (isAppwriteError(err, 404)) {
+    const maxAttempts = 8;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            await databases.getIndex(databaseId, collectionId, key);
+            logger.skipped('index', key);
+            return;
+        } catch (err) {
+            if (!isAppwriteError(err, 404)) {
+                logger.error('index', key, err);
+                return;
+            }
             try {
+                await waitForAttributesAvailable(databases, databaseId, collectionId, attributes);
                 await databases.createIndex(
                     databaseId,
                     collectionId,
@@ -478,15 +525,20 @@ export async function ensureIndex(
                 );
                 logger.created('index', key);
                 await sleep(500);
+                return;
             } catch (createErr) {
                 if (isAppwriteError(createErr, 409)) {
                     logger.skipped('index', key);
-                } else {
-                    logger.error('index', key, createErr);
+                    return;
                 }
+                if (isAttributeNotReady(createErr) && attempt < maxAttempts) {
+                    logger.info(`Waiting for attributes before index ${key} (${attempt}/${maxAttempts})`);
+                    await sleep(1500 * attempt);
+                    continue;
+                }
+                logger.error('index', key, createErr);
+                return;
             }
-        } else {
-            logger.error('index', key, err);
         }
     }
 }

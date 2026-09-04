@@ -86,6 +86,8 @@ export type AgentModel = {
 export type AgentAiConfigPublic = {
   mode: AgentAiMode;
   selectedModelId?: string;
+  resolvedModelId?: string;
+  resolvedModelName?: string;
   providers: AgentProviderPublic[];
   models: AgentModel[];
 };
@@ -157,6 +159,7 @@ export type AgentPluginSecrets = {
   accessTokenEncrypted?: string;
   refreshTokenEncrypted?: string;
   apiKeyEncrypted?: string;
+  clientSecretEncrypted?: string;
   from?: string;
   mcpUrl?: string;
   mcpTool?: string;
@@ -230,7 +233,7 @@ export type AgentChatMeta = {
 
 export type AgentContextGraphNode = {
   id: string;
-  kind: "workspace" | "project" | "work_item" | "repo" | "mcp" | "specialist";
+  kind: "organization" | "workspace" | "project" | "work_item" | "repo" | "mcp" | "specialist";
   label: string;
   parentId?: string;
   meta?: string;
@@ -307,6 +310,10 @@ export type AgentToolEventType =
   | "plugin_connected"
   | "job_progress"
   | "thought"
+  | "subagent_started"
+  | "subagent_progress"
+  | "subagent_done"
+  | "context_meter"
   | "confirmation"
   | "confirmation_resolved"
   | "error";
@@ -374,12 +381,16 @@ export type AgentWorkPattern = {
   createdAt: string;
 };
 
+export type AgentPermissionType = "staged" | "all_access";
+export type AgentWriteRisk = "read" | "standard" | "privileged";
+
 export type AgentHarnessSettings = {
   mode: AgentRunMode;
   enabledTools: string[];
   defaultWorkspaceId?: string;
   defaultProjectId?: string;
   sessionMode?: AgentSessionMode;
+  permissionType?: AgentPermissionType;
 };
 
 export type AgentContextChipKind =
@@ -399,6 +410,8 @@ export type AgentContextChip = {
   id: string;
   label: string;
   meta?: string;
+  /** Text body for attached markdown/code. Images omit this. */
+  content?: string;
 };
 
 export type AgentHarness = {
@@ -421,6 +434,14 @@ export type AgentContextWorkspace = {
   imageUrl?: string;
   inviteCode?: string;
   role?: string;
+  organizationId?: string;
+};
+
+export type AgentContextOrganization = {
+  id: string;
+  name: string;
+  role?: string;
+  status?: string;
 };
 
 export type AgentContextProject = {
@@ -499,6 +520,7 @@ export type AgentContext = {
   githubRepos: AgentContextRepo[];
   integrations: AgentContextIntegration[];
   docs: AgentContextDoc[];
+  organizations?: AgentContextOrganization[];
 };
 
 export type PersonalPersonaRole = "tech_lead" | "frontend" | "qa" | "pm";

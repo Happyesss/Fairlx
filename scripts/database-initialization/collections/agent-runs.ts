@@ -34,6 +34,7 @@ export async function setupAgentRuns(databases: Databases, databaseId: string): 
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'allowedToolsJson', 4096, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'qaReportJson', 16384, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'extraJson', 16384, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'attachmentsJson', 2097152, false);
 
     await sleep(2000);
 

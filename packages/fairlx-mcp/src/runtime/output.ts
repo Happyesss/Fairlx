@@ -45,7 +45,49 @@ export function assigneeIdsOf(doc: Record<string, unknown>): string[] {
 export type CompactAssignee = {
   name: string;
   imageUrl?: string | null;
+  email?: string;
 };
+
+export function assigneeQueryMatches(people: CompactAssignee[] | undefined, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (people ?? []).some((person) => {
+    const name = person.name.trim().toLowerCase();
+    const email = (person.email ?? "").trim().toLowerCase();
+    const local = email.split("@")[0] ?? "";
+    return name === q || email === q || local === q || name.includes(q);
+  });
+}
+
+export function isBacklogSprintId(sprintId: unknown): boolean {
+  if (sprintId == null) return true;
+  const value = String(sprintId).trim();
+  return value.length === 0 || value === "null" || value === "undefined";
+}
+
+export function locationSummary(
+  items: Array<{ key?: unknown; location?: unknown; sprintId?: unknown }>,
+): {
+  backlogCount: number;
+  backlogKeys: string[];
+  sprintCount: number;
+  sprintKeys: string[];
+} {
+  const backlogKeys: string[] = [];
+  const sprintKeys: string[] = [];
+  for (const item of items) {
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    if (!key) continue;
+    if (item.location === "backlog" || isBacklogSprintId(item.sprintId)) backlogKeys.push(key);
+    else sprintKeys.push(key);
+  }
+  return {
+    backlogCount: backlogKeys.length,
+    backlogKeys,
+    sprintCount: sprintKeys.length,
+    sprintKeys,
+  };
+}
 
 export function compactWorkItem(
   doc: Record<string, unknown>,
@@ -59,6 +101,7 @@ export function compactWorkItem(
     }))
     .filter((person) => person.name);
   const hydrated = assignees !== undefined;
+  const sprintId = isBacklogSprintId(doc.sprintId) ? null : String(doc.sprintId).trim();
   return {
     key: doc.key,
     title: doc.title ?? doc.name,
@@ -66,6 +109,10 @@ export function compactWorkItem(
     type: doc.type,
     priority: doc.priority,
     labels: Array.isArray(doc.labels) ? doc.labels : [],
+    location: sprintId ? "sprint" : "backlog",
+    sprintId,
+    storyPoints: doc.storyPoints ?? null,
+    dueDate: doc.dueDate ?? null,
     assignees: people,
     unassigned: hydrated ? people.length === 0 : ids.length === 0,
   };
@@ -112,6 +159,38 @@ async function loadMembersByIds(
   return map;
 }
 
+async function loadMembersForAssigneeIds(
+  runtime: Pick<McpRuntime, "store" | "collections">,
+  ids: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = await loadMembersByIds(runtime, ids);
+  const leftover = ids.filter((id) => !map.has(id));
+  const collection = runtime.collections.members;
+  if (!collection || leftover.length === 0) return map;
+  try {
+    const result = await runtime.store.list<Record<string, unknown>>(collection, [
+      { type: "equal", field: "userId", value: leftover.length === 1 ? leftover[0]! : leftover },
+      { type: "limit", value: leftover.length },
+    ]);
+    for (const doc of result.documents) {
+      indexAssigneeMember(map, doc);
+    }
+  } catch {
+    // Board still treats unresolved ids as Unassigned.
+  }
+  return map;
+}
+
+function indexAssigneeMember(
+  map: Map<string, Record<string, unknown>>,
+  doc: Record<string, unknown>
+) {
+  const membershipId = String(doc.$id ?? doc.id ?? "");
+  const userId = String(doc.userId ?? "");
+  if (membershipId) map.set(membershipId, doc);
+  if (userId) map.set(userId, doc);
+}
+
 /** Resolve assignee display names like the Kanban card: missing members are omitted. */
 export async function hydrateWorkItemAssignees(
   runtime: Pick<McpRuntime, "store" | "collections" | "lookupUsers">,
@@ -121,10 +200,14 @@ export async function hydrateWorkItemAssignees(
     return documents.map(() => []);
   }
   const allIds = [...new Set(documents.flatMap((doc) => assigneeIdsOf(doc)))];
-  const members = await loadMembersByIds(runtime, allIds);
-  const userIds = [...members.values()]
-    .map((doc) => String(doc.userId ?? ""))
-    .filter(Boolean);
+  const members = await loadMembersForAssigneeIds(runtime, allIds);
+  const userIds = [
+    ...new Set(
+      [...members.values()]
+        .map((doc) => String(doc.userId ?? ""))
+        .filter(Boolean),
+    ),
+  ];
   const profiles = runtime.lookupUsers && userIds.length ? await runtime.lookupUsers(userIds) : [];
   const profileByUserId = new Map(profiles.map((profile) => [profile.id, profile]));
   return documents.map((doc) =>
@@ -134,7 +217,11 @@ export async function hydrateWorkItemAssignees(
       const profile = profileByUserId.get(String(member.userId ?? ""));
       const name = memberDisplayName(member, profile);
       if (!name) return [];
-      return [{ name, imageUrl: profile?.profileImageUrl ?? (typeof member.profileImageUrl === "string" ? member.profileImageUrl : null) }];
+      return [{
+        name,
+        imageUrl: profile?.profileImageUrl ?? (typeof member.profileImageUrl === "string" ? member.profileImageUrl : null),
+        email: String(profile?.email || member.email || "").trim() || undefined,
+      }];
     })
   );
 }

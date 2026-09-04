@@ -3,7 +3,7 @@ import {
     ensureCollection,
     ensureStringAttribute,
     ensureIndex,
-    sleep,
+    waitForAttributesAvailable,
 } from '../lib/db-helpers';
 import { logger } from '../lib/logger';
 
@@ -26,7 +26,7 @@ export async function setupAgentJobs(databases: Databases, databaseId: string): 
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'resultJson', 16384, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'error', 2048, false);
 
-    await sleep(2000);
+    await waitForAttributesAvailable(databases, databaseId, COLLECTION_ID, ['userId', 'status']);
 
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'userId_idx', IndexType.Key, ['userId']);
     await ensureIndex(databases, databaseId, COLLECTION_ID, 'status_idx', IndexType.Key, ['status']);

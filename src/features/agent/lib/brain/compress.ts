@@ -2,7 +2,7 @@ import type { AgentChatMessage } from "../../types";
 import { compactJsonString, unwrapMcpToolContent } from "../truncate";
 
 export const COMPRESS_KEEP_RECENT = 8;
-export const SPECIALIST_RESULT_MAX = 2000;
+export const SPECIALIST_RESULT_MAX = 24000;
 
 function summarizeToolBody(content: string): string {
   const raw = unwrapMcpToolContent(content);

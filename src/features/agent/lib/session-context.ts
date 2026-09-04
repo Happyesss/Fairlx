@@ -1,4 +1,5 @@
 import type { AgentContextChip, AgentSessionMode } from "../types";
+import { formatAttachedFiles, stripAttachedFiles } from "./attachments";
 
 export const AGENT_SESSION_MODE_IDS = [
   "agent",
@@ -81,6 +82,10 @@ export function composeUserPrompt(text: string, chips: AgentContextChip[], sessi
       parts.push(`- ${chip.kind}: ${chip.label}${chip.meta ? ` (${chip.meta})` : ""} [${chip.id}]`);
     }
   }
+  const files = chips
+    .filter((chip) => chip.content?.trim())
+    .map((chip) => ({ name: chip.label, body: chip.content!.trim() }));
+  if (files.length) parts.push(formatAttachedFiles(files));
   parts.push(text.trim());
   return parts.filter(Boolean).join("\n");
 }
@@ -104,7 +109,8 @@ export function trainingSaveReady(messages: Array<{ role: string; content: strin
 }
 
 export function displayUserContent(content: string) {
-  const lines = content.split("\n");
+  const stripped = stripAttachedFiles(content);
+  const lines = stripped.split("\n");
   let i = 0;
   if (lines[0]?.startsWith(TRAIN_PERSONAL_MARKER)) {
     const remainder = lines[0].slice(TRAIN_PERSONAL_MARKER.length).trim();
@@ -119,7 +125,7 @@ export function displayUserContent(content: string) {
     i += 1;
     while (i < lines.length && lines[i]?.startsWith("- ")) i += 1;
   }
-  return lines.slice(i).join("\n").trim() || content;
+  return lines.slice(i).join("\n").trim() || stripped || content;
 }
 
 export function chipKey(chip: AgentContextChip) {

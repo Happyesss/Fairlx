@@ -33,6 +33,7 @@ import {
   upsertHarness,
 } from "../lib/harness";
 import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
+import { AGENT_PROMPT_HTTP_MAX } from "../lib/limits";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
 import { runNeedsAgentTurn } from "../lib/run-turn";
@@ -66,6 +67,17 @@ import {
 } from "../lib/personal-training";
 import { PLUGIN_CATALOG, toPublicPlugin } from "../plugins/catalog";
 import { buildPluginConnection, upsertPluginList } from "../plugins/connect";
+import {
+  applyOauthTokensToSecrets,
+  buildMailAuthorizeUrl,
+  decodeOauthState,
+  encodeOauthState,
+  exchangeMailOauthCode,
+  isMailOauthCatalog,
+  lookupMailFromAddress,
+  mailOauthStatus,
+  resolveOauthClient,
+} from "../plugins/oauth";
 import { getAgentJob, listAgentJobs, updateAgentJob } from "../lib/jobs";
 import { scheduleAgentJob } from "../lib/schedule-job";
 import { buildAgentMcpAuth } from "../lib/agent-auth";
@@ -137,13 +149,13 @@ const selectSchema = z.object({
 });
 
 const createRunSchema = z.object({
-  prompt: z.string().trim().min(1).max(8000),
+  prompt: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
   workspaceId: z.string().optional(),
   projectId: z.string().optional(),
 });
 
 const sendMessageSchema = z.object({
-  content: z.string().trim().min(1).max(8000),
+  content: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
 });
 
 const patchRunSchema = z.object({
@@ -222,6 +234,7 @@ const harnessSchema = z.object({
       defaultWorkspaceId: z.string().optional(),
       defaultProjectId: z.string().optional(),
       sessionMode: z.enum(["agent", "personal", "plan", "debug", "multitask", "ask"]).optional(),
+      permissionType: z.enum(["staged", "all_access"]).optional(),
     })
     .optional(),
 });
@@ -438,13 +451,24 @@ const app = new Hono()
       if (existing.status === "awaiting_confirmation") {
         return c.json({ error: "Accept or deny the pending action first." }, 409);
       }
-      if (existing.status === "awaiting_plugin") {
-        return c.json({ error: "Connect the required plugin first." }, 409);
-      }
       const createdAt = new Date().toISOString();
+      const events =
+        existing.status === "awaiting_plugin"
+          ? [
+              ...existing.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected" as const,
+                title: "Continued without connecting a mail plugin",
+                createdAt,
+                runId: existing.id,
+              },
+            ]
+          : existing.events;
       const run = await updateRun(databases, runId, {
         status: "running",
         error: "",
+        events,
         messages: [
           ...existing.messages,
           { id: crypto.randomUUID(), role: "user", content, createdAt },
@@ -476,16 +500,25 @@ const app = new Hono()
         }
       }
       if (existing.status === "awaiting_confirmation") return c.json({ data: existing });
-      if (existing.status === "awaiting_plugin") return c.json({ data: existing });
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
       if (findPendingConfirmation(existing.events ?? [])) return c.json({ data: existing });
-      if (!runNeedsAgentTurn(existing)) return c.json({ data: existing });
+      if (existing.status !== "awaiting_plugin" && !runNeedsAgentTurn(existing)) return c.json({ data: existing });
 
-      const run =
-        existing.status === "running"
-          ? existing
-          : await updateRun(databases, runId, { status: "running", error: "" });
+      const events =
+        existing.status === "awaiting_plugin"
+          ? [
+              ...existing.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected" as const,
+                title: "Continued without connecting a mail plugin",
+                createdAt: new Date().toISOString(),
+                runId: existing.id,
+              },
+            ]
+          : existing.events;
+      const run = await updateRun(databases, runId, { status: "running", error: "", events });
       scheduleAgentTurn({ databases, user, run });
       return c.json({ data: run });
     } catch (error) {
@@ -687,6 +720,7 @@ const app = new Hono()
         data: {
           catalog: PLUGIN_CATALOG,
           connected: harness.plugins.map(toPublicPlugin),
+          oauth: mailOauthStatus(),
         },
       });
     } catch (error) {
@@ -743,6 +777,108 @@ const app = new Hono()
       }
     },
   )
+  .get("/plugins/oauth/start", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const catalogId = c.req.query("catalogId") || "";
+    const runId = c.req.query("runId") || undefined;
+    const from = c.req.query("from") || undefined;
+    if (!isMailOauthCatalog(catalogId)) {
+      return c.json({ error: "OAuth is only available for Outlook and Gmail." }, 400);
+    }
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const existing = harness.plugins.find((plugin) => plugin.catalogId === catalogId);
+      const client = resolveOauthClient(catalogId, existing);
+      const state = encodeOauthState({
+        userId: user.$id,
+        catalogId,
+        runId,
+        from,
+        nonce: crypto.randomUUID(),
+      });
+      return c.redirect(buildMailAuthorizeUrl({ catalogId, clientId: client.clientId, state }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start OAuth.";
+      return c.json({ error: message }, 400);
+    }
+  })
+  .get("/plugins/oauth/callback", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const errorParam = c.req.query("error");
+    const code = c.req.query("code") || "";
+    const stateRaw = c.req.query("state") || "";
+    const failRedirect = (message: string, runId?: string) => {
+      const dest = runId ? `/agent/workflow?runId=${encodeURIComponent(runId)}` : "/agent/integrations";
+      const url = new URL(dest, "http://localhost");
+      url.searchParams.set("pluginError", message);
+      return c.redirect(`${url.pathname}${url.search}`);
+    };
+    if (errorParam) return failRedirect(errorParam);
+    let state;
+    try {
+      state = decodeOauthState(stateRaw);
+    } catch {
+      return failRedirect("Invalid OAuth state.");
+    }
+    if (state.userId !== user.$id) return failRedirect("OAuth user mismatch.");
+    if (!code) return failRedirect("Missing OAuth code.", state.runId);
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const existing = harness.plugins.find((plugin) => plugin.catalogId === state.catalogId);
+      const oauthClient = resolveOauthClient(state.catalogId, existing);
+      const tokens = await exchangeMailOauthCode({
+        catalogId: state.catalogId,
+        code,
+        clientId: oauthClient.clientId,
+        clientSecret: oauthClient.clientSecret,
+      });
+      const from =
+        state.from ||
+        existing?.secrets?.from ||
+        (await lookupMailFromAddress({ catalogId: state.catalogId, accessToken: tokens.accessToken }));
+      const catalog = PLUGIN_CATALOG.find((item) => item.id === state.catalogId);
+      const connection = {
+        id: existing?.id || crypto.randomUUID(),
+        catalogId: state.catalogId,
+        displayName: catalog?.name || state.catalogId,
+        capabilities: catalog?.capabilities ?? (["email.send"] as const),
+        status: "connected" as const,
+        authKind: "oauth" as const,
+        secrets: applyOauthTokensToSecrets(existing?.secrets, tokens, from),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      };
+      await upsertHarness(databases, user.$id, {
+        plugins: upsertPluginList(harness.plugins, connection),
+      });
+      if (state.runId) {
+        const existingRun = await getRun(databases, user.$id, state.runId);
+        if (existingRun?.status === "awaiting_plugin") {
+          const run = await updateRun(databases, state.runId, {
+            status: "running",
+            error: "",
+            events: [
+              ...existingRun.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected",
+                title: `Connected ${connection.displayName}`,
+                createdAt: new Date().toISOString(),
+                runId: existingRun.id,
+              },
+            ],
+          });
+          scheduleAgentTurn({ databases, user, run });
+        }
+        return c.redirect(`/agent/workflow?runId=${encodeURIComponent(state.runId)}`);
+      }
+      return c.redirect("/agent/integrations");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "OAuth connect failed.";
+      return failRedirect(message.slice(0, 180), state.runId);
+    }
+  })
   .delete("/plugins/:pluginId", sessionMiddleware, async (c) => {
     const user = sessionUser(c);
     const pluginId = c.req.param("pluginId");
@@ -863,7 +999,7 @@ const app = new Hono()
     zValidator(
       "json",
       z.object({
-        prompt: z.string().trim().min(1).max(8000),
+        prompt: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
         workspaceId: z.string().optional(),
         projectId: z.string().optional(),
         personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]).optional(),

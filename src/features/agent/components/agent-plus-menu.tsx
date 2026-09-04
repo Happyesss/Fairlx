@@ -27,6 +27,7 @@ import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useGetAgentMcpConfig } from "../api/use-agent-mcp-config";
 import { isInternalMcpServer } from "../constants";
 import { chipKey } from "../lib/session-context";
+import { chipFromFile } from "../lib/attach-files";
 import type { AgentContextChip } from "../types";
 import { useAgentUi } from "./agent-ui-context";
 
@@ -287,16 +288,21 @@ export function AgentPlusMenu({
           multiple
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
-            files.forEach((file) => {
-              const image = file.type.startsWith("image/");
-              add({
-                kind: image ? "image" : "file",
-                id: `${file.name}-${file.size}`,
-                label: file.name,
-                meta: image ? "image" : file.type || "file",
-              });
-            });
             event.target.value = "";
+            void (async () => {
+              for (const file of files) {
+                try {
+                  add(await chipFromFile(file));
+                } catch {
+                  add({
+                    kind: file.type.startsWith("image/") ? "image" : "file",
+                    id: `${file.name}-${file.size}-${file.lastModified}`,
+                    label: file.name,
+                    meta: "unreadable",
+                  });
+                }
+              }
+            })();
           }}
         />
       </PopoverContent>

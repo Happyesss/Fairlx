@@ -10,6 +10,7 @@ const WORK_RE =
   /\b(tasks?|bugs?|tickets?|issues?|stories|story|epics?|work items?|backlog|unassigned|assigned)\b/;
 const UNASSIGNED_RE =
   /\b(unassigned|no assignee|not assigned|without (an? )?assignee|missing assignee|nobody on)\b/;
+const PROJECT_BACKLOG_RE = /\b(the )?backlog\b/;
 
 function askedType(text: string, unassigned: boolean): string | undefined {
   if (unassigned && !/\bunassigned bugs?\b/.test(text) && !/\bbugs? that are unassigned\b/.test(text)) {
@@ -44,13 +45,20 @@ export function compileFairlxListIntent(
   if (!projectId) return null;
   const q = text.toLowerCase().replace(/\s+/g, " ").trim();
   if (!q) return null;
-  if (WRITE_RE.test(q) && !UNASSIGNED_RE.test(q) && !LIST_HINT_RE.test(q)) return null;
+  if (/\bplan\b/.test(q) && !/\b(list|show|how many)\b/.test(q)) return null;
+  if (WRITE_RE.test(q) && !UNASSIGNED_RE.test(q) && !LIST_HINT_RE.test(q) && !PROJECT_BACKLOG_RE.test(q)) {
+    return null;
+  }
   if (!WORK_RE.test(q)) return null;
-  if (!LIST_HINT_RE.test(q) && !UNASSIGNED_RE.test(q) && !/\bmy tasks\b/.test(q)) return null;
+  if (!LIST_HINT_RE.test(q) && !UNASSIGNED_RE.test(q) && !PROJECT_BACKLOG_RE.test(q) && !/\bmy tasks\b/.test(q)) {
+    return null;
+  }
 
   const unassigned = UNASSIGNED_RE.test(q);
+  const backlog = PROJECT_BACKLOG_RE.test(q) && !/\bpersonal backlog\b/.test(q) && !unassigned;
   const args: Record<string, unknown> = { projectId };
   if (unassigned) args.unassigned = true;
+  if (backlog) args.backlog = true;
   const type = askedType(q, unassigned);
   if (type) args.type = type;
   const status = askedStatus(q);

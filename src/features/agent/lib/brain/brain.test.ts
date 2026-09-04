@@ -28,10 +28,47 @@ describe("selectToolsForTurn", () => {
     expect(wantedToolNames("Send a mail about WEB-12").has("mail_send")).toBe(true);
   });
 
+  it("keeps invite tools and drops mail_send for add-by-email-id prompts", () => {
+    const query =
+      "add fogef to the project and this mail id is fogefe9321@94an.com and team is developer";
+    const names = wantedToolNames(query);
+    expect(names.has("fairlx_workspace_member_add")).toBe(true);
+    expect(names.has("fairlx_project_member_add")).toBe(true);
+    expect(names.has("fairlx_project_team_member_add")).toBe(true);
+    expect(names.has("mail_send")).toBe(false);
+  });
+
+  it("keeps bulk assign tools for percent-of-backlog prompts", () => {
+    const names = wantedToolNames("assign 60% of work items to fogef");
+    expect(names.has("fairlx_work_item_list")).toBe(true);
+    expect(names.has("fairlx_work_item_update")).toBe(true);
+    expect(names.has("fairlx_work_item_bulk_update")).toBe(true);
+  });
+
+  it("keeps sprint create tools for planning prompts", () => {
+    const names = wantedToolNames("Plan all sprints, work items, and epics from the spec");
+    expect(names.has("fairlx_sprint_create")).toBe(true);
+    expect(names.has("fairlx_work_item_create")).toBe(true);
+    expect(names.has("fairlx_work_item_bulk_update")).toBe(true);
+  });
+
+  it("keeps sprint list and work-item delete for backlog delete prompts", () => {
+    const names = wantedToolNames("delete all work items in the backlog");
+    expect(names.has("fairlx_work_item_list")).toBe(true);
+    expect(names.has("fairlx_sprint_list")).toBe(true);
+    expect(names.has("fairlx_work_item_delete")).toBe(true);
+  });
+
   it("keeps GitHub write tools for PR prompts", () => {
     const names = wantedToolNames("open a pull request for the login fix");
     expect(names.has("github_open_pr")).toBe(true);
     expect(names.has("github_write_file")).toBe(true);
+  });
+
+  it("selects organization tools when asked for the org name", () => {
+    const names = wantedToolNames("what is the organization name?");
+    expect(names.has("fairlx_organization_get")).toBe(true);
+    expect(names.has("fairlx_organization_list")).toBe(true);
   });
 });
 
@@ -66,14 +103,23 @@ describe("isolate", () => {
     expect(names).not.toContain("mail_send");
   });
 
-  it("gives builder GitHub write tools and not mail", () => {
+  it("gives builder GitHub write tools, sprint writes, and not mail", () => {
     const filtered = filterToolsForSpecialist(
-      [tool("delegate_agent"), tool("github_write_file"), tool("github_open_pr"), tool("mail_send")],
+      [
+        tool("delegate_agent"),
+        tool("github_write_file"),
+        tool("github_open_pr"),
+        tool("mail_send"),
+        tool("fairlx_sprint_create"),
+        tool("fairlx_work_item_create"),
+      ],
       "builder",
     );
     const names = filtered.map((item) => item.function.name);
     expect(names).toContain("github_write_file");
     expect(names).toContain("github_open_pr");
+    expect(names).toContain("fairlx_sprint_create");
+    expect(names).toContain("fairlx_work_item_create");
     expect(names).not.toContain("mail_send");
     expect(names).not.toContain("delegate_agent");
   });

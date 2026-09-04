@@ -1,4 +1,6 @@
-export const AGENT_CHAT_TIMEOUT_MS = 60_000;
+import { agentChatTimeoutMs } from "./limits";
+
+export const AGENT_CHAT_TIMEOUT_MS = agentChatTimeoutMs();
 
 export function formatAgentTurnError(error: unknown, timeoutMs = AGENT_CHAT_TIMEOUT_MS): string {
   const name = error instanceof Error ? error.name : "";

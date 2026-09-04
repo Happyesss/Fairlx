@@ -26,8 +26,16 @@ describe("compileFairlxListIntent", () => {
     });
   });
 
-  it("returns null without a project or for writes", () => {
-    expect(compileFairlxListIntent("all unassigned tasks", {})).toBeNull();
-    expect(compileFairlxListIntent("create a task called login", { projectId: "p1" })).toBeNull();
+  it("does not auto-list when the user asked to plan work items", () => {
+    expect(
+      compileFairlxListIntent("Plan all sprints, work items, and epics", { projectId: "p1" }),
+    ).toBeNull();
+  });
+
+  it("lists the project Backlog, not the personal backlog, for backlog deletes", () => {
+    expect(compileFairlxListIntent("delete all work items in the backlog", { projectId: "p1" })).toEqual({
+      tool: "fairlx_work_item_list",
+      args: { projectId: "p1", backlog: true },
+    });
   });
 });
