@@ -18,18 +18,17 @@
 </div>
 
 <!-- docs:latest:start -->
-**Last updated:** 2026-09-04T20:29:46.721Z
+**Last updated:** 2026-09-05T08:12:43.343Z
 
 This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
 
 **Latest commits**
 
+- `4d69739` Merge stemlen/main into contrib branch for cross-repo contribution (2026-09-05)
 - `e0a995a` Ship leftover org invite, agent board, and docs-hook work. (2026-09-05)
 - `7a39a96` Raise agent model timeouts and pass attached specs to subject sub-agents. (2026-09-05)
-- `13c0f8e` feat: add Fairlx Agent harness with plugins, GitHub PRs, and isolated jobs (2026-09-04)
-- `3426bbe` chore: bump version to 0.2.93 [skip ci] (2026-09-03)
-- `5c99783` Merge pull request #298 from Happyesss/main (2026-09-04)
-- `5c24ef5` chore: bump version to 0.2.92 [skip ci] (2026-09-03)
+- `f5a80e2` chore: bump version to 0.2.98 [skip ci] (2026-09-04)
+- `fe8e336` Merge pull request #300 from Happyesss/main (2026-09-04)
 <!-- docs:latest:end -->
 
 ---

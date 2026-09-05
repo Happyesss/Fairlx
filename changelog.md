@@ -8,9 +8,22 @@ Older session notes live in [docs/changelog-history.md](docs/changelog-history.m
 
 | Date | Commit | Message | Author |
 |------|--------|---------|--------|
+| 2026-09-05 | `4d69739` | Merge stemlen/main into contrib branch for cross-repo contribution | ANCIENTINSANE |
 | 2026-09-05 | `e0a995a` | Ship leftover org invite, agent board, and docs-hook work. | ANCIENTINSANE |
 | 2026-09-05 | `7a39a96` | Raise agent model timeouts and pass attached specs to subject sub-agents. | ANCIENTINSANE |
+| 2026-09-04 | `f5a80e2` | chore: bump version to 0.2.98 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `fe8e336` | Merge pull request #300 from Happyesss/main | Shashank Kumar Rathour |
 | 2026-09-04 | `13c0f8e` | feat: add Fairlx Agent harness with plugins, GitHub PRs, and isolated jobs | ANCIENTINSANE |
+| 2026-09-04 | `5374c1c` | chore: bump version to 0.2.97 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `dd9c18e` | feat: enhance pending confirmation handling and improve write tool call detection | Happyesss |
+| 2026-09-04 | `a49f12d` | chore: bump version to 0.2.96 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `94a5580` | Merge pull request #299 from Happyesss/main | Shashank Kumar Rathour |
+| 2026-09-04 | `715640b` | chore: bump version to 0.2.95 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `05a058b` | Merge branch 'main' into main | Shashank Kumar Rathour |
+| 2026-09-04 | `cfd443d` | chore: bump version to 0.2.94 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `40b9db9` | refactor: optimize message and event retrieval using useMemo for performance | Happyesss |
+| 2026-09-04 | `e805894` | chore: bump version to 0.2.93 [skip ci] | github-actions[bot] |
+| 2026-09-04 | `7901b84` | feat: add AgentFloatingChat component for interactive agent communication | Happyesss |
 | 2026-09-03 | `3426bbe` | chore: bump version to 0.2.93 [skip ci] | github-actions[bot] |
 | 2026-09-04 | `5c99783` | Merge pull request #298 from Happyesss/main | Shashank Kumar Rathour |
 | 2026-09-03 | `5c24ef5` | chore: bump version to 0.2.92 [skip ci] | github-actions[bot] |
@@ -92,19 +105,5 @@ Older session notes live in [docs/changelog-history.md](docs/changelog-history.m
 | 2026-07-27 | `354ca26` | chore: bump version to 0.2.65 [skip ci] | github-actions[bot] |
 | 2026-07-27 | `81d9f8a` | Merge pull request #284 from ANCIENTINSANE/main | Surendra Codes |
 | 2026-07-27 | `89af89e` | Merge branch 'stemlen:main' into main | Surendra Codes |
-| 2026-07-27 | `64cf484` | fix: team membership/permission changes don’t bust the 10‑minute access cache, and team permission queries can truncate past Appwrite’s default limit of 25 | ANCIENTINSANE |
-| 2026-07-27 | `e2929d2` | chore: bump version to 0.2.64 [skip ci] | github-actions[bot] |
-| 2026-07-27 | `19d99c2` | Merge pull request #283 from ANCIENTINSANE/main | Surendra Codes |
-| 2026-07-27 | `fcc4216` | Merge branch 'stemlen:main' into main | Surendra Codes |
-| 2026-07-22 | `68576eb` | Added a backing session and an enhancer to the UI design. | ANCIENTINSANE |
-| 2026-07-22 | `762e435` | Added a backing session and an enhancer to the UI design. | ANCIENTINSANE |
-| 2026-07-21 | `fa0a12a` | Slack code test and integrate all applications: - Slack - discord - gitlab - bitbucket - custom MCP servers - Claude Code - codex | ANCIENTINSANE |
-| 2026-06-22 | `9961e7f` | chore: bump version to 0.2.63 [skip ci] | github-actions[bot] |
-| 2026-06-23 | `1a5fa62` | Merge pull request #277 from ANCIENTINSANE/main | Surendra Codes |
-| 2026-06-23 | `445856c` | lyf-cycle fix | ANCIENTINSANE |
-| 2026-06-22 | `c9b9a29` | chore: bump version to 0.2.62 [skip ci] | github-actions[bot] |
-| 2026-06-23 | `2d54295` | Merge pull request #276 from ANCIENTINSANE/main | Surendra Codes |
-| 2026-06-23 | `ab54b8e` | lyf-cycle fix | ANCIENTINSANE |
-| 2026-06-22 | `7469e81` | chore: bump version to 0.2.61 [skip ci] | github-actions[bot] |
 
-Last generated: 2026-09-04T20:29:46.697Z
+Last generated: 2026-09-05T08:12:43.325Z
