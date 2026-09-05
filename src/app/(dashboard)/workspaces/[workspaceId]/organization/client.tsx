@@ -105,7 +105,7 @@ export const OrganizationSettingsClient = ({
 }: OrganizationSettingsClientProps = {}) => {
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { isOrg, primaryOrganizationId } = useAccountType();
+    const { isOrg, primaryOrganizationId, isLoading: isAccountTypeLoading } = useAccountType();
     const [activeTab, setActiveTab] = useState(
         defaultTab === "invoices" ? "billing" : defaultTab
     );
@@ -172,12 +172,13 @@ export const OrganizationSettingsClient = ({
     const { mutate: bulkUpdateRoles, isPending: isBulkUpdating } = useBulkUpdateMemberRoles();
     const { mutate: bulkRemoveMembers, isPending: isBulkRemoving } = useBulkRemoveMembers();
 
-    // Redirect if not an organization account
+    // Redirect if not an organization account (wait for lifecycle — prefs can lag)
     useEffect(() => {
-        if (isOrg === false) {
-            router.push('/');
+        if (isAccountTypeLoading) return;
+        if (!isOrg) {
+            router.push("/");
         }
-    }, [isOrg, router]);
+    }, [isAccountTypeLoading, isOrg, router]);
 
     // Sync form state with fetched data
     useEffect(() => {
@@ -296,7 +297,10 @@ export const OrganizationSettingsClient = ({
     const someSelected = selectedMemberIds.size > 0 && selectedMemberIds.size < members.length;
 
     // Don't render anything if not an org account
-    if (isOrg === false) {
+    if (isAccountTypeLoading) {
+        return null;
+    }
+    if (!isOrg) {
         return null;
     }
 

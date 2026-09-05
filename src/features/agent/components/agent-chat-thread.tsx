@@ -51,10 +51,12 @@ import {
 import { isPersistedTruncatedAssistant, sanitizeAssistantVisible } from "../lib/visible-content";
 import { splitMarkdownWorkItemTable, type AgentWorkItem } from "../lib/work-item-table";
 import { findPendingConfirmation, isWriteToolCall } from "../lib/write-guard";
+import { findPendingPlugin } from "../plugins/catalog";
 import type { AgentChatMessage, AgentRun } from "../types";
 import { AgentMemberTable } from "./agent-member-table";
 import { AgentWorkItemTable } from "./agent-work-item-table";
 import { PendingConfirmationCard } from "./pending-confirmation-card";
+import { PluginConnectCard } from "./plugin-connect-card";
 
 function ProjectKanbanCta({
   workspaceId,
@@ -949,6 +951,7 @@ export function AgentChatThread({
   const events = useMemo(() => run.events ?? [], [run.events]);
   const running = run.status === "running";
   const awaiting = run.status === "awaiting_confirmation";
+  const awaitingPlugin = run.status === "awaiting_plugin";
   const blocks = useMemo(() => groupTranscript(messages, events), [messages, events]);
   const workItems = useMemo(() => collectWorkItemLookup(messages), [messages]);
   const members = useMemo(() => collectMemberLookup(messages), [messages]);
@@ -962,7 +965,7 @@ export function AgentChatThread({
   );
   const lastBlock = blocks[blocks.length - 1];
   const lastAssistantId = [...blocks].reverse().find((block) => block.kind === "assistant")?.message.id;
-  const showThinking = running && !awaiting && lastBlock?.kind !== "steps";
+  const showThinking = running && !awaiting && !awaitingPlugin && lastBlock?.kind !== "steps";
   const thinkingLabel = !lastBlock || lastBlock.kind === "user" ? "Thinking…" : "Answering…";
   const lastStepsBlockIndex = blocks.reduceRight(
     (acc, b, i) => (acc === -1 && b.kind === "steps" ? i : acc),
@@ -976,6 +979,7 @@ export function AgentChatThread({
           summary: "The agent is waiting for your approval to proceed with the planned actions.",
         }
       : undefined);
+  const pendingPlugin = findPendingPlugin(events);
   const effectiveProjectId = run.projectId || harness?.settings.defaultProjectId;
   const project = context?.projects.find((item) => item.id === effectiveProjectId);
   const linkedRepo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
@@ -1031,7 +1035,7 @@ export function AgentChatThread({
                 members={members}
                 workspaceId={run.workspaceId}
                 projectId={run.projectId}
-                choicesEnabled={!running && !awaiting && block.message.id === lastAssistantId}
+                choicesEnabled={!running && !awaiting && !awaitingPlugin && block.message.id === lastAssistantId}
                 onPickChoice={onPickChoice}
                 compact={compact}
               />
@@ -1066,6 +1070,10 @@ export function AgentChatThread({
             <span>{thinkingLabel}</span>
           </div>
         </div>
+      ) : null}
+
+      {awaitingPlugin && pendingPlugin ? (
+        <PluginConnectCard pending={pendingPlugin} runId={run.id} />
       ) : null}
 
       {awaiting && pending ? (

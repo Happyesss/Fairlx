@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrent } from "@/features/auth/queries";
 import { OrganizationSettingsClient } from "@/app/(dashboard)/workspaces/[workspaceId]/organization/client";
 import { resolveOrgSettingsTab } from "@/features/organizations/lib/org-settings-tab";
+import { requireOrganizationMembership } from "@/features/organizations/lib/require-org-account";
 
 /**
  * Dashboard-level Organization Settings Page
@@ -23,12 +24,7 @@ export default async function OrganizationPage({
         redirect("/sign-in");
     }
 
-    // Check if this is an ORG account
-    const prefs = user.prefs || {};
-    if (prefs.accountType !== "ORG") {
-        // PERSONAL accounts don't have organization settings
-        redirect("/");
-    }
+    await requireOrganizationMembership(user);
 
     const params = await searchParams;
     const { tab, showAllInvoices } = resolveOrgSettingsTab({

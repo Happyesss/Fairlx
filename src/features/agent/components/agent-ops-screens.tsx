@@ -346,7 +346,7 @@ export function AgentGitScreen() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Git & Staging</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Linked GitHub repositories plus a Cursor-style staging buffer. Planned commits are recorded here and never executed on the Fairlx host.
+            Linked GitHub repositories. The Agent commits and opens PRs through the GitHub API after Accept — never git on the Fairlx host.
           </p>
         </div>
 
@@ -358,7 +358,7 @@ export function AgentGitScreen() {
             <EmptyState
               icon={GitBranch}
               title="No repositories linked"
-              body="Link a GitHub repo on a project to inspect it from Agent mode."
+              body="Link a GitHub repo on a project, or connect a PAT in Agent plugins, so the Agent can read files and open PRs."
             />
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">

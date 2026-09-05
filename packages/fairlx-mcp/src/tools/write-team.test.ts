@@ -105,7 +105,7 @@ function teamRuntime(options?: {
     onProjectTeamChanged,
   } as unknown as McpRuntime;
 
-  return { runtime, teams, teamMembers, projectMembers, onProjectTeamChanged };
+  return { runtime, teams, teamMembers, projectMembers, projectRoles, onProjectTeamChanged };
 }
 
 const ownerAuth = jwtToAuthContext("admin_1", {
@@ -195,7 +195,14 @@ describe("fairlx_project_team_member_add", () => {
       member: { name: "Surendra", email: "surendra@fairlx.dev", team: "Developers" },
     });
     expect(teamMembers).toHaveLength(1);
-    expect(teamMembers[0]).toMatchObject({ teamId: "team_dev", userId: "user_surendra" });
+    expect(teamMembers[0]).toMatchObject({
+      teamId: "team_dev",
+      userId: "user_surendra",
+      role: "member",
+    });
+    expect(teamMembers[0]).not.toHaveProperty("teamRole");
+    expect(teamMembers[0]).not.toHaveProperty("joinedAt");
+    expect(teamMembers[0]).not.toHaveProperty("addedBy");
     expect(projectMembers).toHaveLength(1);
     expect(projectMembers[0]).toMatchObject({
       workspaceId: "ws_1",
@@ -225,6 +232,135 @@ describe("fairlx_project_team_member_add", () => {
     );
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0]?.text ?? "{}").error).toMatch(/workspace member/i);
+  });
+
+  it("stores lead from teamRole without writing unknown attributes", async () => {
+    const { runtime, teamMembers } = teamRuntime({
+      members: [
+        { $id: "mem_actor", workspaceId: "ws_1", userId: "admin_1", role: "OWNER", displayName: "Ada" },
+        {
+          $id: "mem_fogef",
+          workspaceId: "ws_1",
+          userId: "user_fogef",
+          role: "MEMBER",
+          displayName: "fogef",
+          displayEmail: "fogefe9321@94an.com",
+        },
+      ],
+      teams: [{ $id: "team_dev", projectId: "proj_1", workspaceId: "ws_1", name: "Developers" }],
+      projectRoles: [{ $id: "role_member", projectId: "proj_1", name: "MEMBER" }],
+    });
+
+    const result = await callTool(
+      "fairlx_project_team_member_add",
+      {
+        teamId: "team_dev",
+        projectId: "proj_1",
+        name: "fogef",
+        email: "fogefe9321@94an.com",
+        teamRole: "Lead",
+      },
+      runtime,
+      ownerAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]?.text ?? "{}").member.role).toBe("lead");
+    expect(teamMembers[0]).toMatchObject({ role: "lead", userId: "user_fogef" });
+    expect(teamMembers[0]).not.toHaveProperty("teamRole");
+  });
+
+  it("creates a MEMBER role and project membership when the project has no roles", async () => {
+    const { runtime, projectMembers, projectRoles } = teamRuntime({
+      members: [
+        { $id: "mem_actor", workspaceId: "ws_1", userId: "admin_1", role: "OWNER", displayName: "Ada" },
+        {
+          $id: "mem_fogef",
+          workspaceId: "ws_1",
+          userId: "user_fogef",
+          role: "MEMBER",
+          displayName: "fogef",
+          displayEmail: "fogefe9321@94an.com",
+        },
+      ],
+      teams: [{ $id: "team_dev", projectId: "proj_1", workspaceId: "ws_1", name: "Developers" }],
+    });
+
+    const result = await callTool(
+      "fairlx_project_team_member_add",
+      {
+        projectId: "proj_1",
+        teamName: "Developers",
+        name: "fogef",
+        email: "fogefe9321@94an.com",
+      },
+      runtime,
+      ownerAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
+      added: true,
+      addedToProject: true,
+      alreadyOnProject: false,
+      member: { name: "fogef", team: "Developers" },
+    });
+    expect(projectRoles).toHaveLength(1);
+    expect(projectRoles[0]).toMatchObject({ projectId: "proj_1", name: "MEMBER" });
+    expect(projectMembers).toHaveLength(1);
+    expect(projectMembers[0]).toMatchObject({
+      userId: "user_fogef",
+      projectId: "proj_1",
+      roleId: projectRoles[0]?.$id,
+      status: "ACTIVE",
+    });
+  });
+});
+
+describe("fairlx_project_member_add", () => {
+  it("adds a workspace member to the project without a team", async () => {
+    const { runtime, projectMembers, teamMembers, onProjectTeamChanged } = teamRuntime({
+      members: [
+        { $id: "mem_actor", workspaceId: "ws_1", userId: "admin_1", role: "OWNER", displayName: "Ada" },
+        {
+          $id: "mem_fogef",
+          workspaceId: "ws_1",
+          userId: "user_fogef",
+          role: "MEMBER",
+          displayName: "fogef",
+          displayEmail: "fogefe9321@94an.com",
+        },
+      ],
+      projectRoles: [{ $id: "role_member", projectId: "proj_1", name: "MEMBER" }],
+    });
+
+    const result = await callTool(
+      "fairlx_project_member_add",
+      { projectId: "proj_1", name: "fogef", email: "fogefe9321@94an.com" },
+      runtime,
+      ownerAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
+      added: true,
+      addedToProject: true,
+      alreadyOnProject: false,
+      member: { name: "fogef", email: "fogefe9321@94an.com" },
+    });
+    expect(projectMembers).toHaveLength(1);
+    expect(projectMembers[0]).toMatchObject({
+      workspaceId: "ws_1",
+      projectId: "proj_1",
+      userId: "user_fogef",
+      roleId: "role_member",
+      status: "ACTIVE",
+    });
+    expect(teamMembers).toHaveLength(0);
+    expect(onProjectTeamChanged).toHaveBeenCalledWith({
+      projectId: "proj_1",
+      userIds: ["user_fogef"],
+    });
   });
 });
 

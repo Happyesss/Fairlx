@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrent } from "@/features/auth/queries";
 import { OrganizationSettingsClient } from "@/app/(dashboard)/workspaces/[workspaceId]/organization/client";
 import { resolveOrgSettingsTab } from "@/features/organizations/lib/org-settings-tab";
+import { requireOrganizationMembership } from "@/features/organizations/lib/require-org-account";
 
 /**
  * Organization billing settings
@@ -21,10 +22,7 @@ export default async function OrganizationBillingSettingsPage({
         redirect("/sign-in");
     }
 
-    const prefs = user.prefs || {};
-    if (prefs.accountType !== "ORG") {
-        redirect("/");
-    }
+    await requireOrganizationMembership(user);
 
     const params = await searchParams;
     const { tab, showAllInvoices } = resolveOrgSettingsTab({

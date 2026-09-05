@@ -286,10 +286,12 @@ describe("fairlx_workspace_member_add", () => {
       organizationId: "org_1",
       email: "surendrakumar246810.bits@gmail.com",
       name: "surendra",
+      workspaceId: "ws_1",
     });
     expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
       added: true,
       invitedToOrganization: true,
+      emailSent: true,
       member: {
         name: "surendra",
         email: "surendrakumar246810.bits@gmail.com",
@@ -299,7 +301,58 @@ describe("fairlx_workspace_member_add", () => {
     expect(members.some((doc) => doc.userId === "user_surendra" && doc.role === "ADMIN")).toBe(true);
   });
 
-  it("tells non-owners to stay inside the organization when invite is refused", async () => {
+  it("lets a workspace admin invite into the organization and workspace", async () => {
+    const inviteOrganizationMember = vi.fn(async ({ email, name }: { email: string; name: string }) => ({
+      userId: "user_fogef",
+      email,
+      name,
+      isExistingUser: false,
+      emailSent: true,
+    }));
+    const { runtime, members } = runtimeWithMembers(
+      [memberDoc({ displayName: "Ada Admin", role: "ADMIN" })],
+      vi.fn(),
+      {
+        workspace: { $id: "ws_1", name: "Stemlen", organizationId: "org_1" },
+        orgMembers: [
+          {
+            $id: "org_ada",
+            organizationId: "org_1",
+            userId: "admin_1",
+            displayName: "Ada Admin",
+            displayEmail: "ada@fairlx.dev",
+          },
+        ],
+        inviteOrganizationMember,
+      },
+    );
+
+    const result = await callTool(
+      "fairlx_workspace_member_add",
+      {
+        workspaceId: "ws_1",
+        name: "fogef",
+        email: "fogefe9321@94an.com",
+        role: "MEMBER",
+      },
+      runtime,
+      adminAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(inviteOrganizationMember).toHaveBeenCalled();
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({
+      added: true,
+      addedToOrganization: true,
+      addedToWorkspace: true,
+      invitedToOrganization: true,
+      emailSent: true,
+      member: { name: "fogef", email: "fogefe9321@94an.com", role: "MEMBER" },
+    });
+    expect(members.some((doc) => doc.userId === "user_fogef")).toBe(true);
+  });
+
+  it("surfaces invite failures without asking for the organization owner", async () => {
     const { runtime } = runtimeWithMembers(
       [memberDoc({ displayName: "Ada Admin" })],
       vi.fn(),
@@ -315,9 +368,7 @@ describe("fairlx_workspace_member_add", () => {
           },
         ],
         inviteOrganizationMember: async () => {
-          throw new Error(
-            "Only the organization owner can invite someone who is not already in the organization.",
-          );
+          throw new Error("Failed to create the invited user.");
         },
       },
     );
@@ -330,7 +381,54 @@ describe("fairlx_workspace_member_add", () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0]?.text ?? "{}").error).toMatch(/organization owner/i);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    expect(payload.error).toMatch(/failed to create/i);
+    expect(payload.error).not.toMatch(/organization owner/i);
+  });
+
+  it("still adds the member when the welcome email fails to send", async () => {
+    const inviteOrganizationMember = vi.fn(async ({ email, name }: { email: string; name: string }) => ({
+      userId: "user_fogef",
+      email,
+      name,
+      isExistingUser: false,
+      emailSent: false,
+      emailError: "Could not create an email delivery target for this user.",
+    }));
+    const { runtime } = runtimeWithMembers(
+      [memberDoc({ displayName: "Ada Admin", role: "ADMIN" })],
+      vi.fn(),
+      {
+        workspace: { $id: "ws_1", name: "Stemlen", organizationId: "org_1" },
+        orgMembers: [
+          {
+            $id: "org_ada",
+            organizationId: "org_1",
+            userId: "admin_1",
+            displayName: "Ada Admin",
+            displayEmail: "ada@fairlx.dev",
+          },
+        ],
+        inviteOrganizationMember,
+      },
+    );
+
+    const result = await callTool(
+      "fairlx_workspace_member_add",
+      { workspaceId: "ws_1", email: "fogefe9321@94an.com", name: "fogef" },
+      runtime,
+      adminAuth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0]?.text ?? "{}");
+    expect(payload).toMatchObject({
+      added: true,
+      invitedToOrganization: true,
+      emailSent: false,
+      emailError: "Could not create an email delivery target for this user.",
+    });
+    expect(payload.message).toMatch(/welcome email did not send/i);
   });
 });
 

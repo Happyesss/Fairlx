@@ -17,12 +17,27 @@
 
 </div>
 
+<!-- docs:latest:start -->
+**Last updated:** 2026-09-05T08:12:43.343Z
+
+This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
+
+**Latest commits**
+
+- `4d69739` Merge stemlen/main into contrib branch for cross-repo contribution (2026-09-05)
+- `e0a995a` Ship leftover org invite, agent board, and docs-hook work. (2026-09-05)
+- `7a39a96` Raise agent model timeouts and pass attached specs to subject sub-agents. (2026-09-05)
+- `f5a80e2` chore: bump version to 0.2.98 [skip ci] (2026-09-04)
+- `fe8e336` Merge pull request #300 from Happyesss/main (2026-09-04)
+<!-- docs:latest:end -->
+
 ---
 
 
 ## 📚 Table of Contents
 
 - [Overview](#-overview)
+- [Changelog](changelog.md)
 - [Documentation](#-documentation)
 - [Key Features](#-key-features)
 - [Tech Stack](#-tech-stack)  
@@ -80,7 +95,8 @@ Fairlx is a **production-ready enterprise project management platform** built wi
 | [README.md](README.md) | Complete setup, architecture, and feature reference (this file) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development guidelines, branching strategy, PR workflow |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards and enforcement policies |
-| [changelog.md](changelog.md) | Detailed version history and implementation updates |
+| [changelog.md](changelog.md) | Auto-updated on every commit and push from git history |
+| [docs/changelog-history.md](docs/changelog-history.md) | Older session-by-session implementation notes |
 | [DATABASE_UPDATES.md](DATABASE_UPDATES.md) | Schema changes, migrations, and workflow redesign notes |
 | [PROGRAMS_IMPLEMENTATION_GUIDE.md](PROGRAMS_IMPLEMENTATION_GUIDE.md) | Complete guide to Programs feature architecture |
 | [md/APPWRITE_SETUP.md](md/APPWRITE_SETUP.md) | Step-by-step Appwrite database configuration |
@@ -182,12 +198,14 @@ Fairlx is a **production-ready enterprise project management platform** built wi
 
 ### 🤖 AI-Powered Features
 
+- **Fairlx Agent**: In-app agent that lists, creates, assigns, and deletes work items through Fairlx MCP tools. It treats the **Backlog** (no sprint) as separate from the **current sprint**, asks which scope to use when you do not say, and assigns people so they show on Kanban and Backlog.
 - **Workflow AI**: Analyze workflows, suggest improvements, generate templates
 - **Code Analysis**: Ask questions about linked GitHub repositories
 - **Documentation Generation**: Auto-create PRDs, technical specs, API docs
 - **Duplicate Detection**: Identify potentially duplicate work items
 - **Risk Prediction**: Proactive alerts for scope creep and deadline risks
 - **Sprint Planning**: AI recommendations for capacity and prioritization
+- **Work-item assignment**: Percent-of-backlog assigns (for example 60%) use board Unassigned items first and store workspace membership ids so the assignee appears on the board
 
 ### 🛡️ Security & Compliance
 
@@ -935,7 +953,8 @@ Fairlx/
 ├── README.md                      # This file
 ├── CONTRIBUTING.md                # Contribution guidelines
 ├── CODE_OF_CONDUCT.md             # Code of conduct
-├── changelog.md                   # Changelog
+├── changelog.md                   # Auto-generated on every commit and push
+├── docs/changelog-history.md      # Older session notes
 ├── DATABASE_UPDATES.md            # Database updates log
 └── PROGRAMS_IMPLEMENTATION_GUIDE.md # Programs guide
 ```
@@ -1412,7 +1431,15 @@ export const mutationGuard = async (c: Context, next: () => Promise<void>) => {
 
 ## 🤖 AI Features
 
-Fairlx integrates **Google Gemini AI** (`gemini-2.5-flash-lite`) for intelligent workflow assistance, code analysis, and documentation generation.
+Fairlx includes an **in-app Fairlx Agent** (MCP tools for work items, sprints, members, and GitHub) plus **Google Gemini** (`gemini-2.5-flash-lite`) for workflow assistance, code analysis, and documentation generation.
+
+### Fairlx Agent
+
+The agent operates on the selected workspace and project:
+
+- **Backlog vs sprint**: Project Backlog items have no sprint (`location: backlog`). Sprint items stay on the active or named sprint. Create/delete without a stated scope asks whether to use the current sprint, the backlog, or everything.
+- **Assignment**: Names or emails resolve to workspace membership ids so Kanban and Backlog show the person, not Unassigned.
+- **Share of work**: “Assign 60% to …” targets that share of the project list from Unassigned items first.
 
 ### Workflow AI Assistant
 
@@ -1579,6 +1606,8 @@ AI operations count as compute units for billing:
 | `npm run lint` | Run ESLint |
 | `npm run test` | Run Vitest in watch mode |
 | `npm run test:run` | Run Vitest once |
+| `npm run docs:release` | Refresh README.md and changelog.md from git history |
+| `npm run prepare` | Install git hooks that refresh those docs on every commit and push |
 
 ### Development Guidelines
 

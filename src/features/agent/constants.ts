@@ -14,6 +14,8 @@ export const AGENT_HARNESS_QUERY_KEY = ["agent-harness"] as const;
 export const AGENT_CONTEXT_QUERY_KEY = ["agent-context"] as const;
 export const AGENT_BRIEFING_QUERY_KEY = ["agent-briefing"] as const;
 export const PERSONAL_AGENT_QUERY_KEY = ["personal-agent"] as const;
+export const AGENT_PLUGINS_QUERY_KEY = ["agent-plugins"] as const;
+export const AGENT_JOBS_QUERY_KEY = ["agent-jobs"] as const;
 
 export const PLATFORM_XAI_PROVIDER_ID = "platform-xai";
 export const PLATFORM_DEEPSEEK_PROVIDER_ID = "platform-deepseek";
@@ -259,7 +261,7 @@ export const AGENT_TOOL_CATALOG = [
     id: "delegate_agent",
     name: "Delegate specialist",
     icon: "fa-solid fa-sitemap",
-    description: "Hand work to a planner, researcher, builder, git, or reviewer specialist.",
+    description: "Hand work to a planner, researcher, builder, git, ops, security, workflow, or reviewer specialist.",
   },
   {
     id: "search_harness",
@@ -309,6 +311,60 @@ export const AGENT_TOOL_CATALOG = [
     icon: "fa-regular fa-user",
     description: "Read skills, knowledge, rules, automations, chats, and staging from personal MCP.",
   },
+  {
+    id: "request_capability",
+    name: "Request plugin",
+    icon: "fa-solid fa-plug",
+    description: "Ask the user to connect a missing plugin such as Outlook, Gmail, or GitHub write access.",
+  },
+  {
+    id: "persist_memory",
+    name: "Persist memory",
+    icon: "fa-solid fa-brain",
+    description: "Store a verified fact in harness STATE for later turns.",
+  },
+  {
+    id: "mail_send",
+    name: "Send mail",
+    icon: "fa-regular fa-envelope",
+    description: "Send email through a connected mail plugin after Accept.",
+  },
+  {
+    id: "github_list_files",
+    name: "List repo files",
+    icon: "fa-solid fa-folder-tree",
+    description: "List files in a linked GitHub repository.",
+  },
+  {
+    id: "github_read_file",
+    name: "Read repo file",
+    icon: "fa-regular fa-file-code",
+    description: "Read a file from a linked GitHub repository.",
+  },
+  {
+    id: "github_write_file",
+    name: "Write repo file",
+    icon: "fa-solid fa-file-pen",
+    description: "Create or update a file on a GitHub branch. Opens no host shell.",
+  },
+  {
+    id: "github_open_pr",
+    name: "Open pull request",
+    icon: "fa-solid fa-code-pull-request",
+    description: "Open a GitHub pull request from a branch.",
+  },
+  {
+    id: "security_review",
+    name: "Security review",
+    icon: "fa-solid fa-shield-halved",
+    description: "Scan linked source for vulnerabilities. Never exploits production.",
+  },
+  {
+    id: "agent_job_status",
+    name: "Job status",
+    icon: "fa-solid fa-hourglass-half",
+    description: "Check a long-running agent job such as a security scan.",
+  },
 ] as const;
 
 export const DEFAULT_ENABLED_TOOLS = AGENT_TOOL_CATALOG.map((tool) => tool.id);
@@ -325,6 +381,15 @@ export const NEW_AGENT_TOOL_IDS = [
   "git_commit_plan",
   "run_automation",
   "personal_read",
+  "request_capability",
+  "persist_memory",
+  "mail_send",
+  "github_list_files",
+  "github_read_file",
+  "github_write_file",
+  "github_open_pr",
+  "security_review",
+  "agent_job_status",
 ] as const;
 
 export const STARTER_SKILLS: Omit<AgentSkill, "id" | "createdAt">[] = [

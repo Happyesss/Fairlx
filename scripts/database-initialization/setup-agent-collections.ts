@@ -15,6 +15,7 @@ import { setupAgentAiConfigs } from './collections/agent-ai-configs';
 import { setupAgentRuns } from './collections/agent-runs';
 import { setupAgentHarness } from './collections/agent-harness';
 import { setupPersonalAgents } from './collections/personal-agents';
+import { setupAgentJobs } from './collections/agent-jobs';
 import { printSummary } from './lib/logger';
 
 async function main() {
@@ -28,6 +29,7 @@ async function main() {
     await setupAgentRuns(databases, databaseId);
     await setupAgentHarness(databases, databaseId);
     await setupPersonalAgents(databases, databaseId);
+    await setupAgentJobs(databases, databaseId);
 
     printSummary();
 }

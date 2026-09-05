@@ -1,34 +1,28 @@
+import { ID } from "node-appwrite";
+
+import { SMTP_PROVIDER_ID } from "@/config";
 import { createAdminClient } from "@/lib/appwrite";
 import { welcomeEmailTemplate } from "@/lib/email-templates";
 
-/**
- * Email Service for Organization Member Notifications
- * 
- * Uses Appwrite's built-in email functionality via the Account API.
- * For production, configure SMTP in Appwrite Console > Messaging.
- */
+import { ensureUserEmailTarget } from "./ensure-email-target";
 
 interface WelcomeEmailParams {
   recipientEmail: string;
   recipientName: string;
-  recipientUserId: string; // Added userId for Appwrite Messaging
+  recipientUserId: string;
   organizationName: string;
   tempPassword?: string;
   loginUrl: string;
-  /** Optional first-login magic link token (raw, not hashed) */
   firstLoginToken?: string;
-  /** App base URL for constructing magic link */
   appUrl?: string;
-  /** Optional logo URL for organization/workspace branding in email */
   logoUrl?: string;
 }
 
 /**
- * Send welcome email to new org member with temp password
- * 
- * SECURITY: This uses Appwrite's messaging system.
- * The temp password is included in the email body.
- * If firstLoginToken is provided, includes a magic link option.
+ * Send welcome email to new org member with temp password / magic link.
+ *
+ * New Users API accounts have no messaging target. Attach one first or
+ * Appwrite accepts the message and delivers it to nobody.
  */
 export async function sendWelcomeEmail({
   recipientEmail,
@@ -42,12 +36,9 @@ export async function sendWelcomeEmail({
   logoUrl,
 }: WelcomeEmailParams): Promise<{ success: boolean; error?: string }> {
   try {
-    const { messaging } = await createAdminClient();
-    const { ID } = await import("node-appwrite");
+    const { messaging, users } = await createAdminClient();
 
     const subject = `Welcome to ${organizationName}!`;
-
-    // Generate HTML using the centralized template
     const body = welcomeEmailTemplate({
       recipientName,
       recipientEmail,
@@ -59,33 +50,40 @@ export async function sendWelcomeEmail({
       logoUrl,
     });
 
-    // Send via Appwrite Messaging
-    // This requires an Email Provider (SMTP/Mailgun/SendGrid) configured in Appwrite Console
+    const targetId = await ensureUserEmailTarget(users, recipientUserId, recipientEmail, {
+      newId: () => ID.unique(),
+      providerId: SMTP_PROVIDER_ID || undefined,
+    });
+    if (!targetId) {
+      return {
+        success: false,
+        error:
+          "Could not create an email delivery target for this user. Check Appwrite Messaging SMTP in the console.",
+      };
+    }
+
     await messaging.createEmail(
-      ID.unique(),    // messageId
-      subject,        // subject
-      body,           // content
-      [],             // topics
-      [recipientUserId], // users (send to specific user ID)
-      [],             // targets
-      [],             // cc
-      [],             // bcc
-      [],             // attachments
-      false,          // draft (false = send immediately)
-      true            // html
+      ID.unique(),
+      subject,
+      body,
+      [],
+      [recipientUserId],
+      [targetId],
+      [],
+      [],
+      [],
+      false,
+      true,
     );
 
     return { success: true };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[welcome-email] send failed", error);
     return { success: false, error: errorMessage };
   }
 }
 
-/**
- * Log email sent event to audit (non-blocking)
- */
 export async function logEmailSent({
   organizationId,
   recipientUserId,
@@ -105,7 +103,7 @@ export async function logEmailSent({
       databases,
       organizationId,
       actorUserId: "system",
-      actionType: OrgAuditAction.MEMBER_ADDED, // Could add EMAIL_SENT action
+      actionType: OrgAuditAction.MEMBER_ADDED,
       metadata: {
         eventType: "email_sent",
         emailType,
@@ -115,6 +113,6 @@ export async function logEmailSent({
       },
     });
   } catch {
-    // Non-blocking - audit logging failed silently
+    // Non-blocking
   }
 }

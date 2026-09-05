@@ -7,6 +7,8 @@ import {
   GITHUB_REPOS_ID,
   MEMBERS_ID,
   NOTIFICATIONS_ID,
+  ORGANIZATION_MEMBERS_ID,
+  ORGANIZATIONS_ID,
   PROJECT_DOCS_ID,
   PROJECT_INTEGRATIONS_ID,
   PROJECTS_ID,
@@ -16,7 +18,19 @@ import {
 import type { AgentContext } from "../types";
 
 type MemberDoc = Models.Document & { workspaceId: string; role?: string };
-type WorkspaceDoc = Models.Document & { name: string; imageUrl?: string; inviteCode?: string };
+type WorkspaceDoc = Models.Document & {
+  name: string;
+  imageUrl?: string;
+  inviteCode?: string;
+  organizationId?: string;
+};
+type OrgDoc = Models.Document & { name: string };
+type OrgMemberDoc = Models.Document & {
+  organizationId: string;
+  userId: string;
+  role?: string;
+  status?: string;
+};
 type ProjectDoc = Models.Document & {
   name: string;
   workspaceId: string;
@@ -148,6 +162,31 @@ export async function loadAgentContext(
       ])
     : [];
 
+  const orgMemberships = (await safeList(databases, ORGANIZATION_MEMBERS_ID, [
+    Query.equal("userId", user.$id),
+    Query.limit(100),
+  ])) as OrgMemberDoc[];
+  const roleByOrg = new Map<string, string>();
+  const statusByOrg = new Map<string, string>();
+  for (const membership of orgMemberships) {
+    if (membership.organizationId && !roleByOrg.has(membership.organizationId)) {
+      roleByOrg.set(membership.organizationId, membership.role || "MEMBER");
+      statusByOrg.set(membership.organizationId, membership.status || "ACTIVE");
+    }
+  }
+  const orgIds = Array.from(
+    new Set([
+      ...workspaces.map((workspace) => workspace.organizationId).filter(Boolean),
+      ...orgMemberships.map((membership) => membership.organizationId).filter(Boolean),
+    ]),
+  ).slice(0, 100) as string[];
+  const organizations = orgIds.length
+    ? ((await safeList(databases, ORGANIZATIONS_ID, [
+        Query.contains("$id", orgIds),
+        Query.limit(100),
+      ])) as OrgDoc[])
+    : [];
+
   return {
     user: {
       id: user.$id,
@@ -160,6 +199,7 @@ export async function loadAgentContext(
       imageUrl: workspace.imageUrl,
       inviteCode: workspace.inviteCode,
       role: roleByWorkspace.get(workspace.$id),
+      organizationId: workspace.organizationId,
     })),
     projects: projects.map((project) => ({
       id: project.$id,
@@ -217,6 +257,12 @@ export async function loadAgentContext(
       projectId: String(doc.projectId ?? ""),
       workspaceId: String(doc.workspaceId ?? ""),
       category: String(doc.category ?? ""),
+    })),
+    organizations: organizations.map((organization) => ({
+      id: organization.$id,
+      name: organization.name,
+      role: roleByOrg.get(organization.$id),
+      status: statusByOrg.get(organization.$id),
     })),
   };
 }

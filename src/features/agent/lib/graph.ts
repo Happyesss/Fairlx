@@ -36,18 +36,36 @@ export const AGENT_SPECIALISTS: Array<{
   {
     id: "git",
     name: "Git",
-    role: "Inspect linked repos and the staging buffer. Never execute git on the host.",
+    role: "Inspect linked repos and open real GitHub PRs. Never run git on the Fairlx host.",
   },
   {
     id: "reviewer",
     name: "Reviewer",
-    role: "Check plans against work patterns, automations, and safety rules.",
+    role: "Check plans against work patterns, automations, and safety rules. Never grade your own output.",
+  },
+  {
+    id: "ops",
+    name: "Ops",
+    role: "Company actions: mail, invites, members, and work-item comments.",
+  },
+  {
+    id: "security",
+    name: "Security",
+    role: "Review linked source for vulnerabilities. Cite file paths. Never exploit production.",
+  },
+  {
+    id: "workflow",
+    name: "Workflow",
+    role: "Inspect and propose Fairlx workflow statuses and transitions.",
   },
 ];
 
 const SPECIALIST_HINTS: Array<{ id: AgentSpecialistId; pattern: RegExp }> = [
+  { id: "security", pattern: /\b(security|vulnerab|xss|ssrf|pentest|shannon|cve)\b/i },
+  { id: "ops", pattern: /\b(invite|add .{0,80}(project|workspace|team|org)|workspace member|project team|organiz(ation|e)|org name|company name|send .{0,30}(mail|email)|connect .{0,20}(outlook|gmail))\b/i },
+  { id: "workflow", pattern: /\b(workflow statuses|custom workflow|transition)\b/i },
   { id: "git", pattern: /\b(git|commit|stage|unstag|branch|pr\b|pull request|repo|repository|diff)\b/i },
-  { id: "builder", pattern: /\b(create project|new project|scaffold|implement|ship|build)\b/i },
+  { id: "builder", pattern: /\b(create project|new project|scaffold|implement|ship|build|edit the code)\b/i },
   { id: "researcher", pattern: /\b(search|find|look up|what is|who is|docs?|investigate)\b/i },
   { id: "planner", pattern: /\b(plan|roadmap|breakdown|steps|how should we)\b/i },
   { id: "reviewer", pattern: /\b(review|audit|risk|check this|is this safe)\b/i },
@@ -88,11 +106,20 @@ export function buildContextGraph(params: {
       meta: specialist.role,
     });
   }
+  for (const item of (context.organizations ?? []).slice(0, 8)) {
+    nodes.push({
+      id: `organization:${item.id}`,
+      kind: "organization",
+      label: item.name,
+      meta: item.role,
+    });
+  }
   for (const item of context.workspaces.slice(0, 12)) {
     nodes.push({
       id: `workspace:${item.id}`,
       kind: "workspace",
       label: item.name,
+      parentId: item.organizationId ? `organization:${item.organizationId}` : undefined,
       meta: item.id,
     });
   }

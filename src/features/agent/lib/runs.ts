@@ -2,7 +2,10 @@ import { Databases, ID, Query } from "node-appwrite";
 
 import { AGENT_RUNS_ID, DATABASE_ID } from "@/config";
 import type { AgentChatMessage, AgentRun, AgentRunMode, AgentRunStatus, AgentToolEvent } from "../types";
+import { extractAttachedFiles, serializeAttachments, withAttachedFiles } from "./attachments";
+import { AGENT_MESSAGES_JSON_MAX, AGENT_PROMPT_ATTR_MAX } from "./limits";
 import { isTrainingRun } from "./personal-training";
+import { displayUserContent } from "./session-context";
 import { parseJson, stringifyBounded, truncateString } from "./truncate";
 
 type RunDocument = {
@@ -20,13 +23,19 @@ type RunDocument = {
   messagesJson: string;
   eventsJson: string;
   error?: string;
-  extraJson?: string;
+    extraJson?: string;
+  attachmentsJson?: string;
 };
 
 export function parseRun(doc: RunDocument): AgentRun {
   const extra = parseJson<{ kind?: string }>(doc.extraJson, {});
   const prompt = doc.prompt;
   const kind = isTrainingRun({ kind: extra.kind, prompt }) ? "training" : "chat";
+  const attachments = parseJson<Array<{ name: string; body: string }>>(doc.attachmentsJson, []);
+  const messages = parseJson<AgentChatMessage[]>(doc.messagesJson, []).map((message, index) => {
+    if (index !== 0 || message.role !== "user" || !attachments.length) return message;
+    return { ...message, content: withAttachedFiles(message.content, attachments) };
+  });
   return {
     id: doc.$id,
     userId: doc.userId,
@@ -37,7 +46,7 @@ export function parseRun(doc: RunDocument): AgentRun {
     workspaceId: doc.workspaceId || undefined,
     projectId: doc.projectId || undefined,
     modelId: doc.modelId || undefined,
-    messages: parseJson<AgentChatMessage[]>(doc.messagesJson, []),
+    messages,
     events: parseJson<AgentToolEvent[]>(doc.eventsJson, []),
     error: doc.error || undefined,
     kind,
@@ -80,10 +89,13 @@ export async function createRun(
     title?: string;
   },
 ): Promise<AgentRun> {
-  const prompt = truncateString(input.prompt.trim(), 4000);
-  const kind = isTrainingRun({ kind: input.kind, prompt }) ? "training" : "chat";
+  const fullPrompt = input.prompt.trim();
+  const attachments = extractAttachedFiles(fullPrompt);
+  const visible = displayUserContent(fullPrompt) || fullPrompt;
+  const prompt = truncateString(visible, AGENT_PROMPT_ATTR_MAX);
+  const kind = isTrainingRun({ kind: input.kind, prompt: fullPrompt }) ? "training" : "chat";
   const title = truncateString(
-    input.title?.trim() || (kind === "training" ? "Train Personal Agent" : prompt.replace(/\s+/g, " ")),
+    input.title?.trim() || (kind === "training" ? "Train Personal Agent" : visible.replace(/\s+/g, " ")),
     80,
   );
   const createdAt = new Date().toISOString();
@@ -91,7 +103,7 @@ export async function createRun(
     {
       id: crypto.randomUUID(),
       role: "user" as const,
-      content: prompt,
+      content: fullPrompt,
       createdAt,
     },
   ];
@@ -105,9 +117,10 @@ export async function createRun(
     workspaceId: input.workspaceId || "",
     projectId: input.projectId || "",
     modelId: input.modelId || "",
-    messagesJson: stringifyBounded(messages),
+    messagesJson: stringifyBounded(messages, AGENT_MESSAGES_JSON_MAX),
     eventsJson: stringifyBounded([]),
     extraJson: stringifyBounded({ kind }, 4096),
+    attachmentsJson: serializeAttachments(attachments),
     error: "",
   };
 
@@ -131,7 +144,15 @@ export async function createRun(
     throw new Error("Failed to create agent run document.");
   }
 
-  return parseRun(doc as unknown as RunDocument);
+  const parsed = parseRun(doc as unknown as RunDocument);
+  const first = parsed.messages[0];
+  if (first?.role === "user" && fullPrompt.length > (first.content?.length ?? 0)) {
+    return {
+      ...parsed,
+      messages: [{ ...first, content: fullPrompt }, ...parsed.messages.slice(1)],
+    };
+  }
+  return parsed;
 }
 
 export async function updateRun(
@@ -154,7 +175,13 @@ export async function updateRun(
   if (patch.workspaceId !== undefined) payload.workspaceId = patch.workspaceId || "";
   if (patch.projectId !== undefined) payload.projectId = patch.projectId || "";
   if (patch.modelId !== undefined) payload.modelId = patch.modelId || "";
-  if (patch.messages !== undefined) payload.messagesJson = stringifyBounded(patch.messages);
+  if (patch.messages !== undefined) {
+    payload.messagesJson = stringifyBounded(patch.messages, AGENT_MESSAGES_JSON_MAX);
+    const files = patch.messages.flatMap((message) =>
+      message.role === "user" ? extractAttachedFiles(message.content) : [],
+    );
+    if (files.length) payload.attachmentsJson = serializeAttachments(files);
+  }
   if (patch.events !== undefined) payload.eventsJson = stringifyBounded(patch.events);
   if (patch.error !== undefined) payload.error = truncateString(patch.error, 2048);
 
@@ -178,7 +205,14 @@ export async function updateRun(
     throw new Error(`Failed to update agent run document ${runId}.`);
   }
 
-  return parseRun(doc as unknown as RunDocument);
+  const parsed = parseRun(doc as unknown as RunDocument);
+  if (patch.messages) {
+    return { ...parsed, messages: patch.messages, events: patch.events ?? parsed.events };
+  }
+  if (patch.events) {
+    return { ...parsed, events: patch.events };
+  }
+  return parsed;
 }
 
 export async function deleteRun(databases: Databases, userId: string, runId: string): Promise<boolean> {

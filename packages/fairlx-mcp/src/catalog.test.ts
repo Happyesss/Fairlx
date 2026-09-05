@@ -54,8 +54,8 @@ function toolNames(permissions: string[], isOwner = false) {
 }
 
 describe("MCP surface counts", () => {
-  it("exposes 85 tools, 10 resource templates, 7 prompts, 7 skills", () => {
-    expect(TOOL_CATALOG).toHaveLength(85);
+  it("exposes 90 tools, 10 resource templates, 7 prompts, 7 skills", () => {
+    expect(TOOL_CATALOG).toHaveLength(90);
     expect(RESOURCE_TEMPLATES).toHaveLength(10);
     expect(PROMPT_CATALOG).toHaveLength(7);
     expect(SKILLS).toHaveLength(7);
@@ -73,22 +73,27 @@ describe("listToolsForClient role filter", () => {
   it("gives members write but not delete", () => {
     const names = toolNames(MEMBER_PERMISSIONS);
     expect(names).toContain("fairlx_work_item_update");
+    expect(names).toContain("fairlx_organization_get");
+    expect(names).toContain("fairlx_organization_list");
     expect(names).not.toContain("fairlx_work_item_delete");
     expect(names).not.toContain("fairlx_project_delete");
+    expect(names).not.toContain("fairlx_organization_update");
   });
 
   it("gives admins delete tools except project delete", () => {
     const names = toolNames(ADMIN_PERMISSIONS);
     expect(names).toContain("fairlx_work_item_update");
     expect(names).toContain("fairlx_work_item_delete");
+    expect(names).toContain("fairlx_organization_update");
     expect(names).not.toContain("fairlx_project_delete");
   });
 
   it("gives owners the full catalog including project delete and member role updates", () => {
     const names = toolNames([], true);
-    expect(names).toHaveLength(85);
+    expect(names).toHaveLength(90);
     expect(names).toContain("fairlx_project_delete");
     expect(names).toContain("fairlx_project_team_create");
+    expect(names).toContain("fairlx_project_member_add");
     expect(names).toContain("fairlx_project_team_member_add");
     expect(names).toContain("fairlx_workspace_member_update");
     expect(names).toContain("fairlx_workspace_member_add");
@@ -97,6 +102,10 @@ describe("listToolsForClient role filter", () => {
     expect(names).toContain("fairlx_agent_briefing");
     expect(names).toContain("fairlx_agent_next_assignment");
     expect(names).toContain("fairlx_organization_members_list");
+    expect(names).toContain("fairlx_organization_get");
+    expect(names).toContain("fairlx_organization_list");
+    expect(names).toContain("fairlx_organization_workspaces_list");
+    expect(names).toContain("fairlx_organization_update");
   });
 
   it("gives admins member role updates but not regular members", () => {
@@ -110,9 +119,11 @@ describe("listToolsForClient role filter", () => {
 
   it("gives admins project team writes but not regular members", () => {
     expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_create");
+    expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_member_add");
     expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_member_add");
     expect(toolNames(ADMIN_PERMISSIONS)).toContain("fairlx_project_team_delete");
     expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_project_team_create");
+    expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_project_member_add");
     expect(toolNames(MEMBER_PERMISSIONS)).not.toContain("fairlx_project_team_member_add");
   });
 });

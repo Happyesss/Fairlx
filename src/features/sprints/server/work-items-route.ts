@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import { DATABASE_ID, WORK_ITEMS_ID, PROJECTS_ID, MEMBERS_ID, COMMENTS_ID, CUSTOM_COLUMNS_ID, WORKFLOW_STATUSES_ID } from "@/config";
+import { DATABASE_ID, WORK_ITEMS_ID, PROJECTS_ID, COMMENTS_ID, CUSTOM_COLUMNS_ID, WORKFLOW_STATUSES_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
@@ -11,6 +11,7 @@ import { getMember } from "@/features/members/utils";
 import { Project } from "@/features/projects/types";
 import { logComputeUsage, getComputeUnits } from "@/lib/usage-metering";
 import { invalidateCachePattern, CKPattern } from "@/lib/redis";
+import { listMembersForAssigneeIds } from "@/lib/work-item-assignees";
 import {
   dispatchWorkitemEvent,
 } from "@/lib/notifications";
@@ -245,14 +246,10 @@ const app = new Hono()
         }
       });
 
-      // Fetch all members at once (assigneeIds are member document IDs)
-      const membersData = allAssigneeIds.size > 0
-        ? await databases.listDocuments(
-          DATABASE_ID,
-          MEMBERS_ID,
-          [Query.equal("$id", Array.from(allAssigneeIds))]
-        )
-        : { documents: [] };
+      // Fetch members by membership id or user id (agent writes used user ids)
+      const membersData = {
+        documents: await listMembersForAssigneeIds(databases, allAssigneeIds, workspaceId),
+      };
 
       // OPTIMIZED: Batch-fetch all related users in one call (was N+1 users.get per member)
       const memberUserIds = membersData.documents.map(m => m.userId);
@@ -264,12 +261,14 @@ const app = new Hono()
       membersData.documents.forEach((member) => {
         const userData = userMap.get(member.userId);
         if (userData) {
-          assigneeMap.set(member.$id, {
+          const populated = {
             $id: member.$id,
             name: userData.name || userData.email,
             email: userData.email,
             profileImageUrl: userData.prefs?.profileImageUrl || null,
-          });
+          };
+          assigneeMap.set(member.$id, populated);
+          assigneeMap.set(member.userId, populated);
         }
       });
 
@@ -501,17 +500,15 @@ const app = new Hono()
         return c.json({ error: "Unauthorized" }, 401);
       }
 
-      // Populate assignees - assigneeIds are member document IDs
-      const membersData = workItem.assigneeIds && workItem.assigneeIds.length > 0
-        ? await databases.listDocuments(
-          DATABASE_ID,
-          MEMBERS_ID,
-          [Query.equal("$id", workItem.assigneeIds)]
-        )
-        : { documents: [] };
+      // Populate assignees from membership id or user id
+      const memberDocs = await listMembersForAssigneeIds(
+        databases,
+        workItem.assigneeIds ?? [],
+        workItem.workspaceId
+      );
 
       const assignees = (await Promise.all(
-        membersData.documents.map(async (memberDoc) => {
+        memberDocs.map(async (memberDoc) => {
           try {
             const userInfo = await users.get(memberDoc.userId);
             return {

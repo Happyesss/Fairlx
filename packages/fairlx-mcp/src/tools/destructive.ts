@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/context";
 import { PERMISSIONS, type McpRuntime } from "../runtime/types";
 import { toolResult } from "../runtime/output";
 import { requireProjectAccess } from "../runtime/rbac";
-import { loadWorkItem } from "../runtime/tenant";
+import { loadWorkItem, workItemDocumentId } from "../runtime/tenant";
 import { audit, requireString } from "./helpers";
 import { workspaceMemberRemove } from "./write";
 import { projectTeamDelete, projectTeamMemberRemove } from "./write-team";
@@ -75,6 +75,7 @@ async function workItemDelete(
 ): Promise<McpToolResult> {
   const workItemId = requireString(args, "workItemId");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   await requireProjectAccess(
     runtime,
     auth,
@@ -82,15 +83,15 @@ async function workItemDelete(
     PERMISSIONS.DELETE_TASKS,
     ["tasks:delete"]
   );
-  await runtime.store.delete(runtime.collections.workItems, workItemId);
+  await runtime.store.delete(runtime.collections.workItems, documentId);
   await audit(runtime, {
     projectId: item.projectId,
     userId: auth.actorUserId,
     action: "mcp.work_item.delete",
     resourceType: "work_item",
-    resourceId: workItemId,
+    resourceId: documentId,
   });
-  return toolResult({ deleted: true, workItemId });
+  return toolResult({ deleted: true, workItemId: documentId });
 }
 
 async function sprintDelete(

@@ -65,6 +65,7 @@ export interface McpCollections {
   customFields: string;
   mcpApiTokens: string;
   organizationMembers?: string;
+  organizations?: string;
   // ── New collections for full MCP coverage ──
   subtasks: string;
   notifications: string;
@@ -141,19 +142,32 @@ export interface McpRuntime {
   onProjectTeamChanged?: (info: { projectId: string; userIds: string[] }) => Promise<void>;
   /**
    * Invite a person into the organization by email, creating an Appwrite user if needed.
-   * Implementations must allow organization owners only.
+   * Implementations must allow a workspace admin of that org workspace, the organization
+   * owner, or org members-manage — not organization owners only.
    */
   inviteOrganizationMember?: (input: {
     actorUserId: string;
     organizationId: string;
     email: string;
     name: string;
+    workspaceId?: string;
   }) => Promise<{
     userId: string;
     email: string;
     name: string;
     isExistingUser: boolean;
     emailSent: boolean;
+    emailError?: string;
+  }>;
+  /** Org RBAC for the actor. Used by organization-level MCP tools. */
+  resolveUserOrgAccess?: (
+    userId: string,
+    organizationId: string,
+  ) => Promise<{
+    isOwner: boolean;
+    role: string | null;
+    permissions: string[];
+    hasDepartmentAccess: boolean;
   }>;
 }
 
@@ -189,6 +203,7 @@ export const PERMISSIONS = {
   START_SPRINT: "project.sprints.start",
   COMPLETE_SPRINT: "project.sprints.complete",
   MANAGE_TEAMS: "project.teams.manage",
+  INVITE_MEMBERS: "project.members.invite",
 } as const;
 
 /** @deprecated Empty token scopes inherit the actor role / ALL_SCOPES. Kept for compatibility. */

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Refresh README.md and changelog.md from git history before every push.
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+  exit 0
+fi
+if git log -1 --format=%s | grep -qx 'docs: refresh README and changelog'; then
+  exit 0
+fi
+node scripts/update-docs-from-git.mjs --push || exit 1
+git add README.md changelog.md
+if git diff --cached --quiet -- README.md changelog.md; then
+  exit 0
+fi
+git commit -m "docs: refresh README and changelog"

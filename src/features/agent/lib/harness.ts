@@ -9,6 +9,7 @@ import type {
   AgentHarness,
   AgentHarnessSettings,
   AgentKnowledgeItem,
+  AgentPluginConnection,
   AgentSkill,
   AgentWorkPattern,
 } from "../types";
@@ -27,6 +28,7 @@ type HarnessDocument = {
   settingsJson: string;
   gitStagingJson?: string;
   chatMetaJson?: string;
+  pluginsJson?: string;
 };
 
 function nowIso() {
@@ -49,12 +51,13 @@ export function defaultHarnessSettings(): AgentHarnessSettings {
     mode: "agent",
     enabledTools: [...DEFAULT_ENABLED_TOOLS],
     sessionMode: "agent",
+    permissionType: "staged",
   };
 }
 
 export function defaultHarnessData(): Pick<
   AgentHarness,
-  "skills" | "automations" | "knowledge" | "workPatterns" | "settings" | "gitStaging" | "chatMeta"
+  "skills" | "automations" | "knowledge" | "workPatterns" | "settings" | "gitStaging" | "chatMeta" | "plugins"
 > {
   return {
     skills: withIds<AgentSkill>(STARTER_SKILLS),
@@ -64,6 +67,7 @@ export function defaultHarnessData(): Pick<
     settings: defaultHarnessSettings(),
     gitStaging: emptyGitStaging(),
     chatMeta: emptyChatMeta(),
+    plugins: [],
   };
 }
 
@@ -72,6 +76,11 @@ function mergeEnabledTools(saved: string[] | undefined): string[] {
   const hasNew = NEW_AGENT_TOOL_IDS.some((id) => saved.includes(id));
   if (hasNew) return saved;
   return [...saved, ...NEW_AGENT_TOOL_IDS];
+}
+
+function parsePlugins(raw: unknown): AgentPluginConnection[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((item): item is AgentPluginConnection => Boolean(item && typeof item === "object"));
 }
 
 export function parseHarness(doc: HarnessDocument): AgentHarness {
@@ -92,8 +101,14 @@ export function parseHarness(doc: HarnessDocument): AgentHarness {
   } else if (settings.mode !== "manual") {
     settings.mode = "agent";
   }
+  if (settings.permissionType !== "all_access") {
+    settings.permissionType = "staged";
+  }
 
-  const settingsExtras = parseJson<{ gitStaging?: unknown; chatMeta?: unknown }>(doc.settingsJson, {});
+  const settingsExtras = parseJson<{ gitStaging?: unknown; chatMeta?: unknown; plugins?: unknown }>(
+    doc.settingsJson,
+    {},
+  );
 
   return {
     id: doc.$id,
@@ -109,6 +124,7 @@ export function parseHarness(doc: HarnessDocument): AgentHarness {
     chatMeta: parseChatMeta(
       parseJson<AgentChatMeta | null>(doc.chatMetaJson, null) ?? settingsExtras.chatMeta ?? defaults.chatMeta,
     ),
+    plugins: parsePlugins(parseJson(doc.pluginsJson, settingsExtras.plugins ?? defaults.plugins)),
     updatedAt: doc.$updatedAt || nowIso(),
   };
 }
@@ -122,7 +138,7 @@ async function getHarnessDocument(databases: Databases, userId: string) {
 }
 
 function corePayload(payload: Record<string, string>) {
-  const { gitStagingJson, chatMetaJson, ...core } = payload;
+  const { gitStagingJson, chatMetaJson, pluginsJson, ...core } = payload;
   const settings = parseJson<Record<string, unknown>>(core.settingsJson, {});
   return {
     ...core,
@@ -131,6 +147,7 @@ function corePayload(payload: Record<string, string>) {
         ...settings,
         gitStaging: parseJson(gitStagingJson, emptyGitStaging()),
         chatMeta: parseJson(chatMetaJson, emptyChatMeta()),
+        plugins: parseJson(pluginsJson, []),
       },
       4096,
     ),
@@ -187,6 +204,7 @@ export async function getOrCreateHarness(databases: Databases, userId: string): 
     settingsJson: stringifyBounded(seed.settings, 4096),
     gitStagingJson: stringifyBounded(seed.gitStaging),
     chatMetaJson: stringifyBounded(seed.chatMeta, 4096),
+    pluginsJson: stringifyBounded(seed.plugins),
   });
 
   return parseHarness(created);
@@ -195,7 +213,9 @@ export async function getOrCreateHarness(databases: Databases, userId: string): 
 export async function upsertHarness(
   databases: Databases,
   userId: string,
-  patch: Partial<Pick<AgentHarness, "skills" | "automations" | "knowledge" | "workPatterns" | "gitStaging" | "chatMeta">> & {
+  patch: Partial<
+    Pick<AgentHarness, "skills" | "automations" | "knowledge" | "workPatterns" | "gitStaging" | "chatMeta" | "plugins">
+  > & {
     settings?: Partial<AgentHarnessSettings>;
   },
 ): Promise<AgentHarness> {
@@ -208,6 +228,7 @@ export async function upsertHarness(
     workPatterns: patch.workPatterns ?? current.workPatterns,
     gitStaging: patch.gitStaging ?? current.gitStaging,
     chatMeta: patch.chatMeta ?? current.chatMeta,
+    plugins: patch.plugins ?? current.plugins,
     settings: {
       ...current.settings,
       ...(patch.settings ?? {}),
@@ -229,6 +250,7 @@ export async function upsertHarness(
     settingsJson: stringifyBounded(next.settings, 4096),
     gitStagingJson: stringifyBounded(next.gitStaging),
     chatMetaJson: stringifyBounded(next.chatMeta, 4096),
+    pluginsJson: stringifyBounded(next.plugins),
   };
 
   const existing = await getHarnessDocument(databases, userId);

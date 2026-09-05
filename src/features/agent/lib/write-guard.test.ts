@@ -4,8 +4,10 @@ import {
   confirmationSummary,
   findPendingConfirmation,
   isWriteToolCall,
+  needsConfirmation,
   parseConfirmationCall,
   parseWorkItemCall,
+  writeRiskLevel,
 } from "./write-guard";
 import type { AgentToolCall } from "../types";
 
@@ -23,9 +25,14 @@ describe("isWriteToolCall", () => {
     expect(isWriteToolCall(call("fairlx_workspace_member_remove", { name: "Ada" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_project_team_create", { name: "Developers" }))).toBe(true);
     expect(isWriteToolCall(call("fairlx_project_team_member_add", { name: "Surendra" }))).toBe(true);
+    expect(isWriteToolCall(call("fairlx_project_member_add", { name: "fogef" }))).toBe(true);
     expect(
       isWriteToolCall(call("mcp_call", { server: "fairlx", tool: "fairlx_project_create", arguments: { name: "N" } })),
     ).toBe(true);
+    expect(isWriteToolCall(call("mail_send", { to: "ada@x.com", subject: "Hi", body: "x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_write_file", { path: "a.ts", content: "x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_open_pr", { title: "Fix", head: "fairlx/x" }))).toBe(true);
+    expect(isWriteToolCall(call("github_read_file", { path: "a.ts" }))).toBe(false);
   });
 
   it("allows reads without confirmation", () => {
@@ -56,9 +63,31 @@ describe("isWriteToolCall", () => {
         call("fairlx_project_team_member_add", { name: "Surendra", teamName: "Developers" }),
       ),
     ).toBe("Add Surendra to Developers?");
+    expect(
+      confirmationSummary(call("fairlx_project_member_add", { name: "fogef", projectId: "proj_1" })),
+    ).toBe("Add fogef to the project?");
     expect(confirmationSummary(call("fairlx_project_team_create", { name: "Developers" }))).toBe(
       'Create team "Developers"?',
     );
+    expect(confirmationSummary(call("mail_send", { to: "ada@x.com", subject: "Issue" }))).toBe("Send mail to ada@x.com?");
+  });
+});
+
+describe("write risk and permission type", () => {
+  it("treats work item create as standard and mail/github/delete as privileged", () => {
+    expect(writeRiskLevel(call("fairlx_work_item_create", { title: "Bug" }))).toBe("standard");
+    expect(writeRiskLevel(call("fairlx_work_item_update", { workItemId: "x" }))).toBe("standard");
+    expect(writeRiskLevel(call("mail_send", { to: "ada@x.com" }))).toBe("privileged");
+    expect(writeRiskLevel(call("github_open_pr", { title: "Fix" }))).toBe("privileged");
+    expect(writeRiskLevel(call("fairlx_work_item_delete", { workItemId: "x" }))).toBe("privileged");
+    expect(writeRiskLevel(call("fairlx_workspace_member_add", { name: "Ada" }))).toBe("privileged");
+    expect(writeRiskLevel(call("github_read_file", { path: "a.ts" }))).toBe("read");
+  });
+
+  it("skips Accept when permissionType is all_access", () => {
+    expect(needsConfirmation(call("mail_send", { to: "ada@x.com" }), "all_access")).toBe(false);
+    expect(needsConfirmation(call("mail_send", { to: "ada@x.com" }), "staged")).toBe(true);
+    expect(needsConfirmation(call("fairlx_work_item_create", { title: "Bug" }), "staged")).toBe(false);
   });
 });
 

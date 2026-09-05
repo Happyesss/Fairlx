@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { resolveUserAccess, resolvePersonalUserAccess } from "@/lib/permissions/resolveUserAccess";
+import { shouldResolvePersonalNavAccess } from "@/lib/permissions/visible-nav-routes";
 
 /**
  * User Access API
@@ -21,12 +22,10 @@ const app = new Hono()
         const organizationId = c.req.query("organizationId");
         const workspaceId = c.req.query("workspaceId");
 
-        // Check if this is a personal account (no org)
-        const prefs = user.prefs || {};
-        const isPersonalAccount = prefs.accountType !== "ORG";
-
-        if (isPersonalAccount) {
-            // Personal accounts get full workspace access
+        // Membership / organizationId wins over prefs.accountType. Prefs can stay
+        // PERSONAL after the user already owns or joined an organization, which
+        // used to hide the Organization sidebar item for owners.
+        if (shouldResolvePersonalNavAccess(organizationId)) {
             const access = resolvePersonalUserAccess(workspaceId);
             return c.json({
                 allowedRouteKeys: access.allowedRouteKeys,
@@ -37,10 +36,6 @@ const app = new Hono()
             });
         }
 
-        // SECURITY: For ORG accounts, validate the organizationId belongs to the user
-        // If organizationId is provided, verify user is actually a member
-        // The resolveUserAccess function will do this implicitly, but we add
-        // explicit validation for defense in depth
         if (organizationId) {
             const access = await resolveUserAccess(
                 databases,
@@ -49,12 +44,11 @@ const app = new Hono()
                 workspaceId
             );
 
-            // If user is not an org member at all, return empty access.
-            // Members without departments still get core workspace pages from resolveUserAccess.
-            // This prevents info leakage about org existence for non-members.
+            // Not a member of this org — fall back to personal workspace nav.
             if (!access.orgMemberId && !access.isOwner) {
+                const personal = resolvePersonalUserAccess(workspaceId);
                 return c.json({
-                    allowedRouteKeys: [],
+                    allowedRouteKeys: personal.allowedRouteKeys,
                     permissions: [],
                     isOwner: false,
                     role: null,

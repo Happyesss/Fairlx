@@ -97,8 +97,41 @@ const LIST_META_KEYS = [
   "total",
   "matched",
   "unassignedCount",
+  "assignment",
+  "location",
   "error",
 ] as const;
+
+function assignmentMetaFromItems(rows: unknown[]) {
+  const unassignedKeys: string[] = [];
+  const byAssignee: Record<string, string[]> = {};
+  for (const row of rows) {
+    if (!isRecord(row) || typeof row.key !== "string" || !row.key.trim()) continue;
+    const key = row.key.trim();
+    const people = Array.isArray(row.assignees) ? row.assignees : [];
+    const names = people.flatMap((entry) => {
+      if (typeof entry === "string" && entry.trim() && !entry.includes("@")) return [entry.trim()];
+      if (entry && typeof entry === "object" && typeof (entry as { name?: string }).name === "string") {
+        const name = (entry as { name: string }).name.trim();
+        return name ? [name] : [];
+      }
+      return [];
+    });
+    if (row.unassigned === true || names.length === 0) {
+      unassignedKeys.push(key);
+      continue;
+    }
+    for (const name of names) {
+      (byAssignee[name] ??= []).push(key);
+    }
+  }
+  return {
+    total: unassignedKeys.length + Object.values(byAssignee).reduce((sum, keys) => sum + keys.length, 0),
+    unassignedCount: unassignedKeys.length,
+    unassignedKeys,
+    byAssignee,
+  };
+}
 
 export function compactWorkItemListPayload(payload: Record<string, unknown>, max: number): string {
   const original = Array.isArray(payload.workItems) ? (payload.workItems as unknown[]) : [];
@@ -106,6 +139,9 @@ export function compactWorkItemListPayload(payload: Record<string, unknown>, max
   const meta: Record<string, unknown> = {};
   for (const key of LIST_META_KEYS) {
     if (payload[key] !== undefined) meta[key] = payload[key];
+  }
+  if (meta.assignment === undefined) {
+    meta.assignment = assignmentMetaFromItems(original);
   }
   const build = (rows: unknown[], omitted: number) => {
     const next: Record<string, unknown> = {

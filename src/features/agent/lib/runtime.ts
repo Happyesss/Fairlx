@@ -8,7 +8,9 @@ import {
 } from "../constants";
 import type {
   AgentAiConfigStored,
+  AgentCapability,
   AgentChatMessage,
+  AgentPermissionType,
   AgentRun,
   AgentSpecialistId,
   AgentToolCall,
@@ -32,10 +34,9 @@ import {
   fingerprintsFromMessages,
   hydrateListSliceCache,
   isFailedToolContent,
-  MAX_CONSECUTIVE_TOOL_FAILURES,
-  MAX_DUPLICATE_SKIPS,
   rememberListSlice,
   repeatedToolMessage,
+  shouldForceAnswer,
   resolveListSliceCall,
   toolCallFingerprint,
   unwrapListCall,
@@ -46,12 +47,19 @@ import { getRun, listRuns, updateRun } from "./runs";
 import { getPersonalAgent } from "./personal-agent-store";
 import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
-import { confirmationSummary, findPendingConfirmation, isWriteToolCall } from "./write-guard";
+import { confirmationSummary, findPendingConfirmation, needsConfirmation } from "./write-guard";
 import { extractBoardProjectFromTool } from "./project-launch";
 import { specialistById } from "./graph";
+import { buildSpecialistUserMessage } from "./attachments";
+import { capSpecialistResult, compressMessages, factsFromTurn, filterToolsForSpecialist, mergeStateKnowledge, selectToolsForTurn } from "./brain";
+import { catalogForCapability, missingCapabilities } from "../plugins/catalog";
+import { claimQueuedJobs } from "./jobs";
+import { scheduleAgentJob } from "./schedule-job";
+import { estimateRunTokens } from "./context-meter";
 
-const MAX_TOOL_ITERATIONS = 12;
-const MAX_SPECIALIST_ITERATIONS = 4;
+const MAX_TOOL_ITERATIONS = 48;
+const MAX_SPECIALIST_ITERATIONS = 16;
+const MAX_PARALLEL_SUBAGENTS = 6;
 const MAX_HISTORY = 24;
 const cancelledRuns = new Set<string>();
 
@@ -63,12 +71,13 @@ export function isAgentTurnCancelled(runId: string) {
   return cancelledRuns.has(runId);
 }
 
-function thoughtEvent(runId: string, title: string, detail?: string): AgentToolEvent {
+function thoughtEvent(runId: string, title: string, detail?: string, payload?: unknown): AgentToolEvent {
   return {
     id: crypto.randomUUID(),
     type: "thought",
     title,
     detail,
+    payload,
     createdAt: new Date().toISOString(),
     runId,
   };
@@ -88,6 +97,7 @@ export type ChatTarget = {
   model: string;
   modelId: string;
   maxOutputTokens?: number;
+  maxInputTokens?: number;
 };
 
 function joinUrl(base: string, path: string): string {
@@ -141,6 +151,7 @@ export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
       },
       model: creds.deployment || model.modelId,
       maxOutputTokens: model.maxOutputTokens,
+      maxInputTokens: model.maxInputTokens,
       modelId: model.id,
     };
   }
@@ -160,9 +171,22 @@ export function resolveChatTarget(stored: AgentAiConfigStored): ChatTarget {
       Authorization: `Bearer ${apiKey}`,
     },
     maxOutputTokens: model.maxOutputTokens,
+    maxInputTokens: model.maxInputTokens,
     model: model.modelId,
     modelId: model.id,
   };
+}
+
+export function resolveWorkerTarget(stored: AgentAiConfigStored): ChatTarget {
+  const flash = stored.models.find((item) => item.id === DEEPSEEK_FLASH_MODEL_ID && item.isEnabled);
+  if (flash) {
+    try {
+      return resolveChatTarget({ ...stored, mode: "manual", selectedModelId: flash.id });
+    } catch {
+      // fall through
+    }
+  }
+  return resolveChatTarget(stored);
 }
 
 type OpenAiMessage = {
@@ -185,9 +209,13 @@ function toOpenAiMessages(
   messages: AgentChatMessage[],
   options?: { seedTraining?: boolean },
 ): OpenAiMessage[] {
-  const recent = messages
-    .slice(-MAX_HISTORY)
-    .filter((message) => !(message.role === "user" && isTrainingKickoffContent(message.content)));
+  const compressed = compressMessages(messages);
+  let recent = compressed.slice(-MAX_HISTORY);
+  const firstUser = messages.find((message) => message.role === "user");
+  if (firstUser && !recent.some((message) => message.id === firstUser.id)) {
+    recent = [firstUser, ...recent.filter((message) => message.id !== firstUser.id)].slice(0, MAX_HISTORY + 1);
+  }
+  recent = recent.filter((message) => !(message.role === "user" && isTrainingKickoffContent(message.content)));
   const mapped: OpenAiMessage[] = recent.map((message) => {
     if (message.role === "assistant") {
       return {
@@ -395,6 +423,8 @@ export async function runAgentTurn(params: {
     getPersonalAgent(databases, user.$id),
   ]);
   let harness = initialHarness;
+  const permissionType = (): AgentPermissionType =>
+    harness.settings.permissionType === "all_access" ? "all_access" : "staged";
   const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
   const stored = parseAiConfig(aiDoc);
 
@@ -413,8 +443,10 @@ export async function runAgentTurn(params: {
   if (stoppedBeforeModel) return stoppedBeforeModel;
 
   let target: ChatTarget;
+  let workerTarget: ChatTarget;
   try {
     target = resolveChatTarget(stored);
+    workerTarget = resolveWorkerTarget(stored);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to resolve model.";
     return persistUnlessStopped({ status: "failed", error: message });
@@ -433,14 +465,19 @@ export async function runAgentTurn(params: {
   });
   if (run.status === "stopped") return run;
 
+  const lastUserText = displayUserContent(
+    [...run.messages].reverse().find((message) => message.role === "user")?.content || run.prompt || "",
+  );
   const tools = training
     ? trainingSaveReady(run.messages) ? [trainingSaveTool()] : []
-    : openaiToolsForTurn({
-        mode: run.mode,
-        enabledTools: harness.settings.enabledTools ?? [],
-        mcpTools: mcpToolDefs,
-      });
-  const specialistTools = tools.filter((tool) => tool.function.name !== "delegate_agent");
+    : selectToolsForTurn(
+        openaiToolsForTurn({
+          mode: run.mode,
+          enabledTools: harness.settings.enabledTools ?? [],
+          mcpTools: mcpToolDefs,
+        }),
+        lastUserText,
+      );
   const personalPrompt =
     personalProfile && profileIsTrained(personalProfile) ? personalProfile.compiledPrompt : undefined;
   const system = buildSystemPrompt({
@@ -464,40 +501,56 @@ export async function runAgentTurn(params: {
     projectId: run.projectId || mcpAuth.projectId,
     mcpAuth,
     allowPersonalSave: training,
+    plugins: harness.plugins,
+    sourcePrompt: run.messages.find((message) => message.role === "user")?.content || run.prompt || "",
   });
+
+  const queuedJobs = await claimQueuedJobs(databases, user.$id);
+  for (const job of queuedJobs) {
+    scheduleAgentJob({
+      databases,
+      userId: user.$id,
+      jobId: job.id,
+      context,
+      plugins: harness.plugins,
+      mcp,
+      mcpAuth,
+      harness,
+      projectId: run.projectId || mcpAuth.projectId,
+      workspaceId: run.workspaceId || mcpAuth.workspaceId,
+    });
+  }
 
   const seenCalls = fingerprintsFromMessages(run.messages);
   const listSlices = hydrateListSliceCache(run.messages);
   let failStreak = 0;
-  let duplicateSkips = 0;
   let forceAnswer = false;
+  let pluginGap: AgentCapability | null = null;
 
   const applyToolCall = async (
     call: AgentToolCall,
     nextMessages: AgentChatMessage[],
     nextEvents: AgentToolEvent[],
     options?: { coalesced?: boolean },
-  ) => {
+  ): Promise<AgentToolCall[]> => {
     const fingerprint = toolCallFingerprint(call.name, call.arguments);
     const previous = seenCalls.get(fingerprint);
     if (previous !== undefined) {
-      duplicateSkips += 1;
       nextEvents.push(thoughtEvent(run.id, options?.coalesced ? "Combined overlapping lists" : "Reused previous result"));
       nextMessages.push({
         id: crypto.randomUUID(),
         role: "tool",
-        content: options?.coalesced ? coalescedListMessage(previous) : repeatedToolMessage(previous),
+        content: options?.coalesced ? coalescedListMessage(previous) : repeatedToolMessage(previous, call.name),
         toolCallId: call.id,
         toolName: call.name,
         createdAt: new Date().toISOString(),
       });
-      return;
+      return [];
     }
 
     const listed = unwrapListCall(call);
     const slice = resolveListSliceCall(listSlices, listed.tool, listed.args);
     if (slice.action === "skip") {
-      duplicateSkips += 1;
       seenCalls.set(fingerprint, slice.content);
       nextEvents.push(thoughtEvent(run.id, "Skipped extra list page"));
       nextMessages.push({
@@ -508,26 +561,32 @@ export async function runAgentTurn(params: {
         toolName: call.name,
         createdAt: new Date().toISOString(),
       });
-      return;
+      return [];
     }
 
     const result = await executeTool(call.name, call.arguments, toolContext());
     if (result.harnessPatch) {
       harness = await upsertHarness(databases, user.$id, result.harnessPatch);
     }
+    if (result.missingCapability) pluginGap = result.missingCapability;
     nextEvents.push(result.event);
     let toolContent = compactJsonString(result.content, 8000);
+    let pendingWrites: AgentToolCall[] = [];
     if (result.delegate) {
       const specialist = await runSpecialistPass(
         specialistById(result.delegate.agent),
         result.delegate.task,
+        "orchestrator",
+        result.delegate.subject,
       );
       nextEvents.push(...specialist.events);
+      pendingWrites = specialist.pendingWrites;
       toolContent = compactJsonString(
         JSON.stringify({
           agent: result.delegate.agent,
           task: result.delegate.task,
           result: specialist.content,
+          pendingWrites: pendingWrites.map((item) => item.name),
         }),
         8000,
       );
@@ -543,7 +602,6 @@ export async function runAgentTurn(params: {
       toolName: call.name,
       createdAt: new Date().toISOString(),
     });
-
     const launch = extractBoardProjectFromTool(call.name, toolContent, call.arguments);
     if (launch?.projectId) {
       const workspaceId = launch.workspaceId || run.workspaceId || "";
@@ -552,7 +610,7 @@ export async function runAgentTurn(params: {
           projectId: launch.projectId,
           ...(workspaceId ? { workspaceId } : {}),
         });
-        if (run.status === "stopped") return;
+        if (run.status === "stopped") return [];
         harness = await upsertHarness(databases, user.$id, {
           settings: {
             defaultProjectId: launch.projectId,
@@ -561,6 +619,7 @@ export async function runAgentTurn(params: {
         });
       }
     }
+    return pendingWrites;
   };
 
   const pauseForConfirmation = async (
@@ -585,43 +644,108 @@ export async function runAgentTurn(params: {
     });
   };
 
+  const pauseForPlugin = async (
+    capability: AgentCapability,
+    nextMessages: AgentChatMessage[],
+    nextEvents: AgentToolEvent[],
+  ) => {
+    const catalog = catalogForCapability(capability);
+    const summary =
+      capability === "email.send"
+        ? "Connect Outlook, Gmail, Resend, or a mail MCP server to send email."
+        : capability === "code.write" || capability === "code.read"
+          ? "Link a GitHub repository or add a repo token to edit code."
+          : `Connect a plugin for ${capability}.`;
+    nextEvents.push({
+      id: crypto.randomUUID(),
+      type: "plugin_required",
+      title: summary,
+      payload: { capability, catalogIds: catalog.map((item) => item.id), summary },
+      createdAt: new Date().toISOString(),
+      runId: run.id,
+    });
+    return persistUnlessStopped({
+      messages: nextMessages,
+      events: nextEvents,
+      status: "awaiting_plugin",
+      error: "",
+    });
+  };
+
   const runSpecialistPass = async (
     specialist: AgentSpecialistId,
     task: string,
-  ): Promise<{ content: string; events: AgentToolEvent[] }> => {
-    const events: AgentToolEvent[] = [];
+    parent: string,
+    subject?: string,
+  ): Promise<{ content: string; events: AgentToolEvent[]; pendingWrites: AgentToolCall[]; subagentId: string }> => {
+    const subagentId = crypto.randomUUID();
+    const parentPrompt = run.messages.find((message) => message.role === "user")?.content || run.prompt || "";
+    const specialistTask = buildSpecialistUserMessage({ task, parentPrompt, subject });
+    const events: AgentToolEvent[] = [
+      {
+        id: crypto.randomUUID(),
+        type: "subagent_started",
+        title: `${specialist} started${subject ? ` · ${subject}` : ""}`,
+        detail: (subject ? `${subject}: ${task}` : task).slice(0, 180),
+        payload: { id: subagentId, specialist, parent, task, subject },
+        createdAt: new Date().toISOString(),
+        runId: run.id,
+      },
+    ];
+    const pendingWrites: AgentToolCall[] = [];
     const specialistRun: AgentRun = {
       ...run,
-      prompt: task,
+      prompt: specialistTask,
       messages: [
         {
           id: crypto.randomUUID(),
           role: "user",
-          content: task,
+          content: specialistTask,
           createdAt: new Date().toISOString(),
         },
       ],
     };
     let messages = specialistRun.messages;
+    const isolatedTools = filterToolsForSpecialist(tools, specialist);
     const specialistSystem = buildSystemPrompt({ harness, context, run: specialistRun, mcp, specialist });
     for (let iteration = 0; iteration < MAX_SPECIALIST_ITERATIONS; iteration += 1) {
       if (cancelledRuns.has(run.id)) break;
+      events.push({
+        id: crypto.randomUUID(),
+        type: "subagent_progress",
+        title: `${specialist} thinking`,
+        payload: { id: subagentId, specialist, parent, iteration },
+        createdAt: new Date().toISOString(),
+        runId: run.id,
+      });
       const completion = await chatCompletion(
-        target,
+        workerTarget,
         {
-          model: target.model,
+          model: workerTarget.model,
           messages: toOpenAiMessages(specialistSystem, messages),
           temperature: 0.2,
-          ...(target.maxOutputTokens ? { max_tokens: target.maxOutputTokens } : {}),
-          ...(specialistTools.length ? { tools: specialistTools, tool_choice: "auto" } : {}),
+          ...(workerTarget.maxOutputTokens ? { max_tokens: workerTarget.maxOutputTokens } : {}),
+          ...(isolatedTools.length ? { tools: isolatedTools, tool_choice: "auto" } : {}),
         },
         run.id,
       );
       const collected = collectToolCalls(completion?.choices?.[0], mcpToolNames);
       if (!collected.toolCalls.length) {
+        events.push({
+          id: crypto.randomUUID(),
+          type: "subagent_done",
+          title: `${specialist} finished`,
+          payload: { id: subagentId, specialist, parent, task },
+          createdAt: new Date().toISOString(),
+          runId: run.id,
+        });
         return {
-          content: sanitizeAssistantVisible(collected.content) || "Specialist finished with no additional notes.",
+          content: capSpecialistResult(
+            sanitizeAssistantVisible(collected.content) || "Specialist finished with no additional notes.",
+          ),
           events,
+          pendingWrites,
+          subagentId,
         };
       }
       messages = [
@@ -636,10 +760,23 @@ export async function runAgentTurn(params: {
       ];
       for (const call of collected.toolCalls) {
         if (call.name === "delegate_agent") continue;
+        if (needsConfirmation(call, permissionType())) {
+          pendingWrites.push(call);
+          messages.push({
+            id: crypto.randomUUID(),
+            role: "tool",
+            content: JSON.stringify({ queued: true, awaitingAccept: true, name: call.name }),
+            toolCallId: call.id,
+            toolName: call.name,
+            createdAt: new Date().toISOString(),
+          });
+          continue;
+        }
         const result = await executeTool(call.name, call.arguments, toolContext());
         if (result.harnessPatch) {
           harness = await upsertHarness(databases, user.$id, result.harnessPatch);
         }
+        if (result.missingCapability) pluginGap = result.missingCapability;
         events.push(result.event);
         messages.push({
           id: crypto.randomUUID(),
@@ -650,12 +787,43 @@ export async function runAgentTurn(params: {
           createdAt: new Date().toISOString(),
         });
       }
+      if (pendingWrites.length) {
+        events.push({
+          id: crypto.randomUUID(),
+          type: "subagent_done",
+          title: `${specialist} waiting for approval`,
+          payload: { id: subagentId, specialist, parent, task },
+          createdAt: new Date().toISOString(),
+          runId: run.id,
+        });
+        return {
+          content: capSpecialistResult("Proposed high-risk writes are waiting for Accept."),
+          events,
+          pendingWrites,
+          subagentId,
+        };
+      }
     }
     const last = [...messages].reverse().find((message) => message.role === "assistant" && message.content);
-    return { content: last?.content || "Specialist reached its tool limit.", events };
+    events.push({
+      id: crypto.randomUUID(),
+      type: "subagent_done",
+      title: `${specialist} reached its tool limit`,
+      payload: { id: subagentId, specialist, parent, task },
+      createdAt: new Date().toISOString(),
+      runId: run.id,
+    });
+    return { content: capSpecialistResult(last?.content || "Specialist reached its tool limit."), events, pendingWrites, subagentId };
   };
 
   try {
+    if (!resume) {
+      const missing = missingCapabilities(lastUserText, harness.plugins, context);
+      if (missing[0]) {
+        return pauseForPlugin(missing[0], run.messages, run.events);
+      }
+    }
+
     if (resume) {
       const pending = findPendingConfirmation(run.events, run.messages) ?? { calls: unmatchedToolCalls(run), summary: "" };
       const pendingCalls = pending.calls.length ? pending.calls : unmatchedToolCalls(run);
@@ -775,19 +943,112 @@ export async function runAgentTurn(params: {
           createdAt: new Date().toISOString(),
         };
         const nextMessages = [...run.messages, assistantMessage];
-        const nextEvents = [...run.events];
-        const writes = toolCalls.filter((call) => isWriteToolCall(call));
-        const rawReads = toolCalls.filter((call) => !isWriteToolCall(call));
-        const { calls: reads, coalescedIds } = collapseWorkItemListFanOut(rawReads);
+        const nextEvents = [
+          ...run.events,
+          {
+            id: crypto.randomUUID(),
+            type: "context_meter" as const,
+            title: "Context",
+            payload: {
+              tokens: estimateRunTokens(run.messages, system.length),
+              maxInputTokens: target.maxInputTokens ?? 0,
+              subagents: 0,
+            },
+            createdAt: new Date().toISOString(),
+            runId: run.id,
+          },
+        ];
+        const gated = toolCalls.filter((call) => needsConfirmation(call, permissionType()));
+        const autoCalls = toolCalls.filter((call) => !needsConfirmation(call, permissionType()));
+        const delegates = autoCalls.filter((call) => call.name === "delegate_agent");
+        const rest = autoCalls.filter((call) => call.name !== "delegate_agent");
+        const { calls: reads, coalescedIds } = collapseWorkItemListFanOut(rest);
+        const specialistWrites: AgentToolCall[] = [];
 
         for (const call of reads) {
           const stoppedBeforeTool = await haltIfStopped();
           if (stoppedBeforeTool) return stoppedBeforeTool;
-          await applyToolCall(call, nextMessages, nextEvents, { coalesced: coalescedIds.has(call.id) });
+          const extra = await applyToolCall(call, nextMessages, nextEvents, { coalesced: coalescedIds.has(call.id) });
+          specialistWrites.push(...extra);
         }
 
-        if (writes.length) {
-          return pauseForConfirmation(nextMessages, nextEvents, writes);
+        if (delegates.length) {
+          nextEvents.push(
+            thoughtEvent(
+              run.id,
+              `Running ${delegates.length} subagent${delegates.length === 1 ? "" : "s"} in parallel`,
+            ),
+          );
+          for (let i = 0; i < delegates.length; i += MAX_PARALLEL_SUBAGENTS) {
+            const batch = delegates.slice(i, i + MAX_PARALLEL_SUBAGENTS);
+            const stoppedBeforeBatch = await haltIfStopped();
+            if (stoppedBeforeBatch) return stoppedBeforeBatch;
+            const settled = await Promise.all(
+              batch.map(async (call) => {
+                const result = await executeTool(call.name, call.arguments, toolContext());
+                if (!result.delegate) {
+                  return { call, result, specialist: undefined as Awaited<ReturnType<typeof runSpecialistPass>> | undefined };
+                }
+                const specialist = await runSpecialistPass(
+                  specialistById(result.delegate.agent),
+                  result.delegate.task,
+                  "orchestrator",
+                  result.delegate.subject,
+                );
+                return { call, result, specialist };
+              }),
+            );
+            for (const item of settled) {
+              nextEvents.push(item.result.event);
+              const pendingWrites = item.specialist?.pendingWrites ?? [];
+              specialistWrites.push(...pendingWrites);
+              if (item.specialist) nextEvents.push(...item.specialist.events);
+              if (item.result.missingCapability) pluginGap = item.result.missingCapability;
+              nextMessages.push({
+                id: crypto.randomUUID(),
+                role: "tool",
+                content: item.specialist
+                  ? compactJsonString(
+                      JSON.stringify({
+                        agent: item.result.delegate?.agent,
+                        task: item.result.delegate?.task,
+                        result: item.specialist.content,
+                        pendingWrites: pendingWrites.map((write) => write.name),
+                      }),
+                      8000,
+                    )
+                  : compactJsonString(item.result.content, 8000),
+                toolCallId: item.call.id,
+                toolName: item.call.name,
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        }
+
+        if (pluginGap) {
+          return pauseForPlugin(pluginGap, nextMessages, nextEvents);
+        }
+
+        const writesToConfirm = [...gated, ...specialistWrites.filter((call) => needsConfirmation(call, permissionType()))];
+        const autoSpecialistWrites = specialistWrites.filter((call) => !needsConfirmation(call, permissionType()));
+        for (const call of autoSpecialistWrites) {
+          const stoppedBeforeTool = await haltIfStopped();
+          if (stoppedBeforeTool) return stoppedBeforeTool;
+          await applyToolCall(call, nextMessages, nextEvents);
+        }
+
+        if (writesToConfirm.length) {
+          if (gated.length === 0 && specialistWrites.length) {
+            nextMessages.push({
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: "",
+              toolCalls: writesToConfirm,
+              createdAt: new Date().toISOString(),
+            });
+          }
+          return pauseForConfirmation(nextMessages, nextEvents, writesToConfirm);
         }
 
         run = await persistUnlessStopped({
@@ -798,7 +1059,7 @@ export async function runAgentTurn(params: {
         if (run.status === "stopped") return run;
         if (training) {
           forceAnswer = true;
-        } else if (failStreak >= MAX_CONSECUTIVE_TOOL_FAILURES || duplicateSkips >= MAX_DUPLICATE_SKIPS) {
+        } else if (shouldForceAnswer(failStreak)) {
           forceAnswer = true;
         }
         continue;
@@ -814,8 +1075,15 @@ export async function runAgentTurn(params: {
             : "Done."),
         createdAt: new Date().toISOString(),
       };
+      const completedMessages = [...run.messages, assistantMessage];
+      const facts = factsFromTurn(completedMessages);
+      if (facts.length) {
+        harness = await upsertHarness(databases, user.$id, {
+          knowledge: mergeStateKnowledge(harness.knowledge, facts),
+        });
+      }
       return persistUnlessStopped({
-        messages: [...run.messages, assistantMessage],
+        messages: completedMessages,
         status: "completed",
         error: "",
       });

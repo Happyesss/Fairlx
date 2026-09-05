@@ -44,7 +44,8 @@ function harness() {
 function context(): AgentContext {
   return {
     user: { id: "u1", name: "Ada", email: "ada@fairlx.dev" },
-    workspaces: [{ id: "w1", name: "Acme" }],
+    workspaces: [{ id: "w1", name: "Acme", organizationId: "org_1" }],
+    organizations: [{ id: "org_1", name: "Stemlen", role: "ADMIN" }],
     projects: [{ id: "p1", name: "Website", workspaceId: "w1", key: "WEB" }],
     workItems: [{ id: "i1", title: "Fix login", workspaceId: "w1", projectId: "p1", key: "WEB-1", status: "TODO" }],
     notifications: [],
@@ -103,6 +104,11 @@ describe("graph and prompt", () => {
     expect(resolveSpecialist("stage the login change and plan a commit")).toBe("git");
   });
 
+  it("routes mail and security prompts to isolated specialists", () => {
+    expect(resolveSpecialist("Send a mail about WEB-12 to the client")).toBe("ops");
+    expect(resolveSpecialist("security review this repo for xss")).toBe("security");
+  });
+
   it("routes plan-a-feature prompts to the planner", () => {
     expect(resolveSpecialist("Plan a new feature for the current Fairlx workspace.")).toBe("planner");
   });
@@ -128,11 +134,20 @@ describe("graph and prompt", () => {
     expect(prompt).toContain("Release checklist");
     expect(prompt).not.toContain("(w1)");
     expect(prompt).toContain("workspaceId: w1");
+    expect(prompt).toContain("Organization: Stemlen");
+    expect(prompt).toMatch(/organization name is already in context/i);
     expect(prompt).not.toMatch(/Use mcp_list/);
     expect(prompt).toMatch(/change a member's role/i);
-    expect(prompt).toMatch(/adds them to the organization and the workspace/i);
+    expect(prompt).toMatch(/adds them to the organization and this workspace/i);
+    expect(prompt).toMatch(/do not wait for the organization owner/i);
+    expect(prompt).toMatch(/workItemId set to the item key/i);
+    expect(prompt).toMatch(/fairlx_work_item_bulk_update/);
+    expect(prompt).toMatch(/assignPercent/);
+    expect(prompt).toMatch(/do not say they are assigned/i);
     expect(prompt).toContain("Task: New high-priority bug on login");
     expect(prompt).toMatch(/One fairlx_work_item_list per project/);
+    expect(prompt).toMatch(/backlog=true/);
+    expect(prompt).toMatch(/Do not assume the active sprint/);
   });
 
   it("tells the agent to write a feature plan instead of a workspace census", () => {
@@ -143,8 +158,21 @@ describe("graph and prompt", () => {
       mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
     });
     expect(prompt).toMatch(/propose one concrete feature/i);
-    expect(prompt).toMatch(/Stay in the Planner role/);
+    expect(prompt).toMatch(/delegate_agent/);
+    expect(prompt).toMatch(/one subject/i);
+    expect(prompt).not.toMatch(/Stay in the Planner role/);
     expect(prompt).not.toMatch(/return findings only/);
+  });
+
+  it("locks specialist passes into their role", () => {
+    const prompt = buildSystemPrompt({
+      harness: harness(),
+      context: context(),
+      run: run("Create stories for analytics."),
+      mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
+      specialist: "planner",
+    });
+    expect(prompt).toMatch(/Stay in the Planner role/);
   });
 
   it("tells the agent the first sprint on a new project starts automatically", () => {
@@ -166,6 +194,7 @@ describe("graph and prompt", () => {
       mcp: { mcpServers: { fairlx: { url: "/api/mcp", transport: "http" } } },
     });
     expect(prompt).toMatch(/fairlx_project_team_create/);
+    expect(prompt).toMatch(/fairlx_project_member_add/);
     expect(prompt).toMatch(/fairlx_project_team_member_add/);
     expect(prompt).toMatch(/Do not send the user to Settings → Teams/);
   });
@@ -236,6 +265,17 @@ describe("session context", () => {
     expect(content).toContain("[Session mode: debug]");
     expect(content).toContain("work_item: Fix login");
     expect(displayUserContent(content)).toBe("Fix the login redirect");
+  });
+
+  it("embeds attached markdown in the model prompt and hides it in the UI", () => {
+    const content = composeUserPrompt(
+      "Plan every module",
+      [{ kind: "file", id: "f1", label: "spec.md", meta: "text", content: "# Companion\nChat tutor." }],
+      "agent",
+    );
+    expect(content).toContain("<<<FAIRLX_ATTACH");
+    expect(content).toContain("Chat tutor.");
+    expect(displayUserContent(content)).toBe("Plan every module");
   });
 
   it("exposes Personal Agent in the chat session modes", () => {

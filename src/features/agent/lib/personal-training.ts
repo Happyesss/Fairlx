@@ -417,6 +417,12 @@ export function formatTrainingSnapshot(
     workspaces.length
       ? `Workspaces: ${workspaces.map((item) => `${item.name}${item.role ? ` (${item.role})` : ""}`).join("; ")}`
       : "",
+    context.organizations?.length
+      ? `Organizations: ${context.organizations
+          .slice(0, 8)
+          .map((item) => `${item.name}${item.role ? ` (${item.role})` : ""}`)
+          .join("; ")}`
+      : "",
     projects.length
       ? `Projects: ${projects
           .map((item) => {

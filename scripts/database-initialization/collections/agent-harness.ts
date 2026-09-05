@@ -25,6 +25,7 @@ export async function setupAgentHarness(databases: Databases, databaseId: string
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'settingsJson', 4096, true);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'gitStagingJson', 16384, false);
     await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'chatMetaJson', 4096, false);
+    await ensureStringAttribute(databases, databaseId, COLLECTION_ID, 'pluginsJson', 16384, false);
 
     await sleep(2000);
 

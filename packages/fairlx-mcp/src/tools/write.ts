@@ -3,9 +3,10 @@ import type { McpToolResult } from "../protocol/types";
 import type { AuthContext } from "../auth/context";
 import { hasScope } from "../auth/scopes";
 import { PERMISSIONS, type McpRuntime } from "../runtime/types";
-import { hydrateMembers, toolResult, withId } from "../runtime/output";
+import { parseAssignPercent, pickAssignShareKeys } from "../runtime/assign-share";
+import { compactWorkItem, hydrateMembers, hydrateWorkItemAssignees, toolResult, withId } from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
-import { loadProject, loadWorkItem } from "../runtime/tenant";
+import { loadProject, loadWorkItem, workItemDocumentId } from "../runtime/tenant";
 import { withIdempotency } from "../runtime/idempotency";
 import {
   audit,
@@ -24,7 +25,13 @@ import {
   normalizeMemberRole,
   type NamedMember,
 } from "./member-match";
-import { projectTeamCreate, projectTeamMemberAdd, projectTeamUpdate } from "./write-team";
+import {
+  projectMemberAdd,
+  projectTeamCreate,
+  projectTeamMemberAdd,
+  projectTeamUpdate,
+} from "./write-team";
+import { organizationUpdate } from "./organization";
 
 export async function handleWriteTool(
   name: string,
@@ -88,8 +95,12 @@ export async function handleWriteTool(
       return projectTeamCreate(args, runtime, auth);
     case "fairlx_project_team_update":
       return projectTeamUpdate(args, runtime, auth);
+    case "fairlx_project_member_add":
+      return projectMemberAdd(args, runtime, auth);
     case "fairlx_project_team_member_add":
       return projectTeamMemberAdd(args, runtime, auth);
+    case "fairlx_organization_update":
+      return organizationUpdate(args, runtime, auth);
     default:
       throw invalidParams(`Unknown write tool: ${name}`);
   }
@@ -173,21 +184,28 @@ async function workItemCreate(
     "tasks:write",
   ]);
   const project = await loadProject(runtime, auth, projectId);
+  const workspaceId = String(project.workspaceId ?? "");
   const run = async () => {
     const key = await runtime.generateWorkItemKey(projectId);
+    const assigneeInput = assigneeInputFromArgs(args);
+    const assigneeIds =
+      assigneeInput === undefined
+        ? []
+        : await resolveAssigneeIds(runtime, auth, { workspaceId, projectId }, assigneeInput);
     const item = await runtime.store.create<Record<string, unknown>>(runtime.collections.workItems, {
       title,
       name: title,
       key,
-      workspaceId: String(project.workspaceId),
+      workspaceId,
       projectId,
       type: optionalString(args, "type") ?? "TASK",
       status: "TODO",
       priority: optionalString(args, "priority") ?? "MEDIUM",
       description: optionalString(args, "description") ?? "",
       sprintId: optionalString(args, "sprintId") ?? null,
-      assigneeIds: Array.isArray(args.assigneeIds) ? args.assigneeIds : [],
+      assigneeIds,
       storyPoints: typeof args.storyPoints === "number" ? args.storyPoints : undefined,
+      dueDate: optionalString(args, "dueDate") ?? undefined,
       labels: Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [],
       reporterId: auth.actorUserId,
       flagged: false,
@@ -202,11 +220,106 @@ async function workItemCreate(
       resourceName: title,
     });
     void access;
-    return toolResult({ workItem: withId(item) });
+    const names = (await hydrateWorkItemAssignees(runtime, [item]))[0] ?? [];
+    return toolResult({
+      workItem: compactWorkItem(item, names),
+      assigned: names.length > 0,
+    });
   };
   const idem = optionalString(args, "idempotencyKey");
   if (idem) return withIdempotency(runtime, idem, "fairlx_work_item_create", run);
   return run();
+}
+
+async function namedWorkspaceAssignees(
+  runtime: McpRuntime,
+  workspaceId: string
+): Promise<Array<NamedMember & { membershipId: string }>> {
+  const docs = await listAllDocuments(runtime, runtime.collections.members, [
+    { type: "equal", field: "workspaceId", value: workspaceId },
+  ]);
+  const hydrated = await hydrateMembers(runtime, docs);
+  return docs.map((doc, index) => ({
+    id: String(doc.userId ?? ""),
+    membershipId: String(doc.$id ?? doc.id ?? ""),
+    name: hydrated[index]?.name ?? "",
+    email: hydrated[index]?.email ?? "",
+    role: hydrated[index]?.role ?? String(doc.role ?? "MEMBER"),
+    status: hydrated[index]?.status ?? String(doc.status ?? "ACTIVE"),
+  }));
+}
+
+function assigneeInputFromArgs(args: Record<string, unknown>): unknown {
+  if (args.assigneeIds !== undefined) return args.assigneeIds;
+  if (args.assigneeId !== undefined) return args.assigneeId;
+  if (args.assignee !== undefined) return args.assignee;
+  return undefined;
+}
+
+function coerceAssigneeList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) return [raw.trim()];
+  throw invalidParams("assigneeIds must be an array of user ids, names, or emails");
+}
+
+async function resolveAssigneeIds(
+  runtime: McpRuntime,
+  auth: AuthContext,
+  item: Record<string, unknown>,
+  raw: unknown
+): Promise<string[]> {
+  const entries = coerceAssigneeList(raw);
+  const workspaceId = String(item.workspaceId ?? auth.workspaceId ?? "");
+  const projectId = String(item.projectId ?? auth.projectId ?? "");
+  const named = workspaceId ? await namedWorkspaceAssignees(runtime, workspaceId) : [];
+  const resolved: string[] = [];
+
+  for (const entry of entries) {
+    if (typeof entry !== "string" || !entry.trim()) continue;
+    const value = entry.trim();
+    if (workspaceId && value === workspaceId) {
+      throw invalidParams(
+        "assigneeIds must be a person (name, email, or user id), not the workspace id.",
+      );
+    }
+    if (projectId && value === projectId) {
+      throw invalidParams("assigneeIds must be a person (name, email, or user id), not the project id.");
+    }
+    const byMembership = named.find((member) => member.membershipId === value);
+    if (byMembership?.membershipId) {
+      resolved.push(byMembership.membershipId);
+      continue;
+    }
+    const byUserId = named.find((member) => member.id === value);
+    if (byUserId?.membershipId) {
+      resolved.push(byUserId.membershipId);
+      continue;
+    }
+    const matched = matchWorkspaceMember(value, named);
+    if (matched.kind === "one") {
+      const person = named.find(
+        (member) => member.id === matched.member.id && member.email === matched.member.email
+      );
+      if (!person?.membershipId) {
+        throw invalidParams(
+          `Matched ${matched.member.name || matched.member.email} but they have no workspace membership id.`,
+        );
+      }
+      resolved.push(person.membershipId);
+      continue;
+    }
+    if (matched.kind === "many") {
+      throw invalidParams(
+        `Several people match "${value}". Say which one: ${matched.members
+          .map((member) => member.name || member.email)
+          .join(", ")}`,
+      );
+    }
+    throw invalidParams(
+      `No workspace member matches "${value}". They must be in this workspace first. Pass their name or email, not a project or workspace id.`,
+    );
+  }
+  return [...new Set(resolved)];
 }
 
 async function workItemUpdate(
@@ -216,6 +329,7 @@ async function workItemUpdate(
 ): Promise<McpToolResult> {
   const workItemId = requireString(args, "workItemId");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   const projectId = String(item.projectId);
   const access = await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, [
     "tasks:write",
@@ -228,8 +342,12 @@ async function workItemUpdate(
   if (args.priority !== undefined) patch.priority = requireString(args, "priority");
   if (args.description !== undefined) patch.description = String(args.description);
   if (args.sprintId !== undefined) patch.sprintId = args.sprintId;
-  if (args.assigneeIds !== undefined) patch.assigneeIds = args.assigneeIds;
+  const assigneeInput = assigneeInputFromArgs(args);
+  if (assigneeInput !== undefined) {
+    patch.assigneeIds = await resolveAssigneeIds(runtime, auth, item, assigneeInput);
+  }
   if (args.storyPoints !== undefined) patch.storyPoints = args.storyPoints;
+  if (args.dueDate !== undefined) patch.dueDate = args.dueDate ? String(args.dueDate) : null;
   if (args.labels !== undefined) {
     patch.labels = Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [];
   }
@@ -252,10 +370,14 @@ async function workItemUpdate(
   }
   const updated = await runtime.store.update<Record<string, unknown>>(
     runtime.collections.workItems,
-    workItemId,
+    documentId,
     patch
   );
-  return toolResult({ workItem: withId(updated) });
+  const names = (await hydrateWorkItemAssignees(runtime, [updated]))[0] ?? [];
+  return toolResult({
+    workItem: compactWorkItem(updated, names),
+    assigned: assigneeInput !== undefined ? names.length > 0 : undefined,
+  });
 }
 
 async function workItemBulkUpdate(
@@ -263,11 +385,63 @@ async function workItemBulkUpdate(
   runtime: McpRuntime,
   auth: AuthContext
 ): Promise<McpToolResult> {
-  if (!Array.isArray(args.workItemIds) || args.workItemIds.length === 0) {
+  const percent = parseAssignPercent(args.assignPercent ?? args.percent);
+  if (percent !== undefined && (percent < 1 || percent > 100)) {
+    throw invalidParams("assignPercent must be between 1 and 100");
+  }
+  let ids = Array.isArray(args.workItemIds)
+    ? args.workItemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    : [];
+  let share:
+    | {
+        total: number;
+        percent: number;
+        target: number;
+        already: string[];
+        pick: string[];
+      }
+    | undefined;
+  if (ids.length === 0 && percent !== undefined) {
+    const projectId = optionalString(args, "projectId") || auth.projectId;
+    if (!projectId) {
+      throw invalidParams("projectId is required when using assignPercent without workItemIds");
+    }
+    await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, ["tasks:write"]);
+    const assigneeInput = assigneeInputFromArgs(args);
+    if (assigneeInput === undefined) {
+      throw invalidParams("assigneeIds is required when using assignPercent");
+    }
+    const person = String(coerceAssigneeList(assigneeInput)[0] ?? "").trim();
+    const docs = await listAllDocuments(runtime, runtime.collections.workItems, [
+      { type: "equal", field: "projectId", value: projectId },
+    ]);
+    const namesByRow = await hydrateWorkItemAssignees(runtime, docs);
+    const listed = docs.map((doc, index) => {
+      const names = namesByRow[index] ?? [];
+      const compact = compactWorkItem(doc, names);
+      return {
+        key: compact.key,
+        unassigned: compact.unassigned,
+        assignees: names,
+      };
+    });
+    share = pickAssignShareKeys(listed, person, percent);
+    ids = share.pick;
+    if (ids.length === 0) {
+      return toolResult({
+        count: 0,
+        assigned: share.already.length >= share.target,
+        target: share.target,
+        alreadyAssigned: share.already,
+        assignedKeys: [],
+        workItems: [],
+      });
+    }
+  } else if (ids.length === 0) {
     throw invalidParams("workItemIds is required");
   }
   const updated: unknown[] = [];
-  for (const id of args.workItemIds) {
+  for (const id of ids) {
     if (typeof id !== "string") continue;
     const item = await loadWorkItem(runtime, auth, id);
     await requireProjectAccess(runtime, auth, String(item.projectId), PERMISSIONS.EDIT_TASKS, [
@@ -276,12 +450,34 @@ async function workItemBulkUpdate(
     const patch: Record<string, unknown> = {};
     if (args.status !== undefined) patch.status = args.status;
     if (args.sprintId !== undefined) patch.sprintId = args.sprintId;
-    if (args.assigneeIds !== undefined) patch.assigneeIds = args.assigneeIds;
+    const assigneeInput = assigneeInputFromArgs(args);
+    if (assigneeInput !== undefined) {
+      patch.assigneeIds = await resolveAssigneeIds(runtime, auth, item, assigneeInput);
+    }
     if (args.priority !== undefined) patch.priority = args.priority;
-    const doc = await runtime.store.update(runtime.collections.workItems, id, patch);
-    updated.push(withId(doc as Record<string, unknown>));
+    const doc = await runtime.store.update(
+      runtime.collections.workItems,
+      workItemDocumentId(item),
+      patch
+    );
+    const names = (await hydrateWorkItemAssignees(runtime, [doc as Record<string, unknown>]))[0] ?? [];
+    updated.push(compactWorkItem(doc as Record<string, unknown>, names));
   }
-  return toolResult({ updated, count: updated.length });
+  return toolResult({
+    workItems: updated,
+    count: updated.length,
+    assigned: updated.every((item) => (item as { unassigned?: boolean }).unassigned !== true),
+    assignedKeys: updated
+      .map((item) => String((item as { key?: unknown }).key ?? ""))
+      .filter(Boolean),
+    ...(share
+      ? {
+          target: share.target,
+          alreadyAssigned: share.already,
+          total: share.total,
+        }
+      : {}),
+  });
 }
 
 async function workItemSplit(
@@ -294,6 +490,7 @@ async function workItemSplit(
     throw invalidParams("titles is required");
   }
   const source = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(source);
   const projectId = String(source.projectId);
   await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.CREATE_TASKS, ["tasks:write"]);
   const run = async () => {
@@ -323,21 +520,21 @@ async function workItemSplit(
         workspaceId: source.workspaceId,
         projectId,
         sourceItemId: child.$id,
-        targetItemId: workItemId,
+        targetItemId: documentId,
         linkType: "SPLIT_FROM",
         createdBy: auth.actorUserId,
       });
       await runtime.store.create(runtime.collections.workItemLinks, {
         workspaceId: source.workspaceId,
         projectId,
-        sourceItemId: workItemId,
+        sourceItemId: documentId,
         targetItemId: child.$id,
         linkType: "SPLIT_TO",
         createdBy: auth.actorUserId,
       });
       created.push(withId(child));
     }
-    return toolResult({ sourceId: workItemId, created });
+    return toolResult({ sourceId: documentId, created });
   };
   const idem = optionalString(args, "idempotencyKey");
   if (idem) return withIdempotency(runtime, idem, "fairlx_work_item_split", run);
@@ -475,6 +672,8 @@ async function linkCreate(
   const linkType = requireString(args, "linkType");
   const source = await loadWorkItem(runtime, auth, sourceItemId);
   const target = await loadWorkItem(runtime, auth, targetItemId);
+  const sourceId = workItemDocumentId(source);
+  const targetId = workItemDocumentId(target);
   if (String(source.projectId) !== String(target.projectId)) {
     throw invalidParams("Links must be within the same project");
   }
@@ -482,7 +681,7 @@ async function linkCreate(
   await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, ["tasks:write"]);
   if (linkType === "BLOCKS") {
     const existing = await loadBlocksLinks(runtime, projectId);
-    if (wouldCreateCycle(existing, sourceItemId, targetItemId)) {
+    if (wouldCreateCycle(existing, sourceId, targetId)) {
       throw invalidParams("Link would create a cycle");
     }
   }
@@ -492,8 +691,8 @@ async function linkCreate(
       {
         workspaceId: source.workspaceId,
         projectId,
-        sourceItemId,
-        targetItemId,
+        sourceItemId: sourceId,
+        targetItemId: targetId,
         linkType,
         description: optionalString(args, "description"),
         createdBy: auth.actorUserId,
@@ -504,8 +703,8 @@ async function linkCreate(
       inverse = await runtime.store.create(runtime.collections.workItemLinks, {
         workspaceId: source.workspaceId,
         projectId,
-        sourceItemId: targetItemId,
-        targetItemId: sourceItemId,
+        sourceItemId: targetId,
+        targetItemId: sourceId,
         linkType: LINK_INVERSE[linkType],
         createdBy: auth.actorUserId,
       });
@@ -525,6 +724,7 @@ async function commentAdd(
   const workItemId = requireString(args, "workItemId");
   const content = requireString(args, "content");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   await requireProjectAccess(
     runtime,
     auth,
@@ -534,7 +734,7 @@ async function commentAdd(
   );
   const run = async () => {
     const comment = await runtime.store.create<Record<string, unknown>>(runtime.collections.comments, {
-      taskId: workItemId,
+      taskId: documentId,
       projectId: item.projectId,
       workspaceId: item.workspaceId,
       authorId: auth.actorUserId,
@@ -588,12 +788,13 @@ async function timeLogAdd(
   const workItemId = requireString(args, "workItemId");
   if (typeof args.loggedHours !== "number") throw invalidParams("loggedHours is required");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   await requireProjectAccess(runtime, auth, String(item.projectId), PERMISSIONS.EDIT_TASKS, [
     "time:write",
   ]);
   const run = async () => {
     const log = await runtime.store.create<Record<string, unknown>>(runtime.collections.timeLogs, {
-      taskId: workItemId,
+      taskId: documentId,
       projectId: item.projectId,
       workspaceId: item.workspaceId,
       userId: auth.actorUserId,
@@ -689,6 +890,7 @@ async function customFieldSet(
   const workItemId = requireString(args, "workItemId");
   const fieldId = requireString(args, "fieldId");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   await requireProjectAccess(runtime, auth, String(item.projectId), PERMISSIONS.EDIT_TASKS, [
     "tasks:write",
   ]);
@@ -698,7 +900,7 @@ async function customFieldSet(
   else fields.push({ fieldId, value: args.value });
   const updated = await runtime.store.update<Record<string, unknown>>(
     runtime.collections.workItems,
-    workItemId,
+    documentId,
     { customFields: JSON.stringify(fields) }
   );
   return toolResult({ workItem: withId(updated), customFields: fields });
@@ -777,6 +979,7 @@ async function subtaskCreate(
   const workItemId = requireString(args, "workItemId");
   const title = requireString(args, "title");
   const item = await loadWorkItem(runtime, auth, workItemId);
+  const documentId = workItemDocumentId(item);
   await requireProjectAccess(
     runtime,
     auth,
@@ -786,7 +989,7 @@ async function subtaskCreate(
   );
   const run = async () => {
     const subtask = await runtime.store.create<Record<string, unknown>>(runtime.collections.subtasks, {
-      parentTaskId: workItemId,
+      parentTaskId: documentId,
       projectId: item.projectId,
       workspaceId: item.workspaceId,
       title,
@@ -1184,6 +1387,8 @@ async function workspaceMemberAdd(
   let memberName = "";
   let memberEmail = "";
   let invitedToOrganization = false;
+  let emailSent: boolean | undefined;
+  let emailError: string | undefined;
 
   if (matched.kind === "many") {
     return toolResult(
@@ -1210,11 +1415,14 @@ async function workspaceMemberAdd(
         organizationId,
         email: inviteEmail,
         name: displayNameFromInvite(args, inviteEmail),
+        workspaceId,
       });
       userId = invited.userId;
       memberName = invited.name;
       memberEmail = invited.email;
       invitedToOrganization = true;
+      emailSent = invited.emailSent;
+      emailError = invited.emailError;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to invite this person to the organization.";
       return toolResult(
@@ -1233,7 +1441,7 @@ async function workspaceMemberAdd(
     return toolResult(
       {
         error: inviteEmail
-          ? `No organization member matches "${query}". Only the organization owner can invite a new person by email.`
+          ? `No organization member matches "${query}". A workspace admin can invite this email to the organization and this workspace with fairlx_workspace_member_add — do not wait for the organization owner.`
           : `No organization member matches "${query}". Provide their email to invite them to the organization and this workspace.`,
         members: named.map(({ name, email, role: memberRole }) => ({
           name,
@@ -1287,7 +1495,19 @@ async function workspaceMemberAdd(
   return toolResult({
     member: { name: memberName, email: memberEmail, role, status: "ACTIVE" },
     added: true,
+    addedToOrganization: invitedToOrganization,
+    addedToWorkspace: true,
     invitedToOrganization,
+    ...(invitedToOrganization
+      ? { emailSent: Boolean(emailSent), ...(emailError ? { emailError } : {}) }
+      : {}),
+    message: invitedToOrganization
+      ? emailSent === false
+        ? `Added to the organization and this workspace, but the welcome email did not send${
+            emailError ? `: ${emailError}` : ""
+          }. Tell the user to resend it from Organization → Members, or check Appwrite Messaging SMTP.`
+        : "Added to the organization and this workspace. A welcome email was sent. Organization and workspace are different; both memberships are now in place. Do not wait for the organization owner. Next add them to the project team, then assign the work item."
+      : "Added to this workspace from the organization. Next add them to the project team if asked, then assign work.",
   });
 }
 

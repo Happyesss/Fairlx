@@ -14,7 +14,14 @@ describe("formatAgentTurnError", () => {
   it("maps TimeoutError to a timeout message", () => {
     const error = new Error("The operation was aborted due to timeout");
     error.name = "TimeoutError";
-    expect(formatAgentTurnError(error)).toContain("timed out after 60s");
+    expect(formatAgentTurnError(error)).toMatch(/timed out after \d+s/);
+  });
+
+  it("uses an 8-minute default so paid long-context calls are not killed at 60s", () => {
+    const error = Object.assign(new Error("aborted"), { name: "AbortError" });
+    expect(formatAgentTurnError(error, 480_000)).toBe(
+      "The model request timed out after 480s. Try again.",
+    );
   });
 
   it("passes through other errors", () => {

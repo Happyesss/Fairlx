@@ -86,6 +86,8 @@ export type AgentModel = {
 export type AgentAiConfigPublic = {
   mode: AgentAiMode;
   selectedModelId?: string;
+  resolvedModelId?: string;
+  resolvedModelName?: string;
   providers: AgentProviderPublic[];
   models: AgentModel[];
 };
@@ -110,7 +112,8 @@ export type AgentRunStatus =
   | "completed"
   | "failed"
   | "stopped"
-  | "awaiting_confirmation";
+  | "awaiting_confirmation"
+  | "awaiting_plugin";
 export type AgentRunMode = "agent" | "manual";
 export type AgentSessionMode = "agent" | "personal" | "plan" | "debug" | "multitask" | "ask";
 export type AgentChatRole = "user" | "assistant" | "tool";
@@ -137,7 +140,73 @@ export type AgentSpecialistId =
   | "researcher"
   | "builder"
   | "git"
-  | "reviewer";
+  | "reviewer"
+  | "ops"
+  | "security"
+  | "workflow";
+
+export type AgentCapability =
+  | "email.send"
+  | "code.read"
+  | "code.write"
+  | "security.review"
+  | "members.invite"
+  | "chat.notify";
+
+export type AgentPluginAuthKind = "platform" | "oauth" | "token" | "mcp";
+
+export type AgentPluginSecrets = {
+  accessTokenEncrypted?: string;
+  refreshTokenEncrypted?: string;
+  apiKeyEncrypted?: string;
+  clientSecretEncrypted?: string;
+  from?: string;
+  mcpUrl?: string;
+  mcpTool?: string;
+  mcpHeadersEncrypted?: string;
+  extra?: Record<string, string>;
+};
+
+export type AgentPluginConnection = {
+  id: string;
+  catalogId: string;
+  displayName: string;
+  capabilities: AgentCapability[];
+  status: "connected" | "disconnected";
+  authKind: AgentPluginAuthKind;
+  secrets?: AgentPluginSecrets;
+  createdAt: string;
+};
+
+export type AgentPluginPublic = {
+  id: string;
+  catalogId: string;
+  displayName: string;
+  capabilities: AgentCapability[];
+  status: "connected" | "disconnected";
+  authKind: AgentPluginAuthKind;
+  hasSecret: boolean;
+  from?: string;
+  mcpUrl?: string;
+  createdAt: string;
+};
+
+export type AgentJobKind = "security_review" | "github_pr";
+export type AgentJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type AgentJob = {
+  id: string;
+  userId: string;
+  runId?: string;
+  kind: AgentJobKind;
+  status: AgentJobStatus;
+  progress: { step: string; percent: number };
+  payload: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AgentGitStageStatus = "unstaged" | "staged" | "committed";
 
@@ -164,7 +233,7 @@ export type AgentChatMeta = {
 
 export type AgentContextGraphNode = {
   id: string;
-  kind: "workspace" | "project" | "work_item" | "repo" | "mcp" | "specialist";
+  kind: "organization" | "workspace" | "project" | "work_item" | "repo" | "mcp" | "specialist";
   label: string;
   parentId?: string;
   meta?: string;
@@ -228,7 +297,23 @@ export type AgentToolEventType =
   | "run_automation"
   | "personal_read"
   | "save_personal_agent"
+  | "mail_send"
+  | "github_read_file"
+  | "github_list_files"
+  | "github_write_file"
+  | "github_open_pr"
+  | "security_review"
+  | "request_capability"
+  | "persist_memory"
+  | "agent_job_status"
+  | "plugin_required"
+  | "plugin_connected"
+  | "job_progress"
   | "thought"
+  | "subagent_started"
+  | "subagent_progress"
+  | "subagent_done"
+  | "context_meter"
   | "confirmation"
   | "confirmation_resolved"
   | "error";
@@ -296,12 +381,16 @@ export type AgentWorkPattern = {
   createdAt: string;
 };
 
+export type AgentPermissionType = "staged" | "all_access";
+export type AgentWriteRisk = "read" | "standard" | "privileged";
+
 export type AgentHarnessSettings = {
   mode: AgentRunMode;
   enabledTools: string[];
   defaultWorkspaceId?: string;
   defaultProjectId?: string;
   sessionMode?: AgentSessionMode;
+  permissionType?: AgentPermissionType;
 };
 
 export type AgentContextChipKind =
@@ -321,6 +410,8 @@ export type AgentContextChip = {
   id: string;
   label: string;
   meta?: string;
+  /** Text body for attached markdown/code. Images omit this. */
+  content?: string;
 };
 
 export type AgentHarness = {
@@ -333,6 +424,7 @@ export type AgentHarness = {
   settings: AgentHarnessSettings;
   gitStaging: AgentGitStaging;
   chatMeta: AgentChatMeta;
+  plugins: AgentPluginConnection[];
   updatedAt: string;
 };
 
@@ -342,6 +434,14 @@ export type AgentContextWorkspace = {
   imageUrl?: string;
   inviteCode?: string;
   role?: string;
+  organizationId?: string;
+};
+
+export type AgentContextOrganization = {
+  id: string;
+  name: string;
+  role?: string;
+  status?: string;
 };
 
 export type AgentContextProject = {
@@ -420,6 +520,7 @@ export type AgentContext = {
   githubRepos: AgentContextRepo[];
   integrations: AgentContextIntegration[];
   docs: AgentContextDoc[];
+  organizations?: AgentContextOrganization[];
 };
 
 export type PersonalPersonaRole = "tech_lead" | "frontend" | "qa" | "pm";

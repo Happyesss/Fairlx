@@ -14,7 +14,7 @@ const idempotencyKey = { type: "string", description: "Client-supplied idempoten
 export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_workspace_list",
-    description: "List workspaces the authenticated actor can access",
+    description: "List workspaces the authenticated actor can access, including each workspace's organization name",
     inputSchema: { type: "object", properties: { limit: { type: "number" }, cursorAfter: { type: "string" } } },
     riskTier: 1,
     rateClass: "read",
@@ -53,21 +53,50 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
     permission: PERMISSIONS.VIEW_MEMBERS,
   },
   {
+    name: "fairlx_project_member_add",
+    description:
+      "Add a workspace member to this project so they appear on Teams & Members. Use this when asked to add someone to the project from the workspace. Team is optional. They must already be in the workspace. Wait for the user to Accept. Do not send them to Settings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: id,
+        name: { type: "string", description: "Person's display name" },
+        email: { type: "string", description: "Email if the name is ambiguous" },
+        teamId: id,
+        teamName: { type: "string", description: "Optional team name if they should also join a team" },
+        teamRole: { type: "string", description: "Optional. Use Lead for team lead; otherwise member." },
+      },
+      required: ["projectId"],
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
+    permission: PERMISSIONS.MANAGE_TEAMS,
+  },
+  {
     name: "fairlx_work_item_list",
     description:
-      "List work items in a project. Unassigned means no current project member (same as the board) — pass unassigned=true; do not fan out by type or call database_query. One call auto-completes small projects. Paginate only when hasMore is true, and pass nextCursor unchanged as cursorAfter. Never pass a work-item key (WEB-12) as cursorAfter.",
+      "List work items in a project. location is backlog (no sprint) or sprint — that is the Backlog board, not Unassigned. Pass backlog=true for the project Backlog; pass sprintId for one sprint; omit both for the whole project. Unassigned means no person (unassigned=true). Never use fairlx_personal_backlog_list for the project Backlog. One call auto-completes small projects. Paginate only when hasMore is true.",
     inputSchema: {
       type: "object",
       properties: {
         projectId: id,
         sprintId: id,
+        backlog: {
+          type: "boolean",
+          description:
+            "Only items with no sprint — the project Backlog board. Not Unassigned and not the personal backlog tool.",
+        },
         status: { type: "string" },
         type: { type: "string" },
         unassigned: {
           type: "boolean",
           description: "Only items with no current project member, matching the Kanban Unassigned label",
         },
-        assigneeId: id,
+        assigneeId: {
+          type: "string",
+          description: "Filter by assignee name, email, or id. Do not use this to assign work.",
+        },
         limit: { type: "number" },
         cursorAfter: { type: "string" },
       },
@@ -80,7 +109,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_get",
-    description: "Get a work item by id",
+    description: "Get a work item by document id or key (SCHO-1). Never pass a project or workspace id.",
     inputSchema: { type: "object", properties: { workItemId: id }, required: ["workItemId"] },
     riskTier: 1,
     rateClass: "read",
@@ -244,7 +273,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_create",
-    description: "Create a work item. type defaults to TASK, priority to MEDIUM, status to TODO.",
+    description:
+      "Create a work item in this project. type defaults to TASK, priority to MEDIUM, status to TODO. Omit sprintId to put it on the project Backlog. Pass sprintId only when the user named a sprint — never assume the active sprint. Pass assigneeIds as the person's name or email so they appear on the Kanban/backlog — never a project or workspace id. Set storyPoints and dueDate (ISO) when planning.",
     inputSchema: {
       type: "object",
       properties: {
@@ -254,8 +284,13 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         priority: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "URGENT"] },
         description: { type: "string" },
         sprintId: id,
-        assigneeIds: { type: "array", items: { type: "string" } },
+        assigneeIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Names or emails of workspace members so the item is not Unassigned on the board.",
+        },
         storyPoints: { type: "number" },
+        dueDate: { type: "string", description: "ISO date or datetime for the work item deadline" },
         labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
         idempotencyKey,
       },
@@ -268,18 +303,27 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_update",
-    description: "Update a work item. Status changes are validated against the project workflow.",
+    description:
+      "Update a work item. workItemId may be the document id or the item key (SCHO-1). Never pass a project or workspace id. assigneeIds may be names or emails; they are stored as workspace membership ids so Kanban and backlog show the person, not Unassigned. Status changes are validated against the project workflow.",
     inputSchema: {
       type: "object",
       properties: {
-        workItemId: id,
+        workItemId: {
+          type: "string",
+          description: "Work item document id or key such as SCHO-1. Never the project or workspace id.",
+        },
         title: { type: "string" },
         status: { type: "string" },
         priority: { type: "string" },
         description: { type: "string" },
         sprintId: id,
-        assigneeIds: { type: "array", items: { type: "string" } },
+        assigneeIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Names or emails of workspace members. Never a workspace or project id.",
+        },
         storyPoints: { type: "number" },
+        dueDate: { type: "string", description: "ISO date or datetime for the work item deadline" },
         labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
       },
       required: ["workItemId"],
@@ -291,18 +335,32 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   },
   {
     name: "fairlx_work_item_bulk_update",
-    description: "Bulk-update work items (status, sprintId, assigneeIds, priority). Not safely retryable.",
+    description:
+      "Assign or update many work items in one call. For a share of the backlog (60%, half), pass assignPercent and assigneeIds (name or email) — do not pick workItemIds and do not list again. Otherwise pass workItemIds as keys (SCHO-1).",
     inputSchema: {
       type: "object",
       properties: {
-        workItemIds: { type: "array", items: { type: "string" } },
+        workItemIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Work item keys such as SCHO-1, or document ids. Omit when using assignPercent.",
+        },
+        projectId: id,
+        assignPercent: {
+          type: "number",
+          description:
+            "Target share of the project backlog for this person (60 means 13 of 22). Uses board Unassigned items first. Do not invent extra keys.",
+        },
         status: { type: "string" },
         sprintId: id,
-        assigneeIds: { type: "array", items: { type: "string" } },
+        assigneeIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Names or emails of workspace members so the item is not Unassigned on the board.",
+        },
         priority: { type: "string" },
         confirm,
       },
-      required: ["workItemIds"],
     },
     riskTier: 3,
     rateClass: "write",
@@ -689,7 +747,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_workspace_member_add",
     description:
-      "Add a person to this workspace by name or email. If they are already in the organization, add them from org. If they are not, the organization owner can invite them by email — that adds them to the organization and this workspace. Role defaults to MEMBER. Use ADMIN for a lead developer. Wait for the user to Accept. Do not send them to Settings.",
+      "Add a person to this workspace by name or email. Organization and workspace are different — pass workspaceId, never an organization id. If they are already in the organization, add them to this workspace. If they are not, a workspace admin invites them to the organization AND this workspace in one call. Do not wait for the organization owner. Role defaults to MEMBER. Use ADMIN for a lead developer. Then add them to the project team if asked. Wait for the user to Accept. Do not send them to Settings.",
     inputSchema: {
       type: "object",
       properties: {
@@ -722,18 +780,69 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_organization_members_list",
     description:
-      "List organization members for this workspace, including who is already on the workspace. Use before adding someone if you need to see who can be added.",
-    inputSchema: { type: "object", properties: { workspaceId: id }, required: ["workspaceId"] },
+      "List organization members for the organization that owns this workspace. Pass workspaceId or organizationId. Do not treat the workspace as the organization. Prefer fairlx_workspace_member_add with an email when inviting someone new.",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, organizationId: id },
+    },
     riskTier: 1,
     rateClass: "read",
     scopes: ["members:read"],
-    permission: PERMISSIONS.VIEW_MEMBERS,
+  },
+  {
+    name: "fairlx_organization_get",
+    description:
+      "Get the organization (company) that owns this workspace: name, member count, and the actor's org permissions. Organization and workspace are different. Anyone in the org or in an org workspace can read this. Answer “what is the organization name?” from this or from context — do not say it is not surfaced.",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, organizationId: id },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["project:read"],
+  },
+  {
+    name: "fairlx_organization_list",
+    description: "List organizations the authenticated user belongs to, with name and org role.",
+    inputSchema: { type: "object", properties: {} },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["project:read"],
+  },
+  {
+    name: "fairlx_organization_workspaces_list",
+    description:
+      "List workspaces in the organization. Members see workspaces they belong to. Org owners and workspace-assign can see all org workspaces.",
+    inputSchema: {
+      type: "object",
+      properties: { workspaceId: id, organizationId: id },
+    },
+    riskTier: 1,
+    rateClass: "read",
+    scopes: ["project:read"],
+  },
+  {
+    name: "fairlx_organization_update",
+    description:
+      "Rename the organization. Requires organization settings permission (org RBAC), not only workspace admin. Wait for the user to Accept.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "New organization name" },
+        workspaceId: id,
+        organizationId: id,
+      },
+      required: ["name"],
+    },
+    riskTier: 3,
+    rateClass: "write",
+    scopes: ["admin:manage"],
   },
 
   // ── Workspace Details ──
   {
     name: "fairlx_workspace_get",
-    description: "Get a workspace by ID",
+    description: "Get a workspace by ID, including the organization name when this workspace belongs to an organization",
     inputSchema: { type: "object", properties: { workspaceId: id }, required: ["workspaceId"] },
     riskTier: 1,
     rateClass: "read",
@@ -997,7 +1106,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_project_team_member_add",
     description:
-      "Add a workspace member to a project team by name or email. Use teamId from a create/list result, or projectId plus teamName. They must already be in the workspace. Wait for the user to Accept. Do not send them to Settings.",
+      "Add a workspace member to a project team by name or email, and also add them as a project member so they appear on Teams & Members. Use teamId from a create/list result, or projectId plus teamName. They must already be in the workspace. Wait for the user to Accept. Do not send them to Settings.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1006,7 +1115,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         teamName: { type: "string", description: "Team name if teamId is not known" },
         name: { type: "string", description: "Person's display name" },
         email: { type: "string", description: "Email if the name is ambiguous" },
-        teamRole: { type: "string", description: "Optional label such as Lead" },
+        teamRole: { type: "string", description: "Optional. Use Lead for team lead; otherwise member." },
       },
     },
     riskTier: 3,
@@ -1091,7 +1200,8 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   // ── Personal Backlog ──
   {
     name: "fairlx_personal_backlog_list",
-    description: "List items in the authenticated user's personal backlog",
+    description:
+      "List the authenticated user's personal notes backlog. This is NOT the project Backlog board. For project backlog work items use fairlx_work_item_list with backlog=true.",
     inputSchema: {
       type: "object",
       properties: { limit: { type: "number" }, cursorAfter: { type: "string" } },

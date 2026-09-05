@@ -27,6 +27,7 @@ import { useWorkspaceId } from "@/features/workspaces/hooks/use-workspace-id";
 import { useDeleteMember } from "@/features/members/api/use-delete-member";
 import { useUpdateMember } from "@/features/members/api/use-update-member";
 import { useAddWorkspaceMemberFromOrg } from "@/features/members/api/use-add-workspace-member-from-org";
+import { useAddToOrgAndWorkspace } from "@/features/members/api/use-add-to-org-and-workspace";
 import { MemberRole } from "@/features/members/types";
 import { useGetWorkspace } from "@/features/workspaces/api/use-get-workspace";
 import { useResetInviteCode } from "@/features/workspaces/api/use-reset-invite-code";
@@ -91,6 +92,7 @@ export const MembersList = () => {
   const { mutate: resetInviteCode, isPending: isResettingInviteCode } = useResetInviteCode();
   const { mutate: addSpaceMember, isPending: isAddingSpaceMember } = useAddSpaceMember();
   const { mutate: addFromOrg, isPending: isAddingFromOrg } = useAddWorkspaceMemberFromOrg();
+  const { mutate: addToOrgAndWorkspace, isPending: isAddingToOrgAndWorkspace } = useAddToOrgAndWorkspace();
 
   // Org members for explicit assignment
   const { data: orgMembersData } = useGetOrgMembers({
@@ -101,6 +103,10 @@ export const MembersList = () => {
   const [addFromOrgDialogOpen, setAddFromOrgDialogOpen] = useState(false);
   const [selectedOrgUserId, setSelectedOrgUserId] = useState<string>("");
   const [selectedNewMemberRole, setSelectedNewMemberRole] = useState<MemberRole>(MemberRole.MEMBER);
+  const [addOrgAndWorkspaceOpen, setAddOrgAndWorkspaceOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteWorkspaceRole, setInviteWorkspaceRole] = useState<MemberRole>(MemberRole.MEMBER);
 
   // Check org-level WORKSPACE_ASSIGN permission for Add from Org button
   const { hasPermission: hasOrgPermission } = useCurrentUserOrgPermissions({
@@ -176,6 +182,28 @@ export const MembersList = () => {
           setSelectedNewMemberRole(MemberRole.MEMBER);
         },
       }
+    );
+  };
+
+  const handleAddToOrgAndWorkspace = () => {
+    const email = inviteEmail.trim();
+    if (!email) return;
+
+    addToOrgAndWorkspace(
+      {
+        workspaceId,
+        email,
+        name: inviteName.trim() || undefined,
+        role: inviteWorkspaceRole,
+      },
+      {
+        onSuccess: () => {
+          setAddOrgAndWorkspaceOpen(false);
+          setInviteEmail("");
+          setInviteName("");
+          setInviteWorkspaceRole(MemberRole.MEMBER);
+        },
+      },
     );
   };
 
@@ -348,6 +376,69 @@ export const MembersList = () => {
         </Dialog>
       )}
 
+      {workspace?.organizationId && (
+        <Dialog open={addOrgAndWorkspaceOpen} onOpenChange={setAddOrgAndWorkspaceOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="size-5 text-primary" />
+                Add to organization and workspace
+              </DialogTitle>
+              <DialogDescription>
+                Invite by email into the organization, then add them to this workspace in one step. They do not need to already be in the organization.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Name</label>
+                <Input
+                  value={inviteName}
+                  onChange={(event) => setInviteName(event.target.value)}
+                  placeholder="Fogef"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Email</label>
+                <Input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  placeholder="name@company.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Workspace role</label>
+                <Select
+                  value={inviteWorkspaceRole}
+                  onValueChange={(value) => setInviteWorkspaceRole(value as MemberRole)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={MemberRole.ADMIN}>Admin</SelectItem>
+                    <SelectItem value={MemberRole.MEMBER}>Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAddOrgAndWorkspaceOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddToOrgAndWorkspace}
+                disabled={!inviteEmail.trim() || isAddingToOrgAndWorkspace}
+                className="gap-2"
+              >
+                {isAddingToOrgAndWorkspace && <Loader2 className="size-4 animate-spin" />}
+                Add to organization and workspace
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -359,29 +450,27 @@ export const MembersList = () => {
           </div>
         </div>
         {isCurrentUserAdmin && (
-          <div className="flex gap-2">
-            {/* ORG workspaces: Only show "Add from Org" if user has WORKSPACE_ASSIGN permission */}
-            {workspace?.organizationId && canAssignToWorkspace && (
-              <>
-                <Button
-                  size="xs"
-                  // Default variant is now primary (blue)
-                  className="gap-1.5"
-                  onClick={() => setAddFromOrgDialogOpen(true)}
-                >
-                  <Building2 className="size-4" />
-                  Add from Org
-                </Button>
-                <p className="text-xs text-muted-foreground self-center">
-                  Members are added by admins
-                </p>
-              </>
+          <div className="flex flex-wrap gap-2">
+            {workspace?.organizationId && (
+              <Button
+                size="xs"
+                className="gap-1.5"
+                onClick={() => setAddOrgAndWorkspaceOpen(true)}
+              >
+                <UserPlus className="size-4" />
+                Add to organization and workspace
+              </Button>
             )}
-            {/* ORG workspaces without WORKSPACE_ASSIGN permission: Just show info text */}
-            {workspace?.organizationId && !canAssignToWorkspace && (
-              <p className="text-xs text-muted-foreground self-center">
-                Members are added by admins with permission
-              </p>
+            {workspace?.organizationId && canAssignToWorkspace && (
+              <Button
+                size="xs"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setAddFromOrgDialogOpen(true)}
+              >
+                <Building2 className="size-4" />
+                Add from Org
+              </Button>
             )}
             {/* PERSONAL workspaces: Show invite dialog */}
             {!workspace?.organizationId && (

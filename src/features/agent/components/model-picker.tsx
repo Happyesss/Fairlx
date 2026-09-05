@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Zap, Sliders, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -13,21 +14,44 @@ import {
 
 import { useGetAgentAiConfig } from "../api/use-agent-ai-config";
 import { useSelectAgentModel } from "../api/use-select-agent-model";
-import { enabledModels, selectedModelLabel } from "../lib/client-defaults";
+import { enabledModels, resolvedModelDisplayName, selectedModelLabel } from "../lib/client-defaults";
 import { useAgentUi } from "./agent-ui-context";
 
 type ModelPickerProps = {
   variant: "chip" | "sidebar" | "subtle";
   className?: string;
+  runModelId?: string;
 };
 
-export function ModelPicker({ variant, className }: ModelPickerProps) {
+export function ModelPicker({ variant, className, runModelId }: ModelPickerProps) {
   const { openModels } = useAgentUi();
   const { data, isLoading } = useGetAgentAiConfig();
   const { mutate, isPending } = useSelectAgentModel();
-  const label = isLoading ? "…" : selectedModelLabel(data);
+  const [autoRevealed, setAutoRevealed] = useState(false);
   const models = enabledModels(data);
   const selectedId = data?.mode === "auto" ? "auto" : data?.selectedModelId;
+  const runModelName = runModelId
+    ? models.find((model) => model.id === runModelId)?.displayName || data?.resolvedModelName
+    : undefined;
+  const autoName = runModelName || resolvedModelDisplayName(data) || "Auto";
+
+  useEffect(() => {
+    if (data?.mode !== "auto") {
+      setAutoRevealed(true);
+      return;
+    }
+    setAutoRevealed(false);
+    const timer = window.setTimeout(() => setAutoRevealed(true), 1000);
+    return () => window.clearTimeout(timer);
+  }, [data?.mode, data?.resolvedModelId, runModelId]);
+
+  const label = isLoading
+    ? "…"
+    : data?.mode === "auto"
+      ? autoRevealed
+        ? autoName
+        : "Selecting…"
+      : selectedModelLabel(data);
 
   const trigger =
     variant === "subtle" ? (
@@ -86,7 +110,7 @@ export function ModelPicker({ variant, className }: ModelPickerProps) {
           onClick={() => mutate({ json: { mode: "auto" } })}
           className="flex items-center justify-between text-xs font-medium cursor-pointer"
         >
-          <span>Auto</span>
+          <span>Auto{data?.resolvedModelName ? ` · ${data.resolvedModelName}` : ""}</span>
           {selectedId === "auto" && <Check className="size-3.5 text-primary" />}
         </DropdownMenuItem>
         {models.map((model) => (

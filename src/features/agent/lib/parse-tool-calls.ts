@@ -20,6 +20,9 @@ const ALIASES: Record<string, string> = {
   list_work_items: "list_work_items",
   workitemlist: "list_work_items",
   work_item_list: "fairlx_work_item_list",
+  bulkupdateworkitems: "fairlx_work_item_bulk_update",
+  work_item_bulk_update: "fairlx_work_item_bulk_update",
+  bulk_update: "fairlx_work_item_bulk_update",
   listworkspacemembers: "fairlx_workspace_members_list",
   list_workspace_members: "fairlx_workspace_members_list",
   workspacemembers: "fairlx_workspace_members_list",
@@ -54,11 +57,27 @@ const ALIASES: Record<string, string> = {
   add_team_member: "fairlx_project_team_member_add",
   projectteammemberadd: "fairlx_project_team_member_add",
   project_team_member_add: "fairlx_project_team_member_add",
+  addtoproject: "fairlx_project_member_add",
+  add_to_project: "fairlx_project_member_add",
+  addfromworkspace: "fairlx_project_member_add",
+  add_from_workspace: "fairlx_project_member_add",
+  projectmemberadd: "fairlx_project_member_add",
+  project_member_add: "fairlx_project_member_add",
   removeteammember: "fairlx_project_team_member_remove",
   remove_team_member: "fairlx_project_team_member_remove",
   projectteammemberremove: "fairlx_project_team_member_remove",
   listorganizationmembers: "fairlx_organization_members_list",
   organization_members_list: "fairlx_organization_members_list",
+  getorganization: "fairlx_organization_get",
+  organization_get: "fairlx_organization_get",
+  org_get: "fairlx_organization_get",
+  listorganizations: "fairlx_organization_list",
+  organization_list: "fairlx_organization_list",
+  listorgworkspaces: "fairlx_organization_workspaces_list",
+  organization_workspaces_list: "fairlx_organization_workspaces_list",
+  updateorganization: "fairlx_organization_update",
+  organization_update: "fairlx_organization_update",
+  renameorganization: "fairlx_organization_update",
   getworkspaceinvite: "fairlx_workspace_invite_get",
   workspace_invite_get: "fairlx_workspace_invite_get",
   workspaceinvite: "fairlx_workspace_invite_get",
@@ -203,6 +222,21 @@ const INLINE_XML_RE =
   /(?:<)?(?:([\w-]+):)?([A-Za-z][\w]*)\s+(\{[\s\S]*?\})\s*<\/\s*(?:\1:)?\2\s*>/g;
 const TOOL_CALL_TAG_RE =
   /<tool_call>\s*(?:<name>|<tool>)([\s\S]*?)(?:<\/name>|<\/tool>)\s*(?:<arguments>|<args>)?([\s\S]*?)(?:<\/arguments>|<\/args>)?\s*<\/tool_call>/gi;
+const DSML_INVOKE_RE = /invoke\s+name="([^"]+)"\s*>([\s\S]*?)invoke/gi;
+const DSML_PARAM_RE = /parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[^>]*parameter/gi;
+
+function parseDsmlParameters(body: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+  for (const match of body.matchAll(DSML_PARAM_RE)) {
+    const key = (match[1] ?? "").trim();
+    const value = (match[2] ?? "").trim();
+    if (!key || !value) continue;
+    if (/^-?\d+(\.\d+)?$/.test(value)) args[key] = Number(value);
+    else if (value === "true" || value === "false") args[key] = value === "true";
+    else args[key] = value;
+  }
+  return args;
+}
 
 export function stripToolCallMarkup(content: string): string {
   if (!content) return "";
@@ -210,7 +244,10 @@ export function stripToolCallMarkup(content: string): string {
     .replace(XML_BLOCK_RE, "")
     .replace(INLINE_XML_RE, "")
     .replace(TOOL_CALL_TAG_RE, "")
+    .replace(DSML_INVOKE_RE, "")
     .replace(CLOSED_XML_RE, "")
+    .replace(/<[^>]*(?:DSML|invoke|parameter|tool_calls)[^>]*>/gi, "")
+    .replace(/[\uFF5C|]?DSML[\uFF5C|]?/g, "")
     .replace(/<\/?[A-Za-z][\w.:-]*\b[^>]*>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -242,6 +279,10 @@ export function extractToolCallsFromText(content: string, mcpToolNames: string[]
   }
   for (const match of content.matchAll(INLINE_XML_RE)) {
     push(`${match[1] ? `${match[1]}:` : ""}${match[2] ?? ""}`, match[3] ?? "{}");
+  }
+  for (const match of content.matchAll(DSML_INVOKE_RE)) {
+    const args = parseDsmlParameters(match[2] ?? "");
+    push(match[1] ?? "", JSON.stringify(args));
   }
 
   return calls;

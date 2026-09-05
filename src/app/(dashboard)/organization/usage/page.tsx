@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrent } from "@/features/auth/queries";
 import { OrganizationUsageDashboardClient } from "./usage-dashboard-client";
+import { requireOrganizationMembership } from "@/features/organizations/lib/require-org-account";
 
 /**
  * Organization-level Usage Dashboard
@@ -15,11 +16,7 @@ export default async function OrganizationUsagePage() {
         redirect("/sign-in");
     }
 
-    // Check if this is an ORG account
-    const prefs = user.prefs || {};
-    if (prefs.accountType !== "ORG") {
-        redirect("/");
-    }
+    await requireOrganizationMembership(user);
 
     return <OrganizationUsageDashboardClient />;
 }

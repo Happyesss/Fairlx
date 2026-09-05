@@ -2,8 +2,14 @@ import type { AgentChatMessage, AgentToolCall } from "../types";
 import { compactJsonString, truncateString, unwrapMcpToolContent } from "./truncate";
 
 const PREVIOUS_RESULT_MAX = 1500;
+const LIST_PREVIOUS_MAX = 8000;
 export const MAX_CONSECUTIVE_TOOL_FAILURES = 3;
-export const MAX_DUPLICATE_SKIPS = 2;
+/** Duplicate reads must not abort the run; the model still needs tools for the follow-up write. */
+export const MAX_DUPLICATE_SKIPS = Number.POSITIVE_INFINITY;
+
+export function shouldForceAnswer(failStreak: number): boolean {
+  return failStreak >= MAX_CONSECUTIVE_TOOL_FAILURES;
+}
 export const WORK_ITEM_LIST_TOOL = "fairlx_work_item_list";
 
 function sortKeys(value: unknown): unknown {
@@ -71,10 +77,7 @@ export function listSliceKey(tool: string, args: Record<string, unknown>): strin
     tool,
     projectId: String(args.projectId ?? ""),
     sprintId: String(args.sprintId ?? ""),
-    status: String(args.status ?? ""),
-    type: String(args.type ?? ""),
-    unassigned: args.unassigned === true || args.unassigned === "true" ? "1" : "",
-    assigneeId: String(args.assigneeId ?? ""),
+    backlog: args.backlog === true || args.backlog === "true",
   });
 }
 
@@ -123,13 +126,103 @@ export function hydrateListSliceCache(messages: AgentChatMessage[]): Map<string,
   return cache;
 }
 
-export function listSliceSkipMessage(kind: "loaded" | "no_more" | "bad_cursor", previous?: string): string {
+type ListedItem = {
+  key?: unknown;
+  unassigned?: unknown;
+  location?: unknown;
+  sprintId?: unknown;
+  assignees?: Array<string | { name?: string; email?: string }>;
+};
+
+function listedAssigneeLabels(item: ListedItem): string[] {
+  const raw = item.assignees;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    if (typeof entry === "string" && entry.trim()) return [entry.trim()];
+    if (entry && typeof entry === "object") {
+      return [entry.name, entry.email].filter((value): value is string => Boolean(value?.trim()));
+    }
+    return [];
+  });
+}
+
+function summarizeCachedAssignment(items: ListedItem[]) {
+  const unassignedKeys: string[] = [];
+  const byAssignee: Record<string, string[]> = {};
+  for (const item of items) {
+    const key = typeof item.key === "string" ? item.key.trim() : "";
+    if (!key) continue;
+    const names = listedAssigneeLabels(item).filter((value) => !value.includes("@"));
+    if (item.unassigned === true || names.length === 0) {
+      unassignedKeys.push(key);
+      continue;
+    }
+    for (const name of names) {
+      (byAssignee[name] ??= []).push(key);
+    }
+  }
+  return {
+    total: items.filter((item) => typeof item.key === "string" && item.key.trim()).length,
+    unassignedCount: unassignedKeys.length,
+    unassignedKeys,
+    byAssignee,
+  };
+}
+
+function parseListedPayload(previous: string): Record<string, unknown> {
+  const compact = compactPrevious(previous, LIST_PREVIOUS_MAX);
+  if (!compact || typeof compact !== "object" || Array.isArray(compact)) return { workItems: [] };
+  const record = compact as Record<string, unknown>;
+  if (record.previous && typeof record.previous === "object" && !Array.isArray(record.previous)) {
+    return record.previous as Record<string, unknown>;
+  }
+  return record;
+}
+
+export function projectCachedWorkItemList(previous: string, args?: Record<string, unknown>): unknown {
+  const payload = parseListedPayload(previous);
+  const items = Array.isArray(payload.workItems) ? (payload.workItems as ListedItem[]) : [];
+  const assignment =
+    payload.assignment && typeof payload.assignment === "object"
+      ? payload.assignment
+      : summarizeCachedAssignment(items);
+  let next = items;
+  const unassigned = args?.unassigned === true || args?.unassigned === "true";
+  const backlog = args?.backlog === true || args?.backlog === "true";
+  const assigneeId = typeof args?.assigneeId === "string" ? args.assigneeId.trim() : "";
+  if (unassigned) next = items.filter((item) => item.unassigned === true);
+  if (backlog) {
+    next = next.filter(
+      (item) => item.location === "backlog" || item.sprintId == null || item.sprintId === "",
+    );
+  }
+  if (assigneeId) {
+    const query = assigneeId.toLowerCase();
+    next = next.filter((item) =>
+      listedAssigneeLabels(item).some((value) => value.toLowerCase() === query || value.toLowerCase().includes(query)),
+    );
+  }
+  return {
+    filtered: unassigned || backlog || Boolean(assigneeId),
+    assignment,
+    returned: next.length,
+    unassignedCount: (assignment as { unassignedCount?: number }).unassignedCount,
+    workItems: next,
+  };
+}
+
+export function listSliceSkipMessage(
+  kind: "loaded" | "no_more" | "bad_cursor",
+  previous?: string,
+  args?: Record<string, unknown>,
+): string {
+  const projected = previous ? projectCachedWorkItemList(previous, args) : undefined;
   if (kind === "loaded") {
     return JSON.stringify({
       repeated: true,
       message:
-        "This work-item list was already loaded. Answer from the previous result. Do not list again.",
-      previous: previous ? compactPrevious(previous) : undefined,
+        "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows — never treat other keys as assigned. location.backlogKeys is the project Backlog (not Unassigned). To assign a share of the backlog, call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email).",
+      previous: projected,
     });
   }
   if (kind === "no_more") {
@@ -137,15 +230,16 @@ export function listSliceSkipMessage(kind: "loaded" | "no_more" | "bad_cursor", 
       repeated: true,
       hasMore: false,
       nextCursor: null,
-      message: "No further pages. hasMore was false. Answer from the items you already have.",
-      previous: previous ? compactPrevious(previous) : undefined,
+      message:
+        "No further pages. hasMore was false. If the task is to assign a share, call fairlx_work_item_bulk_update with assignPercent next. Do not list again.",
+      previous: projected,
     });
   }
   return JSON.stringify({
     repeated: true,
     message:
       "Invalid cursorAfter. Pass nextCursor from the previous list result unchanged, or stop paginating.",
-    previous: previous ? compactPrevious(previous) : undefined,
+    previous: projected,
   });
 }
 
@@ -159,7 +253,7 @@ export function resolveListSliceCall(
   const cursor = asCursor(args.cursorAfter);
   const prior = cache.get(key);
   if (!cursor) {
-    if (prior) return { action: "skip", content: listSliceSkipMessage("loaded", prior.content) };
+    if (prior) return { action: "skip", content: listSliceSkipMessage("loaded", prior.content, args) };
     return { action: "execute" };
   }
   if (!prior) return { action: "execute" };
@@ -186,8 +280,8 @@ export function coalescedListMessage(previous: string): string {
     coalesced: true,
     repeated: true,
     message:
-      "Overlapping work-item list filters were combined into one project list. Group by status and type yourself. Do not list again.",
-    previous: compactPrevious(previous),
+      "Overlapping work-item list filters were combined into one project list. assignment.byAssignee is who the board shows. To assign a share, call fairlx_work_item_bulk_update with assignPercent. Do not list again.",
+    previous: projectCachedWorkItemList(previous),
   });
 }
 
@@ -198,7 +292,12 @@ export function collapseWorkItemListFanOut(calls: AgentToolCall[]): {
   const coalescedIds = new Set<string>();
   const lists = calls
     .map((call, index) => ({ call, index, parts: unwrapListCall(call) }))
-    .filter((row) => row.parts.tool === WORK_ITEM_LIST_TOOL);
+    .filter(
+      (row) =>
+        row.parts.tool === WORK_ITEM_LIST_TOOL &&
+        row.parts.args.backlog !== true &&
+        row.parts.args.backlog !== "true",
+    );
   if (lists.length < 2) return { calls, coalescedIds };
 
   const byProject = new Map<string, typeof lists>();
@@ -212,26 +311,32 @@ export function collapseWorkItemListFanOut(calls: AgentToolCall[]): {
   const next = [...calls];
   for (const group of byProject.values()) {
     if (group.length < 2) continue;
-    const filtersDiffer = group.some((row, index) => {
+    const allUnassigned = group.every(
+      (row) => row.parts.args.unassigned === true || row.parts.args.unassigned === "true",
+    );
+    const assigneeIds = new Set(group.map((row) => String(row.parts.args.assigneeId ?? "")));
+    const sprints = new Set(group.map((row) => String(row.parts.args.sprintId ?? "")));
+    const sharedSprint = sprints.size === 1 ? [...sprints][0] : "";
+    const mixedFilters = group.some((row, index) => {
       if (index === 0) return false;
       const a = group[0]!.parts.args;
       const b = row.parts.args;
-      return a.status !== b.status || a.type !== b.type || a.sprintId !== b.sprintId;
+      return (
+        a.status !== b.status ||
+        a.type !== b.type ||
+        a.sprintId !== b.sprintId ||
+        Boolean(a.unassigned) !== Boolean(b.unassigned) ||
+        String(a.assigneeId ?? "") !== String(b.assigneeId ?? "")
+      );
     });
-    if (!filtersDiffer) continue;
-    const unassignedFlags = group.map((row) => row.parts.args.unassigned === true || row.parts.args.unassigned === "true");
-    if (unassignedFlags.some(Boolean) && !unassignedFlags.every(Boolean)) continue;
-    const assigneeIds = new Set(group.map((row) => String(row.parts.args.assigneeId ?? "")));
-    if (assigneeIds.size > 1) continue;
-    const sprints = new Set(group.map((row) => String(row.parts.args.sprintId ?? "")));
-    const sharedSprint = sprints.size === 1 ? [...sprints][0] : "";
     const canonical: Record<string, unknown> = {
       projectId: String(group[0]!.parts.args.projectId ?? ""),
     };
     if (sharedSprint) canonical.sprintId = sharedSprint;
-    if (unassignedFlags.every(Boolean) && unassignedFlags.length) canonical.unassigned = true;
-    const sharedAssignee = [...assigneeIds][0];
-    if (sharedAssignee) canonical.assigneeId = sharedAssignee;
+    if (!mixedFilters && allUnassigned) canonical.unassigned = true;
+    if (!mixedFilters && assigneeIds.size === 1 && [...assigneeIds][0]) {
+      canonical.assigneeId = [...assigneeIds][0];
+    }
     for (const row of group) {
       next[row.index] = withListArgs(row.call, canonical);
     }
@@ -260,21 +365,23 @@ export function fingerprintsFromMessages(messages: AgentChatMessage[]): Map<stri
   return map;
 }
 
-export function repeatedToolMessage(previous: string): string {
+export function repeatedToolMessage(previous: string, tool = ""): string {
+  const list = /work_item_list/i.test(tool);
   return JSON.stringify({
     repeated: true,
-    message:
-      "This exact tool call was already made. Use the previous result and answer the user now. Do not call this tool again with the same arguments.",
-    previous: compactPrevious(previous),
+    message: list
+      ? "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows. Call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email) — do not pick keys or list again."
+      : "This exact tool call was already made. Use the previous result and continue the task. Do not call this tool again with the same arguments.",
+    previous: compactPrevious(previous, list ? LIST_PREVIOUS_MAX : PREVIOUS_RESULT_MAX),
   });
 }
 
-function compactPrevious(previous: string): unknown {
-  const compact = compactJsonString(previous, PREVIOUS_RESULT_MAX);
+function compactPrevious(previous: string, max = PREVIOUS_RESULT_MAX): unknown {
+  const compact = compactJsonString(previous, max);
   try {
     return JSON.parse(compact) as unknown;
   } catch {
-    return truncateString(previous, PREVIOUS_RESULT_MAX);
+    return truncateString(previous, max);
   }
 }
 

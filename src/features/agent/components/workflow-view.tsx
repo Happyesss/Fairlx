@@ -51,6 +51,7 @@ import { clockTime, relativeTime } from "../lib/agent-ui";
 import { extractBoardProject, withWorkspaceFallback } from "../lib/project-launch";
 import type { AgentRun, AgentToolEvent } from "../types";
 import { AgentChatThread } from "./agent-chat-thread";
+import { AgentRunHud } from "./agent-run-hud";
 import { AgentCommandInput } from "./agent-command-input";
 import { useAgentUi } from "./agent-ui-context";
 import { ModelPicker } from "./model-picker";
@@ -215,6 +216,17 @@ function WorkflowSidebar({
   const repo = (context?.githubRepos ?? []).find((item) => item.projectId === project?.id);
   const terminals = events.filter((event) => event.type === "terminal");
   const githubUrl = repo?.githubUrl || (repo?.owner && repo.repositoryName ? `https://github.com/${repo.owner}/${repo.repositoryName}` : "");
+  const prLinks = events
+    .filter((event) => event.type === "github_open_pr" || event.type === "github_write_file")
+    .map((event) => {
+      const payload = event.payload && typeof event.payload === "object" ? (event.payload as { html_url?: string; title?: string; path?: string }) : {};
+      return {
+        id: event.id,
+        url: typeof payload.html_url === "string" ? payload.html_url : "",
+        label: payload.title || payload.path || event.title,
+      };
+    })
+    .filter((item) => item.url);
 
   return (
     <aside className="hidden lg:flex w-80 bg-sidebar border-l border-sidebar-border flex-col flex-shrink-0 h-full">
@@ -257,7 +269,7 @@ function WorkflowSidebar({
               />
               <div>
                 <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 px-1">Agent</div>
-                <ModelPicker variant="sidebar" />
+                <ModelPicker variant="sidebar" runModelId={run.modelId} />
               </div>
               <button
                 type="button"
@@ -366,8 +378,28 @@ function WorkflowSidebar({
 
         {tab === "changes" ? (
           <div className="space-y-3">
-            {staging.length === 0 ? (
-              <p className="text-xs text-muted-foreground px-1">No harness staging yet. Staged files will appear here.</p>
+            {prLinks.length ? (
+              <div className="space-y-2">
+                {prLinks.map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 hover:bg-sidebar-accent transition-colors"
+                  >
+                    <p className="text-xs font-medium text-primary truncate">{item.label}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{item.url}</p>
+                  </a>
+                ))}
+              </div>
+            ) : null}
+            {staging.length === 0 && !prLinks.length ? (
+              <p className="text-xs text-muted-foreground px-1">
+                {repo
+                  ? "No pull requests yet. Accept a GitHub write to open a real PR."
+                  : "Link a GitHub repo or connect a PAT to edit code."}
+              </p>
             ) : (
               staging.map((item) => (
                 <Link
@@ -594,6 +626,7 @@ function WorkflowViewInner() {
 
   const running = run.status === "running";
   const awaiting = run.status === "awaiting_confirmation";
+  const awaitingPlugin = run.status === "awaiting_plugin";
   const pinned = (harness?.chatMeta?.pinnedRunIds ?? []).includes(run.id);
 
   const saveTitle = () => {
@@ -639,7 +672,7 @@ function WorkflowViewInner() {
               <span
                 className={cn(
                   "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium text-[11px]",
-                  running || awaiting
+                  running || awaiting || awaitingPlugin
                     ? "bg-blue-500/10 text-blue-500"
                     : run.status === "completed"
                       ? "bg-green-500/10 text-green-500"
@@ -649,10 +682,10 @@ function WorkflowViewInner() {
                 <span
                   className={cn(
                     "size-1.5 rounded-full",
-                    running || awaiting ? "bg-blue-500 animate-pulse" : run.status === "completed" ? "bg-green-500" : "bg-destructive"
+                    running || awaiting || awaitingPlugin ? "bg-blue-500 animate-pulse" : run.status === "completed" ? "bg-green-500" : "bg-destructive"
                   )}
                 />
-                <span className="capitalize">{running ? "Running" : awaiting ? "Needs approval" : run.status}</span>
+                <span className="capitalize">{running ? "Running" : awaiting ? "Needs approval" : awaitingPlugin ? "Needs plugin" : run.status}</span>
               </span>
               <span className="text-muted-foreground">• Started {relativeTime(run.createdAt)}</span>
             </div>
@@ -745,14 +778,17 @@ function WorkflowViewInner() {
           </div>
 
           <FloatingComposer>
+            <AgentRunHud run={run} />
             <AgentCommandInput
               run={run}
               variant="followup"
-              showQuickActions={!awaiting && !running}
-              submitting={sendMessage.isPending || awaiting || running}
+              showQuickActions={!awaiting && !awaitingPlugin && !running}
+              submitting={sendMessage.isPending || awaiting || awaitingPlugin || running}
               placeholder={
                 awaiting
                   ? "Accept or deny the pending action first"
+                  : awaitingPlugin
+                    ? "Connect a plugin to continue"
                   : run.kind === "training"
                     ? "Type your own answer, or tap a choice above"
                     : "Plan, Build, / for skills, @ for context"

@@ -9,6 +9,7 @@ import {
   rememberListSlice,
   repeatedToolMessage,
   resolveListSliceCall,
+  shouldForceAnswer,
   stableToolArgs,
   toolCallFingerprint,
 } from "./tool-loop";
@@ -33,6 +34,33 @@ describe("repeatedToolMessage", () => {
     const content = repeatedToolMessage(JSON.stringify({ workItems: [{ id: "i1" }] }));
     expect(isFailedToolContent(content)).toBe(false);
     expect(JSON.parse(content).repeated).toBe(true);
+  });
+
+  it("tells the model to bulk-update after a repeated work item list", () => {
+    const items = Array.from({ length: 22 }, (_, i) => ({ key: `SCHO-${i + 1}` }));
+    const content = repeatedToolMessage(
+      JSON.stringify({ workItems: items, hasMore: false }),
+      "fairlx_work_item_list",
+    );
+    const parsed = JSON.parse(content) as {
+      message: string;
+      previous: { workItems: { key: string }[] };
+    };
+    expect(parsed.message).toMatch(/assignPercent/);
+    expect(parsed.message).not.toMatch(/answer the user now/i);
+    expect(parsed.previous.workItems).toHaveLength(22);
+    expect(parsed.previous.workItems[12]?.key).toBe("SCHO-13");
+  });
+});
+
+describe("shouldForceAnswer", () => {
+  it("does not abort after duplicate list skips", () => {
+    expect(shouldForceAnswer(0)).toBe(false);
+    expect(shouldForceAnswer(2)).toBe(false);
+  });
+
+  it("aborts only after consecutive tool failures", () => {
+    expect(shouldForceAnswer(3)).toBe(true);
   });
 });
 
@@ -116,10 +144,46 @@ describe("list slice cache", () => {
     expect(ok.action).toBe("execute");
   });
 
-  it("keeps unassigned lists on a separate slice from the full project list", () => {
-    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1" })).not.toBe(
+  it("treats assignee and unassigned lists as the same project slice", () => {
+    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1" })).toBe(
       listSliceKey("fairlx_work_item_list", { projectId: "p1", unassigned: true }),
     );
+    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1" })).toBe(
+      listSliceKey("fairlx_work_item_list", { projectId: "p1", assigneeId: "fogef" }),
+    );
+    expect(listSliceKey("fairlx_work_item_list", { projectId: "p1", backlog: true })).not.toBe(
+      listSliceKey("fairlx_work_item_list", { projectId: "p1" }),
+    );
+  });
+
+  it("projects an unassigned skip from the already-loaded list", () => {
+    const cache = new Map();
+    rememberListSlice(
+      cache,
+      "fairlx_work_item_list",
+      { projectId: "p1" },
+      JSON.stringify({
+        workItems: [
+          { key: "SCHO-1", unassigned: true, assignees: [] },
+          { key: "SCHO-2", unassigned: false, assignees: [{ name: "fogef" }] },
+        ],
+      }),
+    );
+    const skip = resolveListSliceCall(cache, "fairlx_work_item_list", {
+      projectId: "p1",
+      unassigned: true,
+    });
+    expect(skip.action).toBe("skip");
+    if (skip.action !== "skip") return;
+    const parsed = JSON.parse(skip.content) as {
+      previous: {
+        workItems: { key: string }[];
+        assignment: { byAssignee: Record<string, string[]>; unassignedKeys: string[] };
+      };
+    };
+    expect(parsed.previous.workItems.map((item) => item.key)).toEqual(["SCHO-1"]);
+    expect(parsed.previous.assignment.byAssignee.fogef).toEqual(["SCHO-2"]);
+    expect(parsed.previous.assignment.unassignedKeys).toEqual(["SCHO-1"]);
   });
 
   it("rejects a cursor that is not the stored nextCursor", () => {
@@ -164,8 +228,8 @@ describe("collapseWorkItemListFanOut", () => {
       { id: "c2", name: "fairlx_work_item_list", arguments: JSON.stringify({ projectId: "p1", type: "TASK" }) },
     ];
     const { calls: next, coalescedIds } = collapseWorkItemListFanOut(calls);
-    expect(JSON.parse(next[0]!.arguments)).toEqual({ projectId: "p1", unassigned: true });
-    expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1", type: "TASK" });
-    expect(coalescedIds.size).toBe(0);
+    expect(JSON.parse(next[0]!.arguments)).toEqual({ projectId: "p1" });
+    expect(JSON.parse(next[1]!.arguments)).toEqual({ projectId: "p1" });
+    expect([...coalescedIds]).toEqual(["c2"]);
   });
 });

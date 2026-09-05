@@ -395,7 +395,7 @@ async function _resolveUserProjectAccessUncached(
                     teams.push({
                         teamId: tm.teamId,
                         teamName: teamDoc.name as string,
-                        teamRole: tm.teamRole,
+                        teamRole: tm.teamRole ?? tm.role,
                     });
                 }
             }

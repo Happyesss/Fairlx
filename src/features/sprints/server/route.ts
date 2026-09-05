@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 
-import { DATABASE_ID, SPRINTS_ID, WORK_ITEMS_ID, MEMBERS_ID } from "@/config";
+import { DATABASE_ID, SPRINTS_ID, WORK_ITEMS_ID } from "@/config";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 import { batchGetUsers } from "@/lib/batch-users";
@@ -13,6 +13,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { getMember } from "@/features/members/utils";
 import { logComputeUsage, getComputeUnits } from "@/lib/usage-metering";
 import { invalidateCache, invalidateCachePattern, CK, CKPattern } from "@/lib/redis";
+import { listMembersForAssigneeIds } from "@/lib/work-item-assignees";
 
 import {
   createSprintSchema,
@@ -169,13 +170,13 @@ const app = new Hono()
       });
 
       // Fetch all members at once
-      const membersData = allAssigneeIds.size > 0
-        ? await databases.listDocuments(
-          DATABASE_ID,
-          MEMBERS_ID,
-          [Query.equal("$id", Array.from(allAssigneeIds))]
-        )
-        : { documents: [] };
+      const membersData = {
+        documents: await listMembersForAssigneeIds(
+          databases,
+          allAssigneeIds,
+          sprint.workspaceId
+        ),
+      };
 
       // Build a map of member ID -> user data for quick lookup
       const assigneeMap = new Map<string, { $id: string; name: string; email: string; profileImageUrl: string | null }>();
@@ -187,12 +188,14 @@ const app = new Hono()
       membersData.documents.forEach((memberDoc) => {
         const userInfo = userMap.get(memberDoc.userId);
         if (userInfo) {
-          assigneeMap.set(memberDoc.$id, {
+          const populated = {
             $id: memberDoc.$id,
             name: userInfo.name || userInfo.email,
             email: userInfo.email,
             profileImageUrl: userInfo.prefs?.profileImageUrl || null,
-          });
+          };
+          assigneeMap.set(memberDoc.$id, populated);
+          assigneeMap.set(memberDoc.userId as string, populated);
         }
       });
 

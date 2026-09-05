@@ -6,7 +6,7 @@ import { z } from "zod";
 import { sessionMiddleware } from "@/lib/session-middleware";
 import { createAdminClient } from "@/lib/appwrite";
 
-import type { AgentAiConfigStored, AgentModel } from "../types";
+import type { AgentAiConfigStored, AgentModel, AgentRun } from "../types";
 import {
   defaultAiStoredConfig,
   defaultMcpConfig,
@@ -33,6 +33,7 @@ import {
   upsertHarness,
 } from "../lib/harness";
 import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
+import { AGENT_PROMPT_HTTP_MAX } from "../lib/limits";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
 import { runNeedsAgentTurn } from "../lib/run-turn";
@@ -64,6 +65,22 @@ import {
   trainingKickoffPrompt,
   trainingProgress,
 } from "../lib/personal-training";
+import { PLUGIN_CATALOG, toPublicPlugin } from "../plugins/catalog";
+import { buildPluginConnection, upsertPluginList } from "../plugins/connect";
+import {
+  applyOauthTokensToSecrets,
+  buildMailAuthorizeUrl,
+  decodeOauthState,
+  encodeOauthState,
+  exchangeMailOauthCode,
+  isMailOauthCatalog,
+  lookupMailFromAddress,
+  mailOauthStatus,
+  resolveOauthClient,
+} from "../plugins/oauth";
+import { getAgentJob, listAgentJobs, updateAgentJob } from "../lib/jobs";
+import { scheduleAgentJob } from "../lib/schedule-job";
+import { buildAgentMcpAuth } from "../lib/agent-auth";
 
 const mcpServerSchema = z
   .object({
@@ -132,13 +149,13 @@ const selectSchema = z.object({
 });
 
 const createRunSchema = z.object({
-  prompt: z.string().trim().min(1).max(8000),
+  prompt: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
   workspaceId: z.string().optional(),
   projectId: z.string().optional(),
 });
 
 const sendMessageSchema = z.object({
-  content: z.string().trim().min(1).max(8000),
+  content: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
 });
 
 const patchRunSchema = z.object({
@@ -217,6 +234,7 @@ const harnessSchema = z.object({
       defaultWorkspaceId: z.string().optional(),
       defaultProjectId: z.string().optional(),
       sessionMode: z.enum(["agent", "personal", "plan", "debug", "multitask", "ask"]).optional(),
+      permissionType: z.enum(["staged", "all_access"]).optional(),
     })
     .optional(),
 });
@@ -434,9 +452,23 @@ const app = new Hono()
         return c.json({ error: "Accept or deny the pending action first." }, 409);
       }
       const createdAt = new Date().toISOString();
+      const events =
+        existing.status === "awaiting_plugin"
+          ? [
+              ...existing.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected" as const,
+                title: "Continued without connecting a mail plugin",
+                createdAt,
+                runId: existing.id,
+              },
+            ]
+          : existing.events;
       const run = await updateRun(databases, runId, {
         status: "running",
         error: "",
+        events,
         messages: [
           ...existing.messages,
           { id: crypto.randomUUID(), role: "user", content, createdAt },
@@ -471,12 +503,22 @@ const app = new Hono()
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
       if (findPendingConfirmation(existing.events ?? [], existing.messages ?? [])) return c.json({ data: existing });
-      if (!runNeedsAgentTurn(existing)) return c.json({ data: existing });
+      if (existing.status !== "awaiting_plugin" && !runNeedsAgentTurn(existing)) return c.json({ data: existing });
 
-      const run =
-        existing.status === "running"
-          ? existing
-          : await updateRun(databases, runId, { status: "running", error: "" });
+      const events =
+        existing.status === "awaiting_plugin"
+          ? [
+              ...existing.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected" as const,
+                title: "Continued without connecting a mail plugin",
+                createdAt: new Date().toISOString(),
+                runId: existing.id,
+              },
+            ]
+          : existing.events;
+      const run = await updateRun(databases, runId, { status: "running", error: "", events });
       scheduleAgentTurn({ databases, user, run });
       return c.json({ data: run });
     } catch (error) {
@@ -635,7 +677,7 @@ const app = new Hono()
     const { databases } = await createAdminClient();
     try {
       const data = await getOrCreateHarness(databases, user.$id);
-      return c.json({ data });
+      return c.json({ data: { ...data, plugins: data.plugins.map(toPublicPlugin) } });
     } catch (error) {
       console.error("[agent] failed to load harness", error);
       return c.json({ error: "Failed to load agent harness." }, 500);
@@ -667,6 +709,261 @@ const app = new Hono()
     } catch (error) {
       console.error("[agent] failed to reset harness", error);
       return c.json({ error: "Failed to reset agent harness." }, 500);
+    }
+  })
+  .get("/plugins", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      return c.json({
+        data: {
+          catalog: PLUGIN_CATALOG,
+          connected: harness.plugins.map(toPublicPlugin),
+          oauth: mailOauthStatus(),
+        },
+      });
+    } catch (error) {
+      console.error("[agent] failed to list plugins", error);
+      return c.json({ error: "Failed to list plugins." }, 500);
+    }
+  })
+  .post(
+    "/plugins",
+    sessionMiddleware,
+    zValidator(
+      "json",
+      z.object({
+        catalogId: z.string().min(1),
+        displayName: z.string().optional(),
+        fields: z.record(z.string()).optional(),
+        runId: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      const user = sessionUser(c);
+      const json = c.req.valid("json");
+      const { databases } = await createAdminClient();
+      try {
+        const harness = await getOrCreateHarness(databases, user.$id);
+        const connection = buildPluginConnection(json);
+        const data = await upsertHarness(databases, user.$id, {
+          plugins: upsertPluginList(harness.plugins, connection),
+        });
+        if (json.runId) {
+          const existing = await getRun(databases, user.$id, json.runId);
+          if (existing?.status === "awaiting_plugin") {
+            const run = await updateRun(databases, json.runId, {
+              status: "running",
+              error: "",
+              events: [
+                ...existing.events,
+                {
+                  id: crypto.randomUUID(),
+                  type: "plugin_connected",
+                  title: `Connected ${connection.displayName}`,
+                  createdAt: new Date().toISOString(),
+                  runId: existing.id,
+                },
+              ],
+            });
+            scheduleAgentTurn({ databases, user, run });
+          }
+        }
+        return c.json({ data: { connected: data.plugins.map(toPublicPlugin) } });
+      } catch (error) {
+        console.error("[agent] failed to connect plugin", error);
+        return encryptionErrorResponse(error, c) ?? c.json({ error: "Failed to connect plugin." }, 500);
+      }
+    },
+  )
+  .get("/plugins/oauth/start", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const catalogId = c.req.query("catalogId") || "";
+    const runId = c.req.query("runId") || undefined;
+    const from = c.req.query("from") || undefined;
+    if (!isMailOauthCatalog(catalogId)) {
+      return c.json({ error: "OAuth is only available for Outlook and Gmail." }, 400);
+    }
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const existing = harness.plugins.find((plugin) => plugin.catalogId === catalogId);
+      const client = resolveOauthClient(catalogId, existing);
+      const state = encodeOauthState({
+        userId: user.$id,
+        catalogId,
+        runId,
+        from,
+        nonce: crypto.randomUUID(),
+      });
+      return c.redirect(buildMailAuthorizeUrl({ catalogId, clientId: client.clientId, state }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start OAuth.";
+      return c.json({ error: message }, 400);
+    }
+  })
+  .get("/plugins/oauth/callback", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const errorParam = c.req.query("error");
+    const code = c.req.query("code") || "";
+    const stateRaw = c.req.query("state") || "";
+    const failRedirect = (message: string, runId?: string) => {
+      const dest = runId ? `/agent/workflow?runId=${encodeURIComponent(runId)}` : "/agent/integrations";
+      const url = new URL(dest, "http://localhost");
+      url.searchParams.set("pluginError", message);
+      return c.redirect(`${url.pathname}${url.search}`);
+    };
+    if (errorParam) return failRedirect(errorParam);
+    let state;
+    try {
+      state = decodeOauthState(stateRaw);
+    } catch {
+      return failRedirect("Invalid OAuth state.");
+    }
+    if (state.userId !== user.$id) return failRedirect("OAuth user mismatch.");
+    if (!code) return failRedirect("Missing OAuth code.", state.runId);
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const existing = harness.plugins.find((plugin) => plugin.catalogId === state.catalogId);
+      const oauthClient = resolveOauthClient(state.catalogId, existing);
+      const tokens = await exchangeMailOauthCode({
+        catalogId: state.catalogId,
+        code,
+        clientId: oauthClient.clientId,
+        clientSecret: oauthClient.clientSecret,
+      });
+      const from =
+        state.from ||
+        existing?.secrets?.from ||
+        (await lookupMailFromAddress({ catalogId: state.catalogId, accessToken: tokens.accessToken }));
+      const catalog = PLUGIN_CATALOG.find((item) => item.id === state.catalogId);
+      const connection = {
+        id: existing?.id || crypto.randomUUID(),
+        catalogId: state.catalogId,
+        displayName: catalog?.name || state.catalogId,
+        capabilities: catalog?.capabilities ?? (["email.send"] as const),
+        status: "connected" as const,
+        authKind: "oauth" as const,
+        secrets: applyOauthTokensToSecrets(existing?.secrets, tokens, from),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+      };
+      await upsertHarness(databases, user.$id, {
+        plugins: upsertPluginList(harness.plugins, connection),
+      });
+      if (state.runId) {
+        const existingRun = await getRun(databases, user.$id, state.runId);
+        if (existingRun?.status === "awaiting_plugin") {
+          const run = await updateRun(databases, state.runId, {
+            status: "running",
+            error: "",
+            events: [
+              ...existingRun.events,
+              {
+                id: crypto.randomUUID(),
+                type: "plugin_connected",
+                title: `Connected ${connection.displayName}`,
+                createdAt: new Date().toISOString(),
+                runId: existingRun.id,
+              },
+            ],
+          });
+          scheduleAgentTurn({ databases, user, run });
+        }
+        return c.redirect(`/agent/workflow?runId=${encodeURIComponent(state.runId)}`);
+      }
+      return c.redirect("/agent/integrations");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "OAuth connect failed.";
+      return failRedirect(message.slice(0, 180), state.runId);
+    }
+  })
+  .delete("/plugins/:pluginId", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const pluginId = c.req.param("pluginId");
+    const { databases } = await createAdminClient();
+    try {
+      const harness = await getOrCreateHarness(databases, user.$id);
+      const data = await upsertHarness(databases, user.$id, {
+        plugins: harness.plugins.filter((plugin) => plugin.id !== pluginId && plugin.catalogId !== pluginId),
+      });
+      return c.json({ data: { connected: data.plugins.map(toPublicPlugin) } });
+    } catch (error) {
+      console.error("[agent] failed to disconnect plugin", error);
+      return c.json({ error: "Failed to disconnect plugin." }, 500);
+    }
+  })
+  .get("/jobs", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const { databases } = await createAdminClient();
+    try {
+      const data = await listAgentJobs(databases, user.$id);
+      return c.json({ data });
+    } catch (error) {
+      console.error("[agent] failed to list jobs", error);
+      return c.json({ error: "Failed to list agent jobs." }, 500);
+    }
+  })
+  .get("/jobs/:jobId", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const jobId = c.req.param("jobId");
+    const { databases } = await createAdminClient();
+    try {
+      const data = await getAgentJob(databases, user.$id, jobId);
+      if (!data) return c.json({ error: "Job not found." }, 404);
+      return c.json({ data });
+    } catch (error) {
+      console.error("[agent] failed to get job", error);
+      return c.json({ error: "Failed to load agent job." }, 500);
+    }
+  })
+  .post("/jobs/:jobId/retry", sessionMiddleware, async (c) => {
+    const user = sessionUser(c);
+    const jobId = c.req.param("jobId");
+    const { databases } = await createAdminClient();
+    try {
+      const job = await getAgentJob(databases, user.$id, jobId);
+      if (!job) return c.json({ error: "Job not found." }, 404);
+      if (job.status !== "completed") {
+        await updateAgentJob(databases, job.id, { status: "queued", error: "" });
+      }
+      const [context, harness, mcpDoc] = await Promise.all([
+        loadAgentContext(databases, user),
+        getOrCreateHarness(databases, user.$id),
+        getMcpDocument(databases, user.$id),
+      ]);
+      const mcp = ensurePersonalMcp(parseMcpConfig(mcpDoc?.configJson));
+      const stubRun: AgentRun = {
+        id: job.runId || job.id,
+        userId: user.$id,
+        title: job.kind,
+        prompt: "",
+        status: "running",
+        mode: "agent",
+        projectId: typeof job.payload.projectId === "string" ? job.payload.projectId : undefined,
+        messages: [],
+        events: [],
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      };
+      const mcpAuth = await buildAgentMcpAuth({ databases, userId: user.$id, context, run: stubRun });
+      scheduleAgentJob({
+        databases,
+        userId: user.$id,
+        jobId: job.id,
+        context,
+        plugins: harness.plugins,
+        mcp,
+        mcpAuth,
+        harness,
+        projectId: stubRun.projectId || mcpAuth.projectId,
+        workspaceId: mcpAuth.workspaceId,
+      });
+      return c.json({ data: { ...job, status: job.status === "completed" ? job.status : "queued" } });
+    } catch (error) {
+      console.error("[agent] failed to retry job", error);
+      return c.json({ error: "Failed to resume agent job." }, 500);
     }
   })
   .get("/context", sessionMiddleware, async (c) => {
@@ -702,7 +999,7 @@ const app = new Hono()
     zValidator(
       "json",
       z.object({
-        prompt: z.string().trim().min(1).max(8000),
+        prompt: z.string().trim().min(1).max(AGENT_PROMPT_HTTP_MAX),
         workspaceId: z.string().optional(),
         projectId: z.string().optional(),
         personaRole: z.enum(["tech_lead", "frontend", "qa", "pm"]).optional(),

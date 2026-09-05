@@ -21,6 +21,7 @@ import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
 import { AgentModeSelector } from "./agent-mode-selector";
+import { AgentPermissionPicker } from "./agent-permission-picker";
 import { ModelPicker } from "./model-picker";
 import { PersonalAgentSetup } from "./personal-agent-setup";
 
@@ -84,6 +85,7 @@ export function AgentCommandInput({
 
   const isRunning = run?.status === "running";
   const stopping = isStopping || stopRunMutation.isPending;
+  const showStop = isRunning || run?.status === "awaiting_confirmation" || stopping;
   const busy = submitting || createRun.isPending;
   const canSend = Boolean(prompt.trim()) && !busy && !disabled;
   const sessionMode = (harness?.settings.sessionMode as AgentSessionMode) || "agent";
@@ -299,7 +301,8 @@ export function AgentCommandInput({
             <div className={cn("flex items-center justify-between pt-0.5 select-none", compact ? "px-2 pb-2" : "px-3 pb-2.5")}>
               <div className="flex items-center gap-2">
                 <AgentModeSelector />
-                <ModelPicker variant="subtle" />
+                <AgentPermissionPicker />
+                <ModelPicker variant="subtle" runModelId={run?.modelId} />
               </div>
 
               <div className="flex items-center gap-1.5">
@@ -325,20 +328,20 @@ export function AgentCommandInput({
                 >
                   <Mic className="size-3.5" />
                 </button>
-                {isRunning || stopping ? (
+                {showStop ? (
                   <button
                     type="button"
                     onClick={handleStop}
                     disabled={stopping}
                     className={cn(
-                      "relative size-7 rounded-full flex items-center justify-center transition-all shadow-2xs group cursor-pointer",
-                      "bg-muted/70 hover:bg-muted text-foreground border border-border/60",
+                      "relative size-8 rounded-full flex items-center justify-center transition-all shadow-2xs group cursor-pointer",
+                      "bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-destructive",
                       stopping && "opacity-60 cursor-not-allowed"
                     )}
-                    title={stopping ? "Stopping..." : "Stop generation"}
+                    title={stopping ? "Stopping..." : "Stop all agents"}
                   >
                     <svg
-                      className="absolute inset-0 size-full animate-spin text-muted-foreground group-hover:text-foreground transition-colors"
+                      className="absolute inset-0 size-full animate-spin text-destructive-foreground/70"
                       viewBox="0 0 28 28"
                       fill="none"
                     >
@@ -362,7 +365,7 @@ export function AgentCommandInput({
                         strokeLinecap="round"
                       />
                     </svg>
-                    <span className="relative z-10 size-2.5 rounded-[1.5px] bg-foreground transition-transform group-hover:scale-90" />
+                    <span className="relative z-10 size-2.5 rounded-[1.5px] bg-destructive-foreground transition-transform group-hover:scale-90" />
                   </button>
                 ) : canSend || busy ? (
                   <button
