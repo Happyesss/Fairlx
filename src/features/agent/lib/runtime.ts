@@ -10,11 +10,13 @@ import type {
   AgentAiConfigStored,
   AgentCapability,
   AgentChatMessage,
+  AgentHarness,
   AgentPermissionType,
   AgentRun,
   AgentSpecialistId,
   AgentToolCall,
   AgentToolEvent,
+  McpConfig,
 } from "../types";
 import { buildAgentMcpAuth, mcpToolsForAuth } from "./agent-auth";
 import { loadAgentContext } from "./context";
@@ -41,7 +43,7 @@ import {
   toolCallFingerprint,
   unwrapListCall,
 } from "./tool-loop";
-import { executeTool, openaiToolsForTurn, trainingSaveTool } from "./tools";
+import { executeTool, openaiToolsForTurn, trainingSaveTool, type OpenAiTool } from "./tools";
 import { compactJsonString } from "./truncate";
 import { getRun, listRuns, updateRun } from "./runs";
 import { getPersonalAgent } from "./personal-agent-store";
@@ -55,12 +57,17 @@ import { capSpecialistResult, compressMessages, factsFromTurn, filterToolsForSpe
 import { catalogForCapability, missingCapabilities } from "../plugins/catalog";
 import { claimQueuedJobs } from "./jobs";
 import { scheduleAgentJob } from "./schedule-job";
-import { estimateRunTokens } from "./context-meter";
+import {
+  activeSubagents,
+  buildContextMeterPayload,
+  CONTEXT_MESSAGE_WINDOW,
+  latestContextMeter,
+  takeHigherChatPeak,
+} from "./context-meter";
 
 const MAX_TOOL_ITERATIONS = 48;
 const MAX_SPECIALIST_ITERATIONS = 16;
 const MAX_PARALLEL_SUBAGENTS = 6;
-const MAX_HISTORY = 24;
 const cancelledRuns = new Set<string>();
 
 export function cancelAgentTurn(runId: string) {
@@ -81,6 +88,49 @@ function thoughtEvent(runId: string, title: string, detail?: string, payload?: u
     createdAt: new Date().toISOString(),
     runId,
   };
+}
+
+function withContextMeter(params: {
+  events: AgentToolEvent[];
+  runId: string;
+  system: string;
+  tools: OpenAiTool[];
+  messages: AgentChatMessage[];
+  harness: AgentHarness;
+  mcp: McpConfig;
+  maxInputTokens: number;
+  contextPeak?: AgentRun["contextPeak"];
+}): AgentToolEvent[] {
+  const payload = buildContextMeterPayload({
+    system: params.system,
+    tools: params.tools,
+    messages: params.messages,
+    harness: params.harness,
+    mcp: params.mcp,
+    maxInputTokens: params.maxInputTokens,
+    subagents: activeSubagents(params.events).length,
+  });
+  const previous = latestContextMeter(params.events);
+  const peak = takeHigherChatPeak(
+    takeHigherChatPeak(params.contextPeak, previous?.breakdown),
+    payload.breakdown,
+  );
+  if (peak.conversation + peak.summarized_conversation > payload.breakdown.conversation + payload.breakdown.summarized_conversation) {
+    payload.breakdown.conversation = peak.conversation;
+    payload.breakdown.summarized_conversation = peak.summarized_conversation;
+    payload.tokens = Object.values(payload.breakdown).reduce((sum, value) => sum + value, 0);
+  }
+  return [
+    ...params.events.filter((event) => event.type !== "context_meter"),
+    {
+      id: crypto.randomUUID(),
+      type: "context_meter",
+      title: "Context",
+      payload,
+      createdAt: new Date().toISOString(),
+      runId: params.runId,
+    },
+  ];
 }
 
 function chatHost(url: string) {
@@ -210,10 +260,10 @@ function toOpenAiMessages(
   options?: { seedTraining?: boolean },
 ): OpenAiMessage[] {
   const compressed = compressMessages(messages);
-  let recent = compressed.slice(-MAX_HISTORY);
+  let recent = compressed.slice(-CONTEXT_MESSAGE_WINDOW);
   const firstUser = messages.find((message) => message.role === "user");
   if (firstUser && !recent.some((message) => message.id === firstUser.id)) {
-    recent = [firstUser, ...recent.filter((message) => message.id !== firstUser.id)].slice(0, MAX_HISTORY + 1);
+    recent = [firstUser, ...recent.filter((message) => message.id !== firstUser.id)].slice(0, CONTEXT_MESSAGE_WINDOW + 1);
   }
   recent = recent.filter((message) => !(message.role === "user" && isTrainingKickoffContent(message.content)));
   const mapped: OpenAiMessage[] = recent.map((message) => {
@@ -410,7 +460,22 @@ export async function runAgentTurn(params: {
     }
     const latest = await getRun(databases, user.$id, run.id);
     if (latest?.status === "stopped") return latest;
-    return updateRun(databases, run.id, patch);
+    const meter = latestContextMeter(patch.events ?? run.events);
+    const contextPeak = takeHigherChatPeak(
+      takeHigherChatPeak(run.contextPeak, latest?.contextPeak),
+      meter?.breakdown,
+    );
+    const extra = {
+      kind: run.kind ?? latest?.kind ?? "chat",
+      contextPeak,
+    };
+    const updated = await updateRun(databases, run.id, { ...patch, extra });
+    return {
+      ...updated,
+      messages: patch.messages ?? run.messages,
+      events: patch.events ?? updated.events,
+      contextPeak,
+    };
   };
 
   const haltIfStopped = async (): Promise<AgentRun | null> => {
@@ -920,6 +985,23 @@ export async function runAgentTurn(params: {
       const stopped = await haltIfStopped();
       if (stopped) return stopped;
 
+      if (iteration === 0) {
+        run = await persistUnlessStopped({
+          events: withContextMeter({
+            events: run.events,
+            runId: run.id,
+            system,
+            tools,
+            messages: run.messages,
+            harness,
+            mcp,
+            maxInputTokens: target.maxInputTokens ?? 0,
+            contextPeak: run.contextPeak,
+          }),
+        });
+        if (run.status === "stopped") return run;
+      }
+
       const completion = await chatCompletion(
         target,
         {
@@ -951,21 +1033,17 @@ export async function runAgentTurn(params: {
           createdAt: new Date().toISOString(),
         };
         const nextMessages = [...run.messages, assistantMessage];
-        const nextEvents = [
-          ...run.events,
-          {
-            id: crypto.randomUUID(),
-            type: "context_meter" as const,
-            title: "Context",
-            payload: {
-              tokens: estimateRunTokens(run.messages, system.length),
-              maxInputTokens: target.maxInputTokens ?? 0,
-              subagents: 0,
-            },
-            createdAt: new Date().toISOString(),
-            runId: run.id,
-          },
-        ];
+        const nextEvents = withContextMeter({
+          events: run.events,
+          runId: run.id,
+          system,
+          tools,
+          messages: nextMessages,
+          harness,
+          mcp,
+          maxInputTokens: target.maxInputTokens ?? 0,
+          contextPeak: run.contextPeak,
+        });
         const gated = toolCalls.filter((call) => needsConfirmation(call, permissionType()));
         const autoCalls = toolCalls.filter((call) => !needsConfirmation(call, permissionType()));
         const delegates = autoCalls.filter((call) => call.name === "delegate_agent");

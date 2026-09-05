@@ -15,6 +15,7 @@ import { AGENT_CONTEXT_QUERY_KEY } from "../constants";
 import type { AgentRun } from "../types";
 import { extractBoardProject } from "../lib/project-launch";
 import { useAgentUi } from "./agent-ui-context";
+import { AgentWorkingDropUp } from "./agent-run-hud";
 
 export function AgentScopeBar({
   run,
@@ -123,8 +124,9 @@ export function AgentScopeBar({
   };
 
   return (
-    <div className="flex items-center gap-1 text-[11px] text-muted-foreground px-1 pb-1.5 bg-background">
-      <ScopeMenu
+    <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1 pb-1.5 bg-background">
+      <div className="flex items-center gap-1 min-w-0">
+        <ScopeMenu
         open={workspaceOpen}
         onOpenChange={(next) => {
           setWorkspaceOpen(next);
@@ -227,6 +229,11 @@ export function AgentScopeBar({
           </span>
         </>
       ) : null}
+      </div>
+
+      <div className="flex items-center gap-1 shrink-0 ml-auto">
+        <AgentWorkingDropUp run={run} />
+      </div>
     </div>
   );
 }

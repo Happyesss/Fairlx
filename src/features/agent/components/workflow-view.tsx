@@ -51,7 +51,6 @@ import { clockTime, relativeTime } from "../lib/agent-ui";
 import { extractBoardProject, withWorkspaceFallback } from "../lib/project-launch";
 import type { AgentRun, AgentToolEvent } from "../types";
 import { AgentChatThread } from "./agent-chat-thread";
-import { AgentRunHud } from "./agent-run-hud";
 import { AgentCommandInput } from "./agent-command-input";
 import { useAgentUi } from "./agent-ui-context";
 import { ModelPicker } from "./model-picker";
@@ -778,7 +777,6 @@ function WorkflowViewInner() {
           </div>
 
           <FloatingComposer>
-            <AgentRunHud run={run} />
             <AgentCommandInput
               run={run}
               variant="followup"
