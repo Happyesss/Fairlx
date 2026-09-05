@@ -301,4 +301,102 @@ describe("fairlx_work_item_update", () => {
       [],
     ]);
   });
+
+  it("parents a story under an epic by epic key", async () => {
+    const { runtime, workItems } = workItemRuntime({
+      workItems: [
+        {
+          $id: "epic_1",
+          key: "SCHO-1",
+          title: "Conversation interface",
+          type: "EPIC",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+        },
+        {
+          $id: "wi_2",
+          key: "SCHO-2",
+          title: "Chat composer",
+          type: "STORY",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+          epicId: null,
+        },
+      ],
+    });
+
+    const result = await callTool(
+      "fairlx_work_item_update",
+      { workItemId: "SCHO-2", epicId: "SCHO-1" },
+      runtime,
+      auth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(workItems[1]?.epicId).toBe("epic_1");
+    expect(JSON.parse(result.content[0]?.text ?? "{}").workItem).toMatchObject({
+      key: "SCHO-2",
+      hasEpic: true,
+      epicKey: "SCHO-1",
+      epicTitle: "Conversation interface",
+    });
+  });
+
+  it("assignEpics parents every child without an epic", async () => {
+    const { runtime, workItems } = workItemRuntime({
+      workItems: [
+        {
+          $id: "epic_chat",
+          key: "SCHO-1",
+          title: "Conversation interface",
+          type: "EPIC",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+        },
+        {
+          $id: "epic_grade",
+          key: "SCHO-2",
+          title: "Gradebook",
+          type: "EPIC",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+        },
+        {
+          $id: "wi_3",
+          key: "SCHO-3",
+          title: "Conversation composer and history",
+          type: "STORY",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+          epicId: null,
+        },
+        {
+          $id: "wi_4",
+          key: "SCHO-4",
+          title: "Gradebook report cards",
+          type: "TASK",
+          projectId: "proj_1",
+          workspaceId: "ws_1",
+          epicId: null,
+        },
+      ],
+    });
+
+    const result = await callTool(
+      "fairlx_work_item_bulk_update",
+      { assignEpics: true, projectId: "proj_1" },
+      runtime,
+      auth,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
+      count: number;
+      mapping: Array<{ key: string; epicKey: string }>;
+    };
+    expect(payload.count).toBe(2);
+    expect(workItems.find((item) => item.key === "SCHO-3")?.epicId).toBe("epic_chat");
+    expect(workItems.find((item) => item.key === "SCHO-4")?.epicId).toBe("epic_grade");
+    expect(payload.mapping.map((row) => row.epicKey).sort()).toEqual(["SCHO-1", "SCHO-2"]);
+  });
 });

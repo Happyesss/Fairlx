@@ -289,6 +289,47 @@ const SelectAllCheckbox = memo(function SelectAllCheckbox({
   );
 });
 
+const EPIC_COLUMN_WIDTH = "w-[150px]";
+
+interface EpicSelectCellProps {
+  epicId?: string | null;
+  epics: Array<{ $id: string; title: string }>;
+  onValueChange: (value: string) => void;
+}
+
+const EpicSelectCell = memo(function EpicSelectCell({
+  epicId,
+  epics,
+  onValueChange,
+}: EpicSelectCellProps) {
+  const selectedEpic = epicId ? epics.find((epic) => epic.$id === epicId) : undefined;
+  const label = selectedEpic?.title || "No Epic";
+
+  return (
+    <Select value={epicId || "none"} onValueChange={onValueChange}>
+      <SelectTrigger
+        className={`${EPIC_COLUMN_WIDTH} h-7 min-w-0 max-w-[150px] flex-shrink-0 overflow-hidden text-xs [&>span]:min-w-0 [&>span]:flex-1 [&>span]:truncate`}
+        onClick={(e) => e.stopPropagation()}
+        title={label}
+      >
+        <SelectValue placeholder="Epic">
+          <span className="block truncate">{label}</span>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No Epic</SelectItem>
+        {epics.map((epic) => (
+          <SelectItem key={epic.$id} value={epic.$id}>
+            <span className="block max-w-[280px] truncate" title={epic.title}>
+              {epic.title}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+});
+
 interface EnhancedBacklogScreenProps {
   workspaceId: string;
   projectId: string;
@@ -1217,8 +1258,9 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-12 text-center">Type</span>
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">Key</span>
                                   </div>
-                                  <span className="flex-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title</span>
+                                  <span className="flex-1 min-w-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title</span>
                                   <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className={`text-xs font-semibold text-muted-foreground uppercase tracking-wider ${EPIC_COLUMN_WIDTH}`}>Epic</span>
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Status</span>
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[90px]">Priority</span>
                                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[70px]">SP</span>
@@ -1236,8 +1278,8 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                         } ${selectedItemIds.has(item.$id) ? "bg-primary/10 hover:bg-primary/15" : ""}`}
                                       onClick={() => handleWorkItemClick(item)}
                                     >
-                                      <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-3">
+                                      <div className="flex items-center gap-4 min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0">
                                           {/* Checkbox - always accessible for bulk selection */}
                                           <div
                                             className="flex items-center justify-center w-5"
@@ -1280,33 +1322,19 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                           />
                                         ) : (
                                           <span
-                                            className="flex-1 text-sm text-foreground truncate hover:text-primary cursor-text"
+                                            className="flex-1 min-w-0 text-sm text-foreground truncate hover:text-primary cursor-text"
                                             onClick={(e) => handleStartEditWorkItem(item, e)}
                                           >
                                             {item.title}
                                           </span>
                                         )}
 
-                                        {/* Epic Dropdown */}
-                                        <Select
-                                          value={item.epicId || "none"}
-                                          onValueChange={(value) => handleUpdateEpic(item.$id, value)}
-                                        >
-                                          <SelectTrigger
-                                            className="w-[100px] h-7 text-xs flex-shrink-0"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <SelectValue placeholder="Epic" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="none">No Epic</SelectItem>
-                                            {epicsData?.documents?.map((epic) => (
-                                              <SelectItem key={epic.$id} value={epic.$id}>
-                                                {epic.title}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <EpicSelectCell
+                                            epicId={item.epicId}
+                                            epics={epicsData?.documents ?? []}
+                                            onValueChange={(value) => handleUpdateEpic(item.$id, value)}
+                                          />
 
                                         {/* Status Dropdown */}
                                         <Select
@@ -1400,6 +1428,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                         </div>
                                       </div>
                                     </div>
+                                  </div>
                                   )}
                                 </Draggable>
                               ))}
@@ -1510,7 +1539,6 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                               </div>
                             )
                           )}
-
                           {provided.placeholder}
                         </div>
                       )}
@@ -1588,8 +1616,9 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-12 text-center">Type</span>
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">Key</span>
                             </div>
-                            <span className="flex-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title</span>
+                            <span className="flex-1 min-w-0 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Title</span>
                             <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`text-xs font-semibold text-muted-foreground uppercase tracking-wider ${EPIC_COLUMN_WIDTH}`}>Epic</span>
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[120px]">Status</span>
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[90px]">Priority</span>
                               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[70px]">SP</span>
@@ -1607,8 +1636,8 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                   } ${selectedItemIds.has(item.$id) ? "bg-primary/10 hover:bg-primary/15" : ""}`}
                                 onClick={() => handleWorkItemClick(item)}
                               >
-                                <div className="flex items-center gap-4">
-                                  <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-4 min-w-0">
+                                  <div className="flex items-center gap-3 min-w-0">
                                     {/* Checkbox - always accessible for bulk selection */}
                                     <div
                                       className="flex items-center justify-center w-5"
@@ -1651,33 +1680,19 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                     />
                                   ) : (
                                     <span
-                                      className="flex-1 text-sm text-foreground truncate hover:text-blue-600 cursor-text"
+                                      className="flex-1 min-w-0 text-sm text-foreground truncate hover:text-blue-600 cursor-text"
                                       onClick={(e) => handleStartEditWorkItem(item, e)}
                                     >
                                       {item.title}
                                     </span>
                                   )}
 
-                                  {/* Epic Dropdown */}
-                                  <Select
-                                    value={item.epicId || "none"}
-                                    onValueChange={(value) => handleUpdateEpic(item.$id, value)}
-                                  >
-                                    <SelectTrigger
-                                      className="w-[100px] h-7 text-xs flex-shrink-0"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <SelectValue placeholder="Epic" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="none">No Epic</SelectItem>
-                                      {epicsData?.documents?.map((epic) => (
-                                        <SelectItem key={epic.$id} value={epic.$id}>
-                                          {epic.title}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <EpicSelectCell
+                                      epicId={item.epicId}
+                                      epics={epicsData?.documents ?? []}
+                                      onValueChange={(value) => handleUpdateEpic(item.$id, value)}
+                                    />
 
                                   {/* Status Dropdown */}
                                   <Select
@@ -1796,6 +1811,7 @@ export default function EnhancedBacklogScreen({ workspaceId, projectId }: Enhanc
                                   )}
                                 </div>
                               </div>
+                            </div>
                             )}
                           </Draggable>
                         ))}

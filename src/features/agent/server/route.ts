@@ -34,6 +34,13 @@ import {
 } from "../lib/harness";
 import { createRun, deleteRun, getRun, listRuns, updateRun } from "../lib/runs";
 import { AGENT_PROMPT_HTTP_MAX } from "../lib/limits";
+import {
+  MAX_TRANSCRIBE_BYTES,
+  TranscribeConfigError,
+  TranscribeRequestError,
+  transcribeAudioBlob,
+} from "../lib/transcribe";
+import { audioFilenameForMime } from "../lib/voice-input";
 import { cancelAgentTurn } from "../lib/runtime";
 import { isAgentTurnInFlight, scheduleAgentTurn } from "../lib/schedule-turn";
 import { runNeedsAgentTurn } from "../lib/run-turn";
@@ -1285,6 +1292,37 @@ const app = new Hono()
       },
     });
   })
+  .post(
+    "/transcribe",
+    sessionMiddleware,
+    zValidator("form", z.object({ file: z.instanceof(File) })),
+    async (c) => {
+      const { file } = c.req.valid("form");
+      if (!file.size) {
+        return c.json({ error: "Didn't catch any audio. Try again." }, 400);
+      }
+      if (file.size > MAX_TRANSCRIBE_BYTES) {
+        return c.json({ error: "Recording is too long. Keep it under about a minute." }, 400);
+      }
+      const mime = file.type || "audio/webm";
+      if (mime && !mime.startsWith("audio/") && mime !== "application/octet-stream" && mime !== "video/webm") {
+        return c.json({ error: "Voice input only accepts audio recordings." }, 400);
+      }
+      try {
+        const text = await transcribeAudioBlob(file, file.name || audioFilenameForMime(mime));
+        return c.json({ data: { text } });
+      } catch (error) {
+        if (error instanceof TranscribeConfigError) {
+          return c.json({ error: error.message }, 503);
+        }
+        if (error instanceof TranscribeRequestError) {
+          return c.json({ error: error.message }, 502);
+        }
+        console.error("[agent] transcription failed", error);
+        return c.json({ error: "Couldn't transcribe audio." }, 500);
+      }
+    },
+  )
   .post("/personal/reset", sessionMiddleware, async (c) => {
     const user = sessionUser(c);
     const { databases } = await createAdminClient();

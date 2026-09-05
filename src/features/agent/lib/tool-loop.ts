@@ -221,7 +221,7 @@ export function listSliceSkipMessage(
     return JSON.stringify({
       repeated: true,
       message:
-        "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows — never treat other keys as assigned. location.backlogKeys is the project Backlog (not Unassigned). To assign a share of the backlog, call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email).",
+        "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows — never treat other keys as assigned. location.backlogKeys is the project Backlog (not Unassigned). To assign a share of the backlog, call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email). To parent stories under epics, call fairlx_work_item_bulk_update with assignEpics: true.",
       previous: projected,
     });
   }
@@ -370,7 +370,7 @@ export function repeatedToolMessage(previous: string, tool = ""): string {
   return JSON.stringify({
     repeated: true,
     message: list
-      ? "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows. Call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email) — do not pick keys or list again."
+      ? "This project's work items are already loaded. Do not list again. assignment.byAssignee is who the board shows. Call fairlx_work_item_bulk_update with assignPercent and assigneeIds (name or email) — do not pick keys or list again. To parent stories under epics, call it with assignEpics: true."
       : "This exact tool call was already made. Use the previous result and continue the task. Do not call this tool again with the same arguments.",
     previous: compactPrevious(previous, list ? LIST_PREVIOUS_MAX : PREVIOUS_RESULT_MAX),
   });

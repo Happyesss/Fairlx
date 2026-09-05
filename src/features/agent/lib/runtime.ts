@@ -47,7 +47,7 @@ import { executeTool, openaiToolsForTurn, trainingSaveTool, type OpenAiTool } fr
 import { compactJsonString } from "./truncate";
 import { getRun, listRuns, updateRun } from "./runs";
 import { getPersonalAgent } from "./personal-agent-store";
-import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError } from "./turn-errors";
+import { AGENT_CHAT_TIMEOUT_MS, formatAgentTurnError, withTransientFetchRetry } from "./turn-errors";
 import { sanitizeAssistantVisible } from "./visible-content";
 import { confirmationSummary, findPendingConfirmation, needsConfirmation } from "./write-guard";
 import { extractBoardProjectFromTool } from "./project-launch";
@@ -330,31 +330,42 @@ async function chatCompletion(
   body: Record<string, unknown>,
   runId: string,
 ): Promise<OpenAiChatCompletionResponse> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AGENT_CHAT_TIMEOUT_MS);
-  const poll = setInterval(() => {
-    if (cancelledRuns.has(runId)) controller.abort();
-  }, 250);
   try {
-    const response = await fetch(target.url, {
-      method: "POST",
-      headers: target.headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    const text = await response.text();
-    let json: OpenAiChatCompletionResponse | null = null;
-    try {
-      json = text ? (JSON.parse(text) as OpenAiChatCompletionResponse) : null;
-    } catch {
-      json = { error: { message: text } };
-    }
-    if (!response.ok) {
-      const message = json?.error?.message || json?.message || `Chat completion failed (${response.status})`;
-      throw new Error(message);
-    }
-    return json ?? {};
+    return await withTransientFetchRetry(
+      async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), AGENT_CHAT_TIMEOUT_MS);
+        const poll = setInterval(() => {
+          if (cancelledRuns.has(runId)) controller.abort();
+        }, 250);
+        try {
+          const response = await fetch(target.url, {
+            method: "POST",
+            headers: target.headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+            cache: "no-store",
+          });
+          const text = await response.text();
+          let json: OpenAiChatCompletionResponse | null = null;
+          try {
+            json = text ? (JSON.parse(text) as OpenAiChatCompletionResponse) : null;
+          } catch {
+            json = { error: { message: text } };
+          }
+          if (!response.ok) {
+            const message =
+              json?.error?.message || json?.message || `Chat completion failed (${response.status})`;
+            throw new Error(message);
+          }
+          return json ?? {};
+        } finally {
+          clearTimeout(timer);
+          clearInterval(poll);
+        }
+      },
+      { attempts: 3, shouldRetry: () => !cancelledRuns.has(runId) },
+    );
   } catch (error) {
     console.error("[agent] chat completion failed", {
       model: target.model,
@@ -362,9 +373,6 @@ async function chatCompletion(
       message: error instanceof Error ? error.message : String(error),
     });
     throw error;
-  } finally {
-    clearTimeout(timer);
-    clearInterval(poll);
   }
 }
 
