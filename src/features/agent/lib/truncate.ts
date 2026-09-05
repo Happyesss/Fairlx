@@ -250,7 +250,7 @@ function compactArrayItems(items: unknown[]): unknown[] {
     if (typeof next.detail === "string" && next.detail.length > DETAIL_MAX) {
       next.detail = truncateString(next.detail, DETAIL_MAX);
     }
-    if (next.type !== "confirmation" && next.payload !== undefined) {
+    if (next.type !== "confirmation" && next.type !== "context_meter" && next.payload !== undefined) {
       try {
         if (JSON.stringify(next.payload).length > EVENT_PAYLOAD_MAX) next.payload = undefined;
       } catch {
@@ -321,7 +321,8 @@ function dropDispensable(items: unknown[], max: number): unknown[] {
       typeof item.type === "string" &&
       item.role == null &&
       item.type !== "confirmation" &&
-      item.type !== "confirmation_resolved",
+      item.type !== "confirmation_resolved" &&
+      item.type !== "context_meter",
   ];
   for (const pred of predicates) {
     while (JSON.stringify(next).length > max && next.length > 1) {

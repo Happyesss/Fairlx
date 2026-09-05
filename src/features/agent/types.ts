@@ -342,6 +342,10 @@ export type AgentRun = {
   events: AgentToolEvent[];
   error?: string;
   kind?: "chat" | "training";
+  contextPeak?: {
+    conversation: number;
+    summarized_conversation: number;
+  };
   createdAt: string;
   updatedAt: string;
 };
