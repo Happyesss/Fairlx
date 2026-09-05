@@ -120,6 +120,46 @@ describe("stringifyBounded", () => {
     expect(content).not.toMatch(/wan…/);
     expect(content).not.toMatch(/\w…$/);
   });
+
+  it("preserves confirmation event payloads even when total length forces compaction", () => {
+    const confirmationCalls = Array.from({ length: 7 }, (_, i) => ({
+      id: `call_${i}`,
+      name: "fairlx_work_item_create",
+      arguments: JSON.stringify({
+        title: `AI Companion - Work Item ${i}`,
+        type: "TASK",
+        priority: "HIGH",
+        description: "Detailed instructions and context for this task that takes up multiple sentences.",
+      }),
+    }));
+    const events = [
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: `ev_${index}`,
+        type: "tool_executed",
+        title: `Executed tool step ${index}`,
+        detail: "z".repeat(400),
+        createdAt: new Date().toISOString(),
+      })),
+      {
+        id: "ev_confirm",
+        type: "confirmation",
+        title: "Approval required for 7 items",
+        payload: {
+          calls: confirmationCalls,
+          summary: "Create 7 work items",
+        },
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
+    const json = stringifyBounded(events, 4096);
+    expect(json.length).toBeLessThanOrEqual(4096);
+    const parsed = parseJson<Array<{ type?: string; payload?: { calls?: unknown[] } }>>(json, []);
+    const confirm = parsed.find((e) => e.type === "confirmation");
+    expect(confirm).toBeDefined();
+    expect(confirm?.payload).toBeDefined();
+    expect(confirm?.payload?.calls).toHaveLength(7);
+  });
 });
 
 describe("unwrapMcpToolContent", () => {

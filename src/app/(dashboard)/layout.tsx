@@ -29,7 +29,7 @@ const CreateCustomColumnModalWrapper = dynamic(() => import("@/features/custom-c
 const ManageColumnsModalWrapper = dynamic(() => import("@/features/custom-columns/components/manage-columns-modal-wrapper").then(mod => mod.ManageColumnsModalWrapper).catch(() => (() => null) as React.FC), { ssr: false });
 const CreateProgramModal = dynamic(() => import("@/features/programs/components/create-program-modal").then(mod => mod.CreateProgramModal).catch(() => (() => null) as React.FC), { ssr: false });
 const EditProgramModal = dynamic(() => import("@/features/programs/components/edit-program-modal").then(mod => mod.EditProgramModal).catch(() => (() => null) as React.FC), { ssr: false });
-const ProjectAIChatWrapper = dynamic(() => import("@/features/project-docs/components").then(mod => mod.ProjectAIChatWrapper).catch(() => (() => null) as React.FC), { ssr: false });
+const AgentFloatingChat = dynamic(() => import("@/features/agent/components/agent-floating-chat").then(mod => mod.AgentFloatingChat).catch(() => (() => null) as React.FC), { ssr: false });
 const CreateSpaceModal = dynamic(() => import("@/features/spaces/components").then(mod => mod.CreateSpaceModal).catch(() => (() => null) as React.FC), { ssr: false });
 const CreateWorkflowModal = dynamic(() => import("@/features/workflows/components/create-workflow-modal").then(mod => mod.CreateWorkflowModal).catch(() => ((_props: { workspaceId?: string }) => null) as React.FC<{ workspaceId?: string }>), { ssr: false });
 const CreateLinkModal = dynamic(() => import("@/features/work-item-links/components/create-link-modal").then(mod => mod.CreateLinkModal).catch(() => ((_props: { workspaceId: string }) => null) as React.FC<{ workspaceId: string }>), { ssr: false });
@@ -104,9 +104,9 @@ const isWorkflowPage = /^\/workspaces\/[^\/]+\/spaces\/[^\/]+\/workflows\/[^\/]+
         </div>
       </div>
 
-      {/* Project AI Chat - floating button, only shows on project pages */}
+      {/* fairlx Agent — floating chat */}
       <Suspense fallback={null}>
-        <ProjectAIChatWrapper />
+        <AgentFloatingChat />
       </Suspense>
     </div>
   );

@@ -502,7 +502,7 @@ const app = new Hono()
       if (existing.status === "awaiting_confirmation") return c.json({ data: existing });
       if (existing.status === "completed") return c.json({ data: existing });
       if (isAgentTurnInFlight(runId)) return c.json({ data: existing });
-      if (findPendingConfirmation(existing.events ?? [])) return c.json({ data: existing });
+      if (findPendingConfirmation(existing.events ?? [], existing.messages ?? [])) return c.json({ data: existing });
       if (existing.status !== "awaiting_plugin" && !runNeedsAgentTurn(existing)) return c.json({ data: existing });
 
       const events =

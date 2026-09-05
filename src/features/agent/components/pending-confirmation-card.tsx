@@ -199,18 +199,24 @@ export function PendingConfirmationCard({
         </div>
       ) : (
         <div className="p-4 flex flex-col gap-2">
-          {parsedCalls.map((call, index) => (
-            <div
-              key={call.id || index}
-              className="flex items-center gap-2.5 p-2 rounded-lg bg-muted/40 border border-border/60 text-xs"
-            >
-              <div className="size-2 rounded-full bg-primary" />
-              <span className="font-semibold text-foreground capitalize">
-                {call.action}:
-              </span>
-              <span className="text-foreground flex-1 truncate">{call.summary}</span>
+          {parsedCalls.length > 0 ? (
+            parsedCalls.map((call, index) => (
+              <div
+                key={call.id || index}
+                className="flex items-center gap-2.5 p-2 rounded-lg bg-muted/40 border border-border/60 text-xs"
+              >
+                <div className="size-2 rounded-full bg-primary" />
+                <span className="font-semibold text-foreground capitalize">
+                  {call.action}:
+                </span>
+                <span className="text-foreground flex-1 truncate">{call.summary}</span>
+              </div>
+            ))
+          ) : (
+            <div className="p-3 rounded-lg bg-muted/40 border border-border/60 text-xs text-muted-foreground">
+              {pending.summary || "The agent is waiting for your approval to proceed with the planned actions."}
             </div>
-          ))}
+          )}
         </div>
       )}
 

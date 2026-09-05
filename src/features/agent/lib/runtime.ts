@@ -825,7 +825,7 @@ export async function runAgentTurn(params: {
     }
 
     if (resume) {
-      const pending = findPendingConfirmation(run.events) ?? { calls: unmatchedToolCalls(run), summary: "" };
+      const pending = findPendingConfirmation(run.events, run.messages) ?? { calls: unmatchedToolCalls(run), summary: "" };
       const pendingCalls = pending.calls.length ? pending.calls : unmatchedToolCalls(run);
       const nextMessages = [...run.messages];
       const nextEvents = [

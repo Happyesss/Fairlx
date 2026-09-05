@@ -112,6 +112,71 @@ describe("findPendingConfirmation", () => {
     ]);
     expect(pending).toBeUndefined();
   });
+
+  it("recovers pending confirmation from messages when event payload was truncated or missing", () => {
+    const writeCall = call("fairlx_work_item_create", { title: "Epic 1", type: "EPIC" });
+    const pending = findPendingConfirmation(
+      [
+        {
+          id: "e1",
+          type: "confirmation",
+          title: 'Create Epic: "Epic 1"?',
+          payload: undefined,
+          createdAt: new Date().toISOString(),
+          runId: "r1",
+        },
+      ],
+      [
+        {
+          id: "m1",
+          role: "assistant",
+          content: "I will create this epic.",
+          toolCalls: [writeCall],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
+    expect(pending).toBeDefined();
+    expect(pending?.calls).toHaveLength(1);
+    expect(pending?.calls[0]?.name).toBe("fairlx_work_item_create");
+    expect(pending?.summary).toContain("Epic 1");
+  });
+
+  it("recovers from unanswered write tool calls even if confirmation event was dropped", () => {
+    const writeCall = call("fairlx_work_item_create", { title: "Task 1", type: "TASK" });
+    const pending = findPendingConfirmation(
+      [],
+      [
+        {
+          id: "m1",
+          role: "assistant",
+          content: "Creating task...",
+          toolCalls: [writeCall],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
+    expect(pending).toBeDefined();
+    expect(pending?.calls).toHaveLength(1);
+    expect(pending?.calls[0]?.name).toBe("fairlx_work_item_create");
+  });
+
+  it("does not treat read tool calls as pending confirmations", () => {
+    const readCall = call("fairlx_work_item_list", { projectId: "p1" });
+    const pending = findPendingConfirmation(
+      [],
+      [
+        {
+          id: "m1",
+          role: "assistant",
+          content: "Listing tasks...",
+          toolCalls: [readCall],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
+    expect(pending).toBeUndefined();
+  });
 });
 
 describe("parseWorkItemCall", () => {
