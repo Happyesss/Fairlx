@@ -29,4 +29,10 @@ describe("formatAgentTurnError", () => {
       "No AI model is configured."
     );
   });
+
+  it("maps fetch failed to a retryable provider drop", () => {
+    expect(formatAgentTurnError(new Error("fetch failed"))).toBe(
+      "The model provider connection dropped. Retry the same message.",
+    );
+  });
 });

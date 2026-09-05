@@ -18,17 +18,16 @@
 </div>
 
 <!-- docs:latest:start -->
-**Last updated:** 2026-09-05T08:12:43.343Z
+**Last updated:** 2026-09-05T10:47:21.423Z
 
 This block and [changelog.md](changelog.md) refresh on every `git commit` and `git push`.
 
 **Latest commits**
 
+- `76b6b22` checkpoint before checking out main (2026-09-05)
 - `4d69739` Merge stemlen/main into contrib branch for cross-repo contribution (2026-09-05)
 - `e0a995a` Ship leftover org invite, agent board, and docs-hook work. (2026-09-05)
 - `7a39a96` Raise agent model timeouts and pass attached specs to subject sub-agents. (2026-09-05)
-- `f5a80e2` chore: bump version to 0.2.98 [skip ci] (2026-09-04)
-- `fe8e336` Merge pull request #300 from Happyesss/main (2026-09-04)
 <!-- docs:latest:end -->
 
 ---

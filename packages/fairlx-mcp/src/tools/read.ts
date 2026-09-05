@@ -7,6 +7,7 @@ import {
   compactWorkItem,
   hydrateMembers,
   hydrateWorkItemAssignees,
+  hydrateWorkItemEpics,
   isWorkItemKeyCursor,
   locationSummary,
   paginationMeta,
@@ -290,6 +291,7 @@ async function workItemList(
   const type = optionalString(args, "type");
   const unassigned = optionalBoolean(args, "unassigned") === true;
   const backlog = optionalBoolean(args, "backlog") === true;
+  const withoutEpic = optionalBoolean(args, "withoutEpic") === true;
   const assigneeId = optionalString(args, "assigneeId");
   if (sprintId && !backlog) extra.push({ type: "equal", field: "sprintId", value: sprintId });
   if (status) extra.push({ type: "equal", field: "status", value: status });
@@ -299,17 +301,23 @@ async function workItemList(
     ? "cursorAfter must be nextCursor from the previous list result"
     : undefined;
   const startCursor = cursorError ? undefined : cursorAfter;
-  const needsFilter = unassigned || backlog || Boolean(assigneeId);
+  const needsFilter = unassigned || backlog || withoutEpic || Boolean(assigneeId);
   const scanAll = needsFilter || !startCursor;
   const fetched = await fetchWorkItemPages(runtime, extra, startCursor, scanAll, limit);
   const namesByRow = await hydrateWorkItemAssignees(runtime, fetched.documents);
+  const epicsByRow = await hydrateWorkItemEpics(runtime, fetched.documents);
   const rows = fetched.documents.map((doc, index) => {
     const names = runtime.collections.members ? namesByRow[index] ?? [] : undefined;
-    return { compact: compactWorkItem(doc, names), names: names ?? [] };
+    return { compact: compactWorkItem(doc, names, epicsByRow[index] ?? null), names: names ?? [] };
   });
   let filtered = unassigned ? rows.filter((row) => row.compact.unassigned === true) : rows;
   if (backlog) {
     filtered = filtered.filter((row) => row.compact.location === "backlog");
+  }
+  if (withoutEpic) {
+    filtered = filtered.filter(
+      (row) => String(row.compact.type ?? "").toUpperCase() !== "EPIC" && row.compact.hasEpic !== true,
+    );
   }
   if (assigneeId) {
     filtered = filtered.filter((row) => assigneeQueryMatches(row.names, assigneeId));
@@ -337,6 +345,9 @@ async function workItemList(
       total: fetched.total,
       matched: filtered.length,
       unassignedCount: rows.filter((row) => row.compact.unassigned === true).length,
+      missingEpicCount: rows.filter(
+        (row) => String(row.compact.type ?? "").toUpperCase() !== "EPIC" && row.compact.hasEpic !== true,
+      ).length,
       location,
       assignment: assignmentSummary(
         rows.map((row) => ({

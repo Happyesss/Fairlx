@@ -63,6 +63,8 @@ describe("compactWorkItem", () => {
     expect(compactWorkItem({ key: "SCHO-13", title: "Auth", sprintId: null })).toMatchObject({
       location: "backlog",
       sprintId: null,
+      hasEpic: false,
+      epicKey: null,
     });
     expect(compactWorkItem({ key: "SCHO-1", title: "Setup", sprintId: "sprint_1" })).toMatchObject({
       location: "sprint",

@@ -97,6 +97,10 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
           type: "string",
           description: "Filter by assignee name, email, or id. Do not use this to assign work.",
         },
+        withoutEpic: {
+          type: "boolean",
+          description: "Only stories/tasks/bugs that have no parent epic.",
+        },
         limit: { type: "number" },
         cursorAfter: { type: "string" },
       },
@@ -274,7 +278,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_work_item_create",
     description:
-      "Create a work item in this project. type defaults to TASK, priority to MEDIUM, status to TODO. Omit sprintId to put it on the project Backlog. Pass sprintId only when the user named a sprint — never assume the active sprint. Pass assigneeIds as the person's name or email so they appear on the Kanban/backlog — never a project or workspace id. Set storyPoints and dueDate (ISO) when planning.",
+      "Create a work item in this project. type defaults to TASK, priority to MEDIUM, status to TODO. Omit sprintId to put it on the project Backlog. Pass sprintId only when the user named a sprint — never assume the active sprint. Pass assigneeIds as the person's name or email so they appear on the Kanban/backlog — never a project or workspace id. Set storyPoints and dueDate (ISO) when planning. Pass epicId as the parent epic's key or title so the item is not an orphan story.",
     inputSchema: {
       type: "object",
       properties: {
@@ -291,6 +295,10 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         },
         storyPoints: { type: "number" },
         dueDate: { type: "string", description: "ISO date or datetime for the work item deadline" },
+        epicId: {
+          type: "string",
+          description: "Parent epic key (SCHO-1), title, or document id. Required for stories/tasks so they show under an epic.",
+        },
         labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
         idempotencyKey,
       },
@@ -304,7 +312,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_work_item_update",
     description:
-      "Update a work item. workItemId may be the document id or the item key (SCHO-1). Never pass a project or workspace id. assigneeIds may be names or emails; they are stored as workspace membership ids so Kanban and backlog show the person, not Unassigned. Status changes are validated against the project workflow.",
+      "Update a work item. workItemId may be the document id or the item key (SCHO-1). Never pass a project or workspace id. assigneeIds may be names or emails; they are stored as workspace membership ids so Kanban and backlog show the person, not Unassigned. Status changes are validated against the project workflow. Pass epicId (epic key or title) to parent the item under an epic.",
     inputSchema: {
       type: "object",
       properties: {
@@ -324,6 +332,10 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
         },
         storyPoints: { type: "number" },
         dueDate: { type: "string", description: "ISO date or datetime for the work item deadline" },
+        epicId: {
+          type: "string",
+          description: "Parent epic key (SCHO-1) or title. Pass none to clear.",
+        },
         labels: { type: "array", items: { type: "string" }, description: "Labels or tags for the work item" },
       },
       required: ["workItemId"],
@@ -336,7 +348,7 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
   {
     name: "fairlx_work_item_bulk_update",
     description:
-      "Assign or update many work items in one call. For a share of the backlog (60%, half), pass assignPercent and assigneeIds (name or email) — do not pick workItemIds and do not list again. Otherwise pass workItemIds as keys (SCHO-1).",
+      "Assign or update many work items in one call. For a share of the backlog (60%, half), pass assignPercent and assigneeIds (name or email) — do not pick workItemIds and do not list again. To parent every story/task under an epic, pass assignEpics: true and projectId (matches by title; leftover items round-robin). Otherwise pass workItemIds as keys (SCHO-1).",
     inputSchema: {
       type: "object",
       properties: {
@@ -357,6 +369,16 @@ export const TOOL_CATALOG: McpToolDefinition[] = [
           type: "array",
           items: { type: "string" },
           description: "Names or emails of workspace members so the item is not Unassigned on the board.",
+        },
+        epicId: {
+          type: "string",
+          description:
+            "Parent epic key or title. With workItemIds, sets that epic on those items. With only projectId, sets it on every child that has no epic.",
+        },
+        assignEpics: {
+          type: "boolean",
+          description:
+            "Parent every non-epic work item that has no epic. Matches item title to epic title. Does not need workItemIds.",
         },
         priority: { type: "string" },
         confirm,
