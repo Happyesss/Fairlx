@@ -4,7 +4,14 @@ import type { AuthContext } from "../auth/context";
 import { hasScope } from "../auth/scopes";
 import { PERMISSIONS, type McpRuntime } from "../runtime/types";
 import { parseAssignPercent, pickAssignShareKeys } from "../runtime/assign-share";
-import { compactWorkItem, hydrateMembers, hydrateWorkItemAssignees, toolResult, withId } from "../runtime/output";
+import {
+  compactWorkItem,
+  hydrateMembers,
+  hydrateWorkItemAssignees,
+  hydrateWorkItemEpics,
+  toolResult,
+  withId,
+} from "../runtime/output";
 import { requireProjectAccess, assertWorkspaceBound } from "../runtime/rbac";
 import { loadProject, loadWorkItem, workItemDocumentId } from "../runtime/tenant";
 import { withIdempotency } from "../runtime/idempotency";
@@ -13,6 +20,7 @@ import {
   LINK_INVERSE,
   listAllDocuments,
   loadBlocksLinks,
+  optionalBoolean,
   optionalString,
   parseCustomFields,
   redactGithubRepo,
@@ -206,6 +214,15 @@ async function workItemCreate(
       assigneeIds,
       storyPoints: typeof args.storyPoints === "number" ? args.storyPoints : undefined,
       dueDate: optionalString(args, "dueDate") ?? undefined,
+      epicId:
+        args.epicId !== undefined
+          ? await resolveEpicId(
+              runtime,
+              projectId,
+              optionalString(args, "type") ?? "TASK",
+              args.epicId,
+            )
+          : null,
       labels: Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [],
       reporterId: auth.actorUserId,
       flagged: false,
@@ -221,8 +238,9 @@ async function workItemCreate(
     });
     void access;
     const names = (await hydrateWorkItemAssignees(runtime, [item]))[0] ?? [];
+    const epic = (await hydrateWorkItemEpics(runtime, [item]))[0] ?? null;
     return toolResult({
-      workItem: compactWorkItem(item, names),
+      workItem: compactWorkItem(item, names, epic),
       assigned: names.length > 0,
     });
   };
@@ -322,6 +340,111 @@ async function resolveAssigneeIds(
   return [...new Set(resolved)];
 }
 
+function isEpicType(value: unknown): boolean {
+  return String(value ?? "").toUpperCase() === "EPIC";
+}
+
+function normalizeEpicTitle(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function epicTitleScore(itemTitle: string, epicTitle: string): number {
+  const item = normalizeEpicTitle(itemTitle);
+  const epic = normalizeEpicTitle(epicTitle);
+  if (!item || !epic) return 0;
+  if (item === epic) return 1000;
+  if (item.includes(epic) || epic.includes(item)) return 400 + Math.min(epic.length, 80);
+  const itemTokens = new Set(item.split(" ").filter((token) => token.length > 2));
+  const epicTokens = epic.split(" ").filter((token) => token.length > 2);
+  if (!epicTokens.length) return 0;
+  let hits = 0;
+  for (const token of epicTokens) {
+    if (itemTokens.has(token)) hits += 1;
+  }
+  return hits * 20;
+}
+
+async function listProjectEpics(
+  runtime: McpRuntime,
+  projectId: string,
+): Promise<Record<string, unknown>[]> {
+  const docs = await listAllDocuments(runtime, runtime.collections.workItems, [
+    { type: "equal", field: "projectId", value: projectId },
+  ]);
+  return docs.filter((doc) => isEpicType(doc.type));
+}
+
+async function resolveEpicId(
+  runtime: McpRuntime,
+  projectId: string,
+  itemType: string,
+  raw: unknown,
+): Promise<string | null> {
+  if (raw === null || raw === undefined || raw === "" || raw === "none" || raw === "null") {
+    return null;
+  }
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw invalidParams("epicId must be an epic key, title, or document id");
+  }
+  if (isEpicType(itemType)) {
+    throw invalidParams("Epics cannot be parented to another epic. Pass epicId on stories, tasks, and bugs.");
+  }
+  const value = raw.trim();
+  const epics = await listProjectEpics(runtime, projectId);
+  if (!epics.length) {
+    throw invalidParams("No epics in this project. Create an EPIC work item first, then assign it.");
+  }
+  const byId = epics.find((epic) => String(epic.$id ?? epic.id ?? "") === value);
+  if (byId) return String(byId.$id ?? byId.id);
+  const byKey = epics.find((epic) => String(epic.key ?? "").toUpperCase() === value.toUpperCase());
+  if (byKey) return String(byKey.$id ?? byKey.id);
+  const wanted = normalizeEpicTitle(value);
+  const titleMatches = epics.filter((epic) => {
+    const title = normalizeEpicTitle(String(epic.title ?? epic.name ?? ""));
+    return title === wanted || title.includes(wanted) || wanted.includes(title);
+  });
+  if (titleMatches.length === 1) return String(titleMatches[0]!.$id ?? titleMatches[0]!.id);
+  if (titleMatches.length > 1) {
+    throw invalidParams(
+      `Several epics match "${value}". Pass the epic key: ${titleMatches
+        .map((epic) => String(epic.key ?? epic.title ?? ""))
+        .join(", ")}`,
+    );
+  }
+  throw invalidParams(
+    `No epic matches "${value}". Pass an epic key or title from type=EPIC items.`,
+  );
+}
+
+function pickEpicForItem(
+  title: string,
+  epics: Record<string, unknown>[],
+  fallbackIndex: number,
+): { epic: Record<string, unknown>; matchedBy: "title" | "fallback" } {
+  let best = epics[0]!;
+  let bestScore = -1;
+  for (const epic of epics) {
+    const score = epicTitleScore(title, String(epic.title ?? epic.name ?? ""));
+    if (score > bestScore) {
+      bestScore = score;
+      best = epic;
+    }
+  }
+  if (bestScore <= 0) {
+    return { epic: epics[fallbackIndex % epics.length]!, matchedBy: "fallback" };
+  }
+  return { epic: best, matchedBy: "title" };
+}
+
+async function compactUpdatedWorkItem(
+  runtime: McpRuntime,
+  item: Record<string, unknown>,
+) {
+  const names = (await hydrateWorkItemAssignees(runtime, [item]))[0] ?? [];
+  const epic = (await hydrateWorkItemEpics(runtime, [item]))[0] ?? null;
+  return compactWorkItem(item, names, epic);
+}
+
 async function workItemUpdate(
   args: Record<string, unknown>,
   runtime: McpRuntime,
@@ -348,6 +471,14 @@ async function workItemUpdate(
   }
   if (args.storyPoints !== undefined) patch.storyPoints = args.storyPoints;
   if (args.dueDate !== undefined) patch.dueDate = args.dueDate ? String(args.dueDate) : null;
+  if (args.epicId !== undefined) {
+    patch.epicId = await resolveEpicId(
+      runtime,
+      projectId,
+      String(item.type ?? "TASK"),
+      args.epicId,
+    );
+  }
   if (args.labels !== undefined) {
     patch.labels = Array.isArray(args.labels) ? args.labels.map(String).filter(Boolean) : [];
   }
@@ -374,9 +505,74 @@ async function workItemUpdate(
     patch
   );
   const names = (await hydrateWorkItemAssignees(runtime, [updated]))[0] ?? [];
+  const epic = (await hydrateWorkItemEpics(runtime, [updated]))[0] ?? null;
   return toolResult({
-    workItem: compactWorkItem(updated, names),
+    workItem: compactWorkItem(updated, names, epic),
     assigned: assigneeInput !== undefined ? names.length > 0 : undefined,
+  });
+}
+
+async function assignEpicsInProject(
+  args: Record<string, unknown>,
+  runtime: McpRuntime,
+  auth: AuthContext,
+): Promise<McpToolResult> {
+  const projectId = optionalString(args, "projectId") || auth.projectId;
+  if (!projectId) {
+    throw invalidParams("projectId is required when assignEpics is true");
+  }
+  await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, ["tasks:write"]);
+  const docs = await listAllDocuments(runtime, runtime.collections.workItems, [
+    { type: "equal", field: "projectId", value: projectId },
+  ]);
+  const epics = docs.filter((doc) => isEpicType(doc.type));
+  if (!epics.length) {
+    throw invalidParams("No epics in this project. Create EPIC work items first, then assign them.");
+  }
+  const requested = Array.isArray(args.workItemIds)
+    ? new Set(
+        args.workItemIds
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+          .map((id) => id.trim().toUpperCase()),
+      )
+    : null;
+  const epicIds = new Set(epics.map((epic) => String(epic.$id ?? epic.id ?? "")));
+  const children = docs.filter((doc) => {
+    if (isEpicType(doc.type)) return false;
+    const key = String(doc.key ?? "").toUpperCase();
+    const id = String(doc.$id ?? doc.id ?? "");
+    if (requested && requested.size > 0) {
+      return requested.has(key) || requested.has(id.toUpperCase());
+    }
+    const current = String(doc.epicId ?? "").trim();
+    return !current || !epicIds.has(current);
+  });
+  const updated: unknown[] = [];
+  const mapping: Array<{ key: string; epicKey: string; epicTitle: string; matchedBy: string }> = [];
+  let fallbackIndex = 0;
+  for (const item of children) {
+    const title = String(item.title ?? item.name ?? "");
+    const picked = pickEpicForItem(title, epics, fallbackIndex);
+    fallbackIndex += 1;
+    const epicId = String(picked.epic.$id ?? picked.epic.id ?? "");
+    const doc = await runtime.store.update<Record<string, unknown>>(
+      runtime.collections.workItems,
+      workItemDocumentId(item),
+      { epicId },
+    );
+    updated.push(await compactUpdatedWorkItem(runtime, doc));
+    mapping.push({
+      key: String(doc.key ?? item.key ?? ""),
+      epicKey: String(picked.epic.key ?? ""),
+      epicTitle: String(picked.epic.title ?? picked.epic.name ?? ""),
+      matchedBy: picked.matchedBy,
+    });
+  }
+  return toolResult({
+    count: updated.length,
+    assignedKeys: mapping.map((row) => row.key).filter(Boolean),
+    mapping,
+    workItems: updated,
   });
 }
 
@@ -388,6 +584,10 @@ async function workItemBulkUpdate(
   const percent = parseAssignPercent(args.assignPercent ?? args.percent);
   if (percent !== undefined && (percent < 1 || percent > 100)) {
     throw invalidParams("assignPercent must be between 1 and 100");
+  }
+  const assignEpics = optionalBoolean(args, "assignEpics") === true;
+  if (assignEpics) {
+    return assignEpicsInProject(args, runtime, auth);
   }
   let ids = Array.isArray(args.workItemIds)
     ? args.workItemIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
@@ -437,6 +637,22 @@ async function workItemBulkUpdate(
         workItems: [],
       });
     }
+  } else if (ids.length === 0 && args.epicId !== undefined) {
+    const projectId = optionalString(args, "projectId") || auth.projectId;
+    if (!projectId) {
+      throw invalidParams("projectId is required when setting epicId without workItemIds");
+    }
+    await requireProjectAccess(runtime, auth, projectId, PERMISSIONS.EDIT_TASKS, ["tasks:write"]);
+    const docs = await listAllDocuments(runtime, runtime.collections.workItems, [
+      { type: "equal", field: "projectId", value: projectId },
+    ]);
+    ids = docs
+      .filter((doc) => !isEpicType(doc.type) && !String(doc.epicId ?? "").trim())
+      .map((doc) => String(doc.key ?? doc.$id ?? ""))
+      .filter(Boolean);
+    if (ids.length === 0) {
+      return toolResult({ count: 0, assignedKeys: [], workItems: [], alreadyHadEpic: true });
+    }
   } else if (ids.length === 0) {
     throw invalidParams("workItemIds is required");
   }
@@ -455,13 +671,20 @@ async function workItemBulkUpdate(
       patch.assigneeIds = await resolveAssigneeIds(runtime, auth, item, assigneeInput);
     }
     if (args.priority !== undefined) patch.priority = args.priority;
+    if (args.epicId !== undefined) {
+      patch.epicId = await resolveEpicId(
+        runtime,
+        String(item.projectId),
+        String(item.type ?? "TASK"),
+        args.epicId,
+      );
+    }
     const doc = await runtime.store.update(
       runtime.collections.workItems,
       workItemDocumentId(item),
       patch
     );
-    const names = (await hydrateWorkItemAssignees(runtime, [doc as Record<string, unknown>]))[0] ?? [];
-    updated.push(compactWorkItem(doc as Record<string, unknown>, names));
+    updated.push(await compactUpdatedWorkItem(runtime, doc as Record<string, unknown>));
   }
   return toolResult({
     workItems: updated,

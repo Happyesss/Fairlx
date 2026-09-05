@@ -91,7 +91,8 @@ export function locationSummary(
 
 export function compactWorkItem(
   doc: Record<string, unknown>,
-  assignees?: CompactAssignee[]
+  assignees?: CompactAssignee[],
+  epic?: Record<string, unknown> | null,
 ): Record<string, unknown> {
   const ids = assigneeIdsOf(doc);
   const people = (assignees ?? [])
@@ -102,6 +103,11 @@ export function compactWorkItem(
     .filter((person) => person.name);
   const hydrated = assignees !== undefined;
   const sprintId = isBacklogSprintId(doc.sprintId) ? null : String(doc.sprintId).trim();
+  const hasEpic = Boolean(String(doc.epicId ?? "").trim());
+  const epicKey = epic ? String(epic.key ?? "").trim() || null : null;
+  const epicTitle = epic
+    ? String(epic.title ?? epic.name ?? "").trim() || null
+    : null;
   return {
     key: doc.key,
     title: doc.title ?? doc.name,
@@ -113,9 +119,34 @@ export function compactWorkItem(
     sprintId,
     storyPoints: doc.storyPoints ?? null,
     dueDate: doc.dueDate ?? null,
+    hasEpic,
+    epicKey,
+    epicTitle,
     assignees: people,
     unassigned: hydrated ? people.length === 0 : ids.length === 0,
   };
+}
+
+export async function hydrateWorkItemEpics(
+  runtime: Pick<McpRuntime, "store" | "collections">,
+  docs: Record<string, unknown>[],
+): Promise<Array<Record<string, unknown> | null>> {
+  const ids = [
+    ...new Set(docs.map((doc) => String(doc.epicId ?? "").trim()).filter(Boolean)),
+  ];
+  const map = new Map<string, Record<string, unknown>>();
+  for (const id of ids) {
+    try {
+      const found = await runtime.store.get<Record<string, unknown>>(runtime.collections.workItems, id);
+      map.set(id, found);
+    } catch {
+      /* missing epic */
+    }
+  }
+  return docs.map((doc) => {
+    const id = String(doc.epicId ?? "").trim();
+    return id ? map.get(id) ?? null : null;
+  });
 }
 
 function memberDisplayName(doc: Record<string, unknown>, profile?: McpUserProfile): string {

@@ -7,6 +7,7 @@ import {
   Loader2,
   Mic,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 
@@ -14,9 +15,11 @@ import { useGetAgentContext } from "../api/use-agent-context";
 import { useGetAgentHarness } from "../api/use-agent-harness";
 import { useGetPersonalAgent } from "../api/use-personal-agent";
 import { useCreateAgentRun, useStopAgentRun } from "../api/use-agent-runs";
+import { useTranscribeAudio } from "../api/use-transcribe-audio";
 import { chipKey, composeUserPrompt, isPersonalSessionMode } from "../lib/session-context";
 import { profileIsTrained } from "../lib/personal-agent-status";
 import { countWorkspaceProjects, getQuickActions } from "../lib/quick-actions";
+import { MAX_VOICE_MS, audioFilenameForMime, pickRecorderMimeType, voiceInputSupported } from "../lib/voice-input";
 import type { AgentContextChip, AgentRun, AgentSessionMode } from "../types";
 import { AgentPlusMenu, ContextChips } from "./agent-plus-menu";
 import { AgentScopeBar } from "./agent-scope-bar";
@@ -65,13 +68,19 @@ export function AgentCommandInput({
   const { data: personal } = useGetPersonalAgent();
   const createRun = useCreateAgentRun();
   const stopRunMutation = useStopAgentRun();
+  const transcribeAudio = useTranscribeAudio();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState("");
   const [chips, setChips] = useState<AgentContextChip[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(workspaceId ?? null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectId ?? null);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const maxTimerRef = useRef<number | null>(null);
+  const unmountedRef = useRef(false);
   const minHeight = compact ? 40 : 56;
   const resetHeight = compact ? "40px" : "56px";
 
@@ -87,6 +96,7 @@ export function AgentCommandInput({
   const stopping = isStopping || stopRunMutation.isPending;
   const showStop = isRunning || run?.status === "awaiting_confirmation" || stopping;
   const busy = submitting || createRun.isPending;
+  const voiceBusy = busy || isTranscribing;
   const canSend = Boolean(prompt.trim()) && !busy && !disabled;
   const sessionMode = (harness?.settings.sessionMode as AgentSessionMode) || "agent";
   const personalUntrained =
@@ -129,78 +139,117 @@ export function AgentCommandInput({
     }
   };
 
-  const toggleVoiceInput = () => {
-    if (typeof window === "undefined") return;
+  const stopMicTracks = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  };
 
-    if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-      return;
-    }
-
-    const windowWithSpeech = window as unknown as {
-      SpeechRecognition?: new () => {
-        continuous: boolean;
-        interimResults: boolean;
-        lang: string;
-        onstart: () => void;
-        onend: () => void;
-        onerror: () => void;
-        onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
-        start: () => void;
-        stop: () => void;
-      };
-      webkitSpeechRecognition?: new () => {
-        continuous: boolean;
-        interimResults: boolean;
-        lang: string;
-        onstart: () => void;
-        onend: () => void;
-        onerror: () => void;
-        onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
-        start: () => void;
-        stop: () => void;
-      };
-    };
-
-    const SpeechRecognition =
-      windowWithSpeech.SpeechRecognition || windowWithSpeech.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-
-      recognition.onresult = (event) => {
-        let transcript = "";
-        for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        if (transcript) {
-          setPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
-          if (textareaRef.current) {
-            autosize(textareaRef.current, minHeight);
-          }
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch {
-      setIsListening(false);
+  const clearMaxTimer = () => {
+    if (maxTimerRef.current) {
+      window.clearTimeout(maxTimerRef.current);
+      maxTimerRef.current = null;
     }
   };
+
+  const applyTranscript = (text: string) => {
+    const next = text.trim();
+    if (!next) return;
+    setPrompt((prev) => (prev.trim() ? `${prev.trimEnd()} ${next}` : next));
+    requestAnimationFrame(() => {
+      if (textareaRef.current) autosize(textareaRef.current, minHeight);
+    });
+  };
+
+  const finishRecording = async (blob: Blob) => {
+    if (unmountedRef.current) return;
+    if (blob.size < 256) {
+      toast.error("Didn't catch any audio. Hold the mic a moment longer.");
+      return;
+    }
+    const mime = blob.type || "audio/webm";
+    const file = new File([blob], audioFilenameForMime(mime), { type: mime.split(";")[0] || "audio/webm" });
+    setIsTranscribing(true);
+    try {
+      const text = await transcribeAudio.mutateAsync(file);
+      if (!unmountedRef.current) applyTranscript(text);
+    } finally {
+      if (!unmountedRef.current) setIsTranscribing(false);
+    }
+  };
+
+  const stopVoiceInput = () => {
+    clearMaxTimer();
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    } else {
+      stopMicTracks();
+    }
+    setIsListening(false);
+  };
+
+  const startVoiceInput = async () => {
+    if (!voiceInputSupported()) {
+      toast.error("Voice input isn't supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mime = pickRecorderMimeType();
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        clearMaxTimer();
+        stopMicTracks();
+        setIsListening(false);
+        toast.error("Microphone recording failed.");
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        chunksRef.current = [];
+        recorderRef.current = null;
+        stopMicTracks();
+        if (unmountedRef.current) return;
+        void finishRecording(blob);
+      };
+      recorder.start();
+      setIsListening(true);
+      maxTimerRef.current = window.setTimeout(() => stopVoiceInput(), MAX_VOICE_MS);
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        toast.error("Allow microphone access to use voice input.");
+        return;
+      }
+      toast.error("Couldn't start the microphone.");
+    }
+  };
+
+  const toggleVoiceInput = () => {
+    if (voiceBusy) return;
+    if (isListening) {
+      stopVoiceInput();
+      return;
+    }
+    void startVoiceInput();
+  };
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      clearMaxTimer();
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
+      stopMicTracks();
+    };
+  }, []);
 
   const submit = (value: string) => {
     const trimmed = value.trim();
@@ -317,16 +366,23 @@ export function AgentCommandInput({
                 <button
                   type="button"
                   onClick={toggleVoiceInput}
-                  disabled={busy}
+                  disabled={voiceBusy}
                   className={cn(
                     "size-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
                     isListening
                       ? "bg-red-500 text-white animate-pulse"
-                      : "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 shadow-2xs"
+                      : "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 hover:opacity-90 shadow-2xs",
+                    voiceBusy && "opacity-60 cursor-not-allowed"
                   )}
-                  title={isListening ? "Listening... click to stop" : "Voice input"}
+                  title={
+                    isTranscribing
+                      ? "Transcribing…"
+                      : isListening
+                        ? "Listening… click to stop"
+                        : "Voice input"
+                  }
                 >
-                  <Mic className="size-3.5" />
+                  {isTranscribing ? <Loader2 className="size-3.5 animate-spin" /> : <Mic className="size-3.5" />}
                 </button>
                 {showStop ? (
                   <button
